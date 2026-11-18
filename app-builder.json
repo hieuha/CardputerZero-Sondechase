@@ -1,0 +1,45 @@
+{
+  "app_name": "SondeChase",
+  "package_name": "sondechase",
+  "version": "0.3.0",
+  "description": "Radiosonde receiver and chase display for the CardputerZero (RTL-SDR v4, GPS)",
+  "store": {
+    "summary": "Receive, decode and chase RS41 weather balloons with an RTL-SDR and GPS",
+    "description": "SondeChase turns the CardputerZero into a handheld radiosonde tracker. It scans 400-406 MHz with an RTL-SDR, decodes Vaisala RS41 telemetry, and shows where the balloon is relative to you: distance, bearing and elevation on a compass, its track on a preloaded offline map, a Skew-T log-P diagram of the sounding, and the predicted landing point computed from the wind profile measured during ascent. It raises an alert when the balloon bursts and beeps faster and louder as you get within 10 km. Requires an RTL-SDR on USB; a GPS receiver is needed for distance, bearing and the proximity beeper.",
+    "categories": [
+      "Radio & Comms",
+      "Hardware & IoT"
+    ],
+    "screenshots": [
+      "screenshots/01_track.png",
+      "screenshots/02_map.png",
+      "screenshots/03_graph_skewt.png",
+      "screenshots/03_graph_flight.png",
+      "screenshots/04_scan.png",
+      "screenshots/07_burst.png"
+    ],
+    "icon": "assets/images/sondechase_256.png",
+    "license": "TODO: SPDX identifier chosen by the author",
+    "source_repo": "https://github.com/hieuha/CardputerZero-Sondechase",
+    "author": {
+      "github": "hieuha",
+      "display_name": "hieuha"
+    },
+    "share_code": "SNDE",
+    "permissions": {
+      "camera": false,
+      "microphone": false,
+      "imu": true,
+      "network": true,
+      "additional_hardware": true,
+      "background_service": false,
+      "external_display": false
+    },
+    "locales": {
+      "vi": {
+        "title": "SondeChase",
+        "summary": "Thu, giải mã và bám theo bóng thám không RS41 bằng RTL-SDR và GPS"
+      }
+    }
+  }
+}

@@ -1,0 +1,282 @@
+#define _GNU_SOURCE
+#include "sc.h"
+#include <ctype.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
+
+double sc_now(void)
+{
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (double)t.tv_sec + (double)t.tv_nsec * 1e-9;
+}
+
+/* ---------------- config ---------------- */
+void cfg_defaults(cfg_t *c)
+{
+    memset(c, 0, sizeof *c);
+    snprintf(c->decoder_cmd, sizeof c->decoder_cmd,
+             "rtl_fm -p {ppm} -d {dev} {bias} {gain} -M raw -F9 -s 48000 -f {f_tune} 2>/dev/null"
+             " | fsk_demod --cs16 -b 1200 -u 22800 -s 2 48000 4800 - - 2>/dev/null"
+             " | stdbuf -oL rs41mod --ptu2 --json --softin -i --jsn_cfq {f_hz} 2>/dev/null");
+    snprintf(c->scan_cmd, sizeof c->scan_cmd,
+             "rtl_power -f {lo}:{hi}:{step} -i {int} -1 -c 20%% -p {ppm} -d {dev} {gain} - 2>/dev/null");
+    c->scan_lo_hz = 400000000L;
+    c->scan_hi_hz = 406000000L;
+    c->scan_step_hz = 5000;
+    c->scan_int_s = 4;
+    c->scan_snr_db = 8.0;
+    c->auto_tune = 0;
+    snprintf(c->gpsd_host, sizeof c->gpsd_host, "127.0.0.1");
+    c->gpsd_port = 2947;
+    c->ground_alt = -1000.0;
+    c->burst_alt = 30000.0;
+    c->descent_v0 = 6.0;
+    c->cog_min_speed = 1.5;
+    c->mag_enable = 1;
+    c->stale_s = 5.0;
+    snprintf(c->fb_dev, sizeof c->fb_dev, "/dev/fb0");
+    c->prox_radius_m = 10000.0;
+    c->prox_hyst_m = 500.0;
+    c->audio_enable = 1;
+    snprintf(c->audio_cmd, sizeof c->audio_cmd,
+             "aplay -q -t raw -f S16_LE -r 16000 -c 1 --buffer-time=120000 - 2>/dev/null");
+    snprintf(c->tile_dir, sizeof c->tile_dir, "/usr/share/sondechase/tiles");
+    c->zoom_min = 8;
+    c->zoom_max = 16;
+    snprintf(c->font_dir, sizeof c->font_dir, "/usr/share/sondechase/fonts");
+    c->sdr_check = 1;
+    c->tile_online = 1;
+    snprintf(c->tile_url, sizeof c->tile_url, "https://tile.openstreetmap.org/{z}/{x}/{y}.png");
+    snprintf(c->tile_user_agent, sizeof c->tile_user_agent, "SondeChase/0.3 (CardputerZero app; github.com/hieuha)");
+    snprintf(c->tile_fetch_cmd, sizeof c->tile_fetch_cmd, "curl -fsS --max-time 20 -A '{ua}' -o '{out}' '{url}'");
+    c->tile_cache_mb = 200;
+    c->demo_speed = 30.0;
+}
+
+typedef struct {
+    const char *k;
+    char t;
+    size_t off, sz;
+} cfg_ent;
+#define E(n, t) {#n, t, offsetof(cfg_t, n), sizeof(((cfg_t *)0)->n)}
+static const cfg_ent ents[] = {
+    E(freq_hz, 'l'),      E(ppm, 'i'),          E(gain, 's'),         E(rtl_dev, 'i'),
+    E(bias_tee, 'i'),     E(decoder_cmd, 's'),  E(scan_cmd, 's'),     E(scan_lo_hz, 'l'),
+    E(scan_hi_hz, 'l'),   E(scan_step_hz, 'l'), E(scan_int_s, 'i'),   E(scan_snr_db, 'd'),
+    E(auto_tune, 'i'),    E(gpsd_host, 's'),    E(gpsd_port, 'i'),    E(ground_alt, 'd'),
+    E(burst_alt, 'd'),    E(descent_v0, 'd'),   E(cog_min_speed, 'd'), E(mag_enable, 'i'),
+    E(mag_off_x, 'd'),    E(mag_off_y, 'd'),    E(mag_rot_deg, 'd'),  E(mag_flip_y, 'i'),
+    E(declination, 'd'),  E(stale_s, 'd'),      E(log_dir, 's'),      E(kbd_dev, 's'),
+    E(fb_dev, 's'),       E(prox_radius_m, 'd'), E(prox_hyst_m, 'd'), E(audio_enable, 'i'),
+    E(audio_cmd, 's'),    E(tile_dir, 's'),     E(zoom_min, 'i'),     E(zoom_max, 'i'),
+    E(font_dir, 's'),     E(sdr_check, 'i'),    E(demo, 'i'),         E(demo_speed, 'd'),
+    E(tile_online, 'i'),  E(tile_url, 's'),     E(tile_user_agent, 's'), E(tile_fetch_cmd, 's'),
+    E(tile_cache_dir, 's'), E(tile_cache_mb, 'i'),
+};
+
+static char *trim(char *s)
+{
+    while (isspace((unsigned char)*s)) s++;
+    char *e = s + strlen(s);
+    while (e > s && isspace((unsigned char)e[-1])) *--e = 0;
+    return s;
+}
+
+int cfg_load(cfg_t *c, const char *path)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) return -1;
+    char line[1024];
+    while (fgets(line, sizeof line, f)) {
+        char *s = trim(line);
+        if (!*s || *s == '#') continue;
+        char *eq = strchr(s, '=');
+        if (!eq) continue;
+        *eq = 0;
+        char *k = trim(s), *v = trim(eq + 1);
+        size_t i, n = sizeof ents / sizeof ents[0];
+        for (i = 0; i < n; i++) {
+            if (strcmp(k, ents[i].k)) continue;
+            char *p = (char *)c + ents[i].off;
+            switch (ents[i].t) {
+            case 'l': *(long *)(void *)p = strtol(v, NULL, 10); break;
+            case 'i': *(int *)(void *)p = (int)strtol(v, NULL, 10); break;
+            case 'd': *(double *)(void *)p = strtod(v, NULL); break;
+            default: snprintf(p, ents[i].sz, "%s", v); break;
+            }
+            break;
+        }
+        if (i == n) fprintf(stderr, "sondechase: unknown config key '%s'\n", k);
+    }
+    fclose(f);
+    return 0;
+}
+
+int sc_subst(char *out, size_t n, const char *tpl, const cfg_t *c, long f_hz)
+{
+    size_t o = 0;
+    while (*tpl) {
+        char val[64];
+        const char *end = (*tpl == '{') ? strchr(tpl, '}') : NULL;
+        int w = -1;
+        if (end) {
+            size_t kl = (size_t)(end - tpl - 1);
+            const char *k = tpl + 1;
+#define IS(name) (kl == strlen(name) && !strncmp(k, name, kl))
+            if (IS("ppm")) w = snprintf(val, sizeof val, "%d", c->ppm);
+            else if (IS("dev")) w = snprintf(val, sizeof val, "%d", c->rtl_dev);
+            else if (IS("gain")) w = c->gain[0] ? snprintf(val, sizeof val, "-g %s", c->gain) : (val[0] = 0, 0);
+            else if (IS("bias")) w = snprintf(val, sizeof val, "%s", c->bias_tee ? "-T" : "");
+            else if (IS("f_hz")) w = snprintf(val, sizeof val, "%ld", f_hz);
+            else if (IS("f_tune")) w = snprintf(val, sizeof val, "%ld", f_hz - RS41_TUNE_OFFSET_HZ);
+            else if (IS("lo")) w = snprintf(val, sizeof val, "%ld", c->scan_lo_hz);
+            else if (IS("hi")) w = snprintf(val, sizeof val, "%ld", c->scan_hi_hz);
+            else if (IS("step")) w = snprintf(val, sizeof val, "%ld", c->scan_step_hz);
+            else if (IS("int")) w = snprintf(val, sizeof val, "%d", c->scan_int_s);
+#undef IS
+        }
+        if (w >= 0) {
+            if (o + (size_t)w >= n) return -1;
+            memcpy(out + o, val, (size_t)w);
+            o += (size_t)w;
+            tpl = end + 1;
+        } else {
+            if (o + 1 >= n) return -1;
+            out[o++] = *tpl++;
+        }
+    }
+    out[o] = 0;
+    return 0;
+}
+
+/* ---------------- line reader ---------------- */
+int lr_readline(lr_t *r, char *out, size_t n)
+{
+    for (;;) {
+        char *nl = memchr(r->buf, '\n', r->len);
+        if (nl) {
+            size_t l = (size_t)(nl - r->buf);
+            size_t cp = l < n - 1 ? l : n - 1;
+            memcpy(out, r->buf, cp);
+            out[cp] = 0;
+            memmove(r->buf, nl + 1, r->len - l - 1);
+            r->len -= l + 1;
+            return 1;
+        }
+        if (r->len == sizeof r->buf) r->len = 0; /* over-long line: drop it */
+        if (r->fd < 0) return -1;
+        ssize_t k = read(r->fd, r->buf + r->len, sizeof r->buf - r->len);
+        if (k > 0) {
+            r->len += (size_t)k;
+            continue;
+        }
+        if (k == 0) return -1;
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) return 0;
+        return -1;
+    }
+}
+
+/* ---------------- child process ---------------- */
+void proc_init(proc_t *p)
+{
+    p->pid = 0;
+    p->lr.fd = -1;
+    p->lr.len = 0;
+}
+
+int proc_start(proc_t *p, const char *cmd)
+{
+    int pf[2];
+    if (pipe(pf) < 0) return -1;
+    pid_t pid = fork();
+    if (pid < 0) {
+        close(pf[0]);
+        close(pf[1]);
+        return -1;
+    }
+    if (pid == 0) {
+        setsid(); /* new process group: the whole pipeline is signalled together */
+        dup2(pf[1], 1);
+        close(pf[0]);
+        close(pf[1]);
+        int nul = open("/dev/null", O_RDONLY);
+        if (nul >= 0) dup2(nul, 0);
+        execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+        _exit(127);
+    }
+    close(pf[1]);
+    fcntl(pf[0], F_SETFL, O_NONBLOCK);
+    fcntl(pf[0], F_SETFD, FD_CLOEXEC);
+    p->pid = pid;
+    p->lr.fd = pf[0];
+    p->lr.len = 0;
+    return 0;
+}
+
+void proc_stop(proc_t *p)
+{
+    if (p->pid > 0) {
+        int i, done = 0;
+        kill(-p->pid, SIGTERM);
+        for (i = 0; i < 20 && !done; i++) {
+            if (waitpid(p->pid, NULL, WNOHANG) == p->pid) done = 1;
+            else usleep(50000);
+        }
+        if (!done) {
+            kill(-p->pid, SIGKILL);
+            waitpid(p->pid, NULL, 0);
+        } else {
+            kill(-p->pid, SIGKILL); /* remaining pipeline members, if any */
+        }
+    }
+    if (p->lr.fd >= 0) close(p->lr.fd);
+    proc_init(p);
+}
+
+/* ---------------- flat JSON ---------------- */
+static const char *js_find(const char *s, const char *key)
+{
+    size_t kl = strlen(key);
+    const char *p = s;
+    while ((p = strchr(p, '"')) != NULL) {
+        if (!strncmp(p + 1, key, kl) && p[1 + kl] == '"') {
+            const char *q = p + kl + 2;
+            while (*q == ' ') q++;
+            if (*q == ':') {
+                q++;
+                while (*q == ' ') q++;
+                return q;
+            }
+        }
+        p++;
+    }
+    return NULL;
+}
+
+int js_num(const char *s, const char *key, double *out)
+{
+    const char *v = js_find(s, key);
+    char *e;
+    if (!v) return 0;
+    double d = strtod(v, &e);
+    if (e == v) return 0;
+    *out = d;
+    return 1;
+}
+
+int js_str(const char *s, const char *key, char *out, size_t n)
+{
+    const char *v = js_find(s, key);
+    size_t o = 0;
+    if (!v || *v != '"') return 0;
+    for (v++; *v && *v != '"' && o + 1 < n; v++) out[o++] = *v;
+    out[o] = 0;
+    return 1;
+}

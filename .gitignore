@@ -59,9 +59,7 @@ GoogleService-Info.plist
 repomix-output.xml
 .serena/cache
 /plans/
-screenshots/*
-docs/screenshots/*
-logs.txt
+docs/logs.txt
 test-ck
 __pycache__
 
@@ -82,8 +80,6 @@ claude/skills/ai-multimodal/assets/demo-*.claude/session-state/*.tmp
 
 # Gemini CLI settings (symlink to staged .claude/.mcp.json)
 .gemini/settings.json
-# Showoff/marketing assets (images, showcases)
-assets/
 # Exception: use-mcp ships a persistent tool catalog at assets/tools.json
 !claude/skills/use-mcp/assets/
 !claude/skills/use-mcp/assets/**
@@ -97,3 +93,6 @@ worktrees/
 # ClaudeKit local files
 .repomixignore
 release-manifest.json
+
+# SondeChase build output
+.cache/

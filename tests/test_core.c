@@ -1,0 +1,486 @@
+#define _GNU_SOURCE
+#include "../src/sc.h"
+#include <math.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+static int fails = 0, checks = 0;
+#define CHECK(c)                                                         \
+    do {                                                                 \
+        checks++;                                                        \
+        if (!(c)) {                                                      \
+            fails++;                                                     \
+            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #c);          \
+        }                                                                \
+    } while (0)
+#define NEAR(a, b, tol) CHECK(fabs((a) - (b)) <= (tol))
+
+static void t_geo(void)
+{
+    double la, lo;
+    NEAR(geo_dist(0, 0, 1, 0), 111195.1, 1.0); /* 1 deg of latitude */
+    NEAR(geo_bearing(0, 0, 0, 1), 90.0, 1e-6);
+    NEAR(geo_bearing(10, 20, 9, 20), 180.0, 1e-6);
+    geo_dest(21.0, 105.8, 37.0, 25000.0, &la, &lo);
+    NEAR(geo_dist(21.0, 105.8, la, lo), 25000.0, 0.5);
+    NEAR(geo_bearing(21.0, 105.8, la, lo), 37.0, 0.01);
+    NEAR(geo_elev(0.0, 0, 1000), 90.0, 1e-6);
+    NEAR(geo_elev(10000.0, 0, 10000), 44.96, 0.05);
+    CHECK(geo_elev(200000.0, 0, 1000) < 0); /* below the geometric horizon */
+    NEAR(norm180(350.0), -10.0, 1e-9);
+    NEAR(norm360(-10.0), 350.0, 1e-9);
+}
+
+static void t_isa(void)
+{
+    NEAR(isa_rho(0), 1.2250, 0.001);
+    NEAR(isa_rho(11000), 0.3639, 0.001);
+    NEAR(isa_rho(20000), 0.0880, 0.0005);
+    NEAR(isa_rho(30000), 0.0180, 0.0003); /* geopotential altitude */
+}
+
+static void t_predict(void)
+{
+    wind_t w;
+    sonde_t s;
+    pred_t p;
+    memset(&w, 0, sizeof w);
+    memset(&s, 0, sizeof s);
+    s.lat = 21.0; s.lon = 105.8; s.alt = 1000; s.vel_h = 10; s.heading = 90; s.vel_v = -6;
+    p = predict_landing(&s, s.vel_v, &w, 0, 30000, 6);
+    CHECK(p.valid);
+    NEAR(p.t_s, 170.6, 3.0); /* 1000 m at ~5.86 m/s mean */
+    NEAR(geo_dist(s.lat, s.lon, p.lat, p.lon), 10 * p.t_s, 2.0);
+    NEAR(geo_bearing(s.lat, s.lon, p.lat, p.lon), 90.0, 0.1);
+
+    /* Wind profile from ascent overrides the current velocity layer by layer. */
+    wind_add(&w, 100, 5, 0);  /* 0-250 m: 5 m/s to the north */
+    wind_add(&w, 900, 5, 180); /* 750-1000 m: 5 m/s to the south */
+    {
+        double e, n;
+        wind_get(&w, 120, 9, 9, &e, &n);
+        NEAR(n, 5.0, 1e-4);
+        wind_get(&w, 990, 9, 9, &e, &n);
+        NEAR(n, -5.0, 1e-4);
+    }
+    /* Ascent: climbs to burst, then descends; flight time must exceed the climb time. */
+    s.alt = 5000; s.vel_v = 5;
+    p = predict_landing(&s, s.vel_v, &w, 0, 30000, 6);
+    CHECK(p.valid && p.t_s > 25000.0 / 5.0 && p.t_s < 25000.0 / 5.0 + 3600.0);
+    /* On the ground: no prediction. */
+    s.alt = 10; s.vel_v = 0;
+    p = predict_landing(&s, 0, &w, 0, 30000, 6);
+    CHECK(!p.valid);
+}
+
+static void t_parse(void)
+{
+    const char *l = "{\"type\":\"RS41\",\"frame\":5391,\"id\":\"S4430329\",\"datetime\":"
+                    "\"2026-11-18T00:31:05.000Z\",\"lat\":21.02345,\"lon\":105.80123,\"alt\":15234.5,"
+                    "\"vel_h\":12.3,\"heading\":95.2,\"vel_v\":5.1,\"sats\":9,\"bt\":65535,"
+                    "\"batt\":2.9,\"temp\":-55.2,\"humidity\":12.0,\"subtype\":\"RS41-SGP\"}";
+    sonde_t s;
+    gps_t g;
+    char buf[32];
+    double v;
+    CHECK(sonde_parse(l, &s) == 1);
+    CHECK(!strcmp(s.id, "S4430329"));
+    CHECK(s.frame == 5391 && s.sats == 9 && s.bt == 65535);
+    NEAR(s.lat, 21.02345, 1e-9);
+    NEAR(s.alt, 15234.5, 1e-9);
+    NEAR(s.vel_v, 5.1, 1e-9);
+    NEAR(s.temp, -55.2, 1e-9);
+    CHECK(sonde_parse("{\"id\":\"X\",\"lat\":0.0,\"lon\":0.0,\"alt\":0.0}", &s) == 0);
+    CHECK(sonde_parse("{\"id\":\"X\",\"frame\":1}", &s) == 0);
+    CHECK(js_num(l, "alt", &v) && v == 15234.5);          /* "alt" must not match inside other keys */
+    CHECK(!js_num(l, "al", &v));
+    CHECK(js_str(l, "subtype", buf, sizeof buf) && !strcmp(buf, "RS41-SGP"));
+
+    gps_init(&g);
+    CHECK(gps_parse(&g, "{\"class\":\"SKY\",\"nSat\":12}", 1.0) == 0);
+    CHECK(gps_parse(&g, "{\"class\":\"TPV\",\"device\":\"/dev/ttyACM0\",\"mode\":3,\"lat\":21.0285,"
+                        "\"lon\":105.8542,\"altHAE\":-10.1,\"altMSL\":18.2,\"speed\":13.9,\"track\":271.5}", 2.0) == 1);
+    CHECK(g.mode == 3 && gps_ok(&g, 3.0) && !gps_ok(&g, 10.0));
+    NEAR(g.alt, 18.2, 1e-9);
+    NEAR(g.track, 271.5, 1e-9);
+    CHECK(gps_parse(&g, "{\"class\":\"TPV\",\"mode\":1}", 3.0) == 1 && !gps_ok(&g, 3.0));
+}
+
+static void t_heading(void)
+{
+    cfg_t c;
+    gps_t g;
+    heading_t h;
+    cfg_defaults(&c);
+    c.mag_enable = 0;
+    heading_init(&h, &c);
+    gps_init(&g);
+    heading_update(&h, &g, &c, 1.0);
+    CHECK(h.src == HDG_NONE);
+    g.mode = 3; g.t_fix = 1.0; g.speed = 10; g.track = 123; g.has_track = 1;
+    heading_update(&h, &g, &c, 1.5);
+    CHECK(h.src == HDG_GPS);
+    NEAR(h.deg, 123.0, 1e-9);
+    g.speed = 0.2; /* stationary: course is noise, keep the last value */
+    heading_update(&h, &g, &c, 2.0);
+    CHECK(h.src == HDG_HOLD);
+    NEAR(h.deg, 123.0, 1e-9);
+    c.mag_off_x = 10; c.mag_off_y = -5; c.mag_rot_deg = 0;
+    NEAR(heading_from_mag(10 + 1, -5 + 0, &c), 0.0, 1e-9);
+    NEAR(heading_from_mag(10 + 0, -5 + 1, &c), 90.0, 1e-9);
+    c.mag_flip_y = 1; c.declination = -1.5;
+    NEAR(heading_from_mag(10 + 0, -5 + 1, &c), 268.5, 1e-9);
+}
+
+static void t_subst(void)
+{
+    cfg_t c;
+    char out[1024];
+    cfg_defaults(&c);
+    c.ppm = 2;
+    CHECK(sc_subst(out, sizeof out, "a {ppm} {gain}|{bias}| {f_hz} {f_tune} {nope}", &c, 403500000) == 0);
+    CHECK(!strcmp(out, "a 2 || 403500000 403488000 {nope}"));
+    strcpy(c.gain, "38.6");
+    c.bias_tee = 1;
+    CHECK(sc_subst(out, sizeof out, c.decoder_cmd, &c, 403500000) == 0);
+    CHECK(strstr(out, "-g 38.6") && strstr(out, " -T ") && strstr(out, "-f 403488000") &&
+          strstr(out, "--jsn_cfq 403500000"));
+    CHECK(sc_subst(out, sizeof out, c.scan_cmd, &c, 0) == 0);
+    CHECK(strstr(out, "-f 400000000:406000000:5000") && strstr(out, "-c 20% "));
+    CHECK(sc_subst(out, 8, "0123456789", &c, 0) == -1);
+}
+
+static void t_cfg(void)
+{
+    cfg_t c;
+    FILE *f = fopen("/tmp/sc_test.conf", "w");
+    fprintf(f, "# comment\nfreq_hz = 403500000\n gain=38.6 \nground_alt = 12.5\nlog_dir = /tmp\nbogus = 1\n");
+    fclose(f);
+    cfg_defaults(&c);
+    CHECK(cfg_load(&c, "/tmp/sc_test.conf") == 0);
+    CHECK(c.freq_hz == 403500000 && !strcmp(c.gain, "38.6") && c.ground_alt == 12.5);
+    CHECK(c.gpsd_port == 2947);
+    CHECK(cfg_load(&c, "/nonexistent/x.conf") == -1);
+}
+
+static void t_spec(void)
+{
+    static spectrum_t s;
+    peak_t pk[MAX_PEAKS];
+    char line[16384];
+    int hop, i, n;
+    spec_reset(&s, 400000000, 406000000, 5000);
+    CHECK(s.n == 1200);
+    /* Three 2 MHz hops, bin 4882.8125 Hz (not equal to the requested 5 kHz), noise -42 dB
+     * with ripple, carriers at 403.500 MHz (+20 dB) and 401.100 MHz (+11 dB). */
+    for (hop = 0; hop < 3; hop++) {
+        double lo = 400e6 + hop * 2e6, st = 4882.8125;
+        int o = snprintf(line, sizeof line, "2026-11-18, 07:00:00, %.0f, %.0f, %.2f, 16", lo, lo + 2e6, st);
+        for (i = 0; i < 410; i++) {
+            double f = lo + i * st, db = -42.0 + 0.8 * sin(i * 0.7);
+            if (fabs(f - 403.5e6) < 6000) db = -22.0;
+            if (fabs(f - 401.1e6) < 6000) db = -31.0;
+            o += snprintf(line + o, sizeof line - (size_t)o, ", %.2f", db);
+        }
+        CHECK(spec_add_line(&s, line) > 300);
+    }
+    CHECK(spec_add_line(&s, "garbage") == 0);
+    n = spec_peaks(&s, 8.0, pk, MAX_PEAKS);
+    CHECK(n == 2);
+    CHECK(pk[0].f_hz == 403500000 && pk[1].f_hz == 401100000);
+    NEAR(pk[0].snr_db, 20.0, 1.5);
+    NEAR(s.floor_db, -42.0, 1.0);
+}
+
+/* Number of non-zombie processes in process group pg (zombies await reaping by init). */
+static int live_in_group(pid_t pg)
+{
+    char path[64], comm[64], st;
+    int pid, ppid, pgrp, n = 0, i;
+    for (i = 2; i < 4194304 && i < (int)pg + 64; i++) {
+        FILE *f;
+        if (i < (int)pg) i = (int)pg;
+        snprintf(path, sizeof path, "/proc/%d/stat", i);
+        f = fopen(path, "r");
+        if (!f) continue;
+        if (fscanf(f, "%d %63s %c %d %d", &pid, comm, &st, &ppid, &pgrp) == 5 && pgrp == (int)pg && st != 'Z') n++;
+        fclose(f);
+    }
+    return n;
+}
+
+static void t_app(const char *fake)
+{
+    static app_t a;
+    int i;
+    app_init(&a, NULL);
+    a.cfg.gpsd_port = 0; /* no gpsd in the test: inject a fix instead */
+    a.cfg.mag_enable = 0;
+    a.cfg.audio_enable = 0;
+    a.cfg.sdr_check = 0; /* no USB receiver in the test environment */
+    a.sdr_ok = 1;
+    a.cfg.ground_alt = 10;
+    snprintf(a.cfg.log_dir, sizeof a.cfg.log_dir, "/tmp");
+    snprintf(a.cfg.decoder_cmd, sizeof a.cfg.decoder_cmd, "sh %s {f_hz}", fake);
+    unlink("/tmp/sondechase.csv");
+    a.gps.mode = 3; a.gps.lat = 21.03; a.gps.lon = 105.85; a.gps.alt = 10;
+    app_tune(&a, 403500000);
+    CHECK(a.state == ST_DECODE && a.proc.pid > 0);
+    for (i = 0; i < 100 && a.frames < 3; i++) {
+        a.gps.t_fix = sc_now();
+        app_poll(&a);
+        usleep(20000);
+    }
+    CHECK(a.frames == 3);
+    CHECK(a.have_sonde && !strcmp(a.sonde.id, "S4430329") && a.sonde.frame == 5392);
+    CHECK(a.have_geo);
+    NEAR(a.dist, 10378.0, 30.0); /* 0.1 deg of longitude at 21.03 N */
+    NEAR(a.brg, 90.0, 0.1);
+    NEAR(a.elev, 16.0, 0.5); /* ~2966 m above the observer at 10.4 km */
+    CHECK(a.pred.valid && a.have_land);
+    NEAR(a.pred.t_s, 266.0, 10.0);              /* 2966 m, 12 m/s at 3 km => ~11.2 m/s mean */
+    NEAR(a.land_dist - a.dist, 8.0 * a.pred.t_s, 30.0); /* drifting further east at 8 m/s */
+    {
+        pid_t pg = a.proc.pid;
+        app_stop(&a);
+        CHECK(a.state == ST_IDLE && a.proc.pid == 0);
+        CHECK(a.hist.n == 1 && a.flight.phase == PH_DESCENT && !a.burst_alert);
+        CHECK(!a.prox.active); /* 10.38 km: outside the 10 km radius */
+        int gone = 0, k;
+        for (k = 0; k < 50 && !gone; k++) { /* children die asynchronously after SIGTERM */
+            gone = live_in_group(pg) == 0;
+            if (!gone) usleep(20000);
+        }
+        CHECK(gone); /* whole pipeline (incl. "sleep 30") is gone */
+    }
+    {
+        FILE *f = fopen("/tmp/sondechase.csv", "r");
+        char l[512];
+        int rows = 0;
+        CHECK(f != NULL);
+        while (f && fgets(l, sizeof l, f)) rows++;
+        if (f) fclose(f);
+        CHECK(rows == 4); /* header + 3 frames */
+    }
+    /* Decoder that exits immediately: the app schedules a restart instead of going idle. */
+    snprintf(a.cfg.decoder_cmd, sizeof a.cfg.decoder_cmd, "true");
+    app_tune(&a, 403500000);
+    for (i = 0; i < 50 && a.proc.pid > 0; i++) {
+        app_poll(&a);
+        usleep(10000);
+    }
+    CHECK(a.state == ST_DECODE && a.proc.pid == 0 && a.t_restart > sc_now());
+    /* Receiver missing: tuning is accepted but nothing is spawned until it appears; scans are refused. */
+    app_stop(&a);
+    a.sdr_ok = 0;
+    app_tune(&a, 403500000);
+    CHECK(a.state == ST_DECODE && a.proc.pid == 0);
+    app_scan(&a);
+    CHECK(a.state == ST_DECODE && a.proc.pid == 0 && !strcmp(a.status, "no SDR device"));
+    a.sdr_ok = 1;
+    snprintf(a.cfg.decoder_cmd, sizeof a.cfg.decoder_cmd, "sleep 5");
+    for (i = 0; i < 150 && a.proc.pid == 0; i++) {
+        app_poll(&a);
+        usleep(10000);
+    }
+    CHECK(a.proc.pid > 0); /* started by itself once the receiver is back */
+    app_free(&a);
+}
+
+static void t_track(void)
+{
+    static hist_t h;
+    flight_t f;
+    prox_t p;
+    audio_t a;
+    sonde_t s;
+    short pcm[4000];
+    double x, y, t = 100.0;
+    int i, ev = 0, nz = 0;
+
+    /* PTU extras */
+    CHECK(sonde_parse("{\"id\":\"A\",\"lat\":21.0,\"lon\":105.8,\"alt\":2976.0,\"temp\":12.5,"
+                      "\"humidity\":64.0,\"pressure\":706.2,\"subtype\":\"RS41-SGP\"}", &s));
+    NEAR(s.humidity, 64.0, 1e-9);
+    NEAR(s.pressure, 706.2, 1e-9);
+    CHECK(!s.pres_est && !strcmp(s.subtype, "RS41-SGP"));
+    CHECK(sonde_parse("{\"id\":\"A\",\"lat\":21.0,\"lon\":105.8,\"alt\":2976.0}", &s));
+    CHECK(s.pres_est && s.humidity < 0);
+    NEAR(s.pressure, 703.2, 0.5);
+    NEAR(isa_p(0), 1013.25, 0.1);
+    NEAR(isa_p(11000), 226.3, 0.3);
+    NEAR(isa_p(16000), 102.9, 0.3);
+    NEAR(dewpoint(12.5, 64), 5.87, 0.02);
+    NEAR(dewpoint(20, 100), 20.0, 1e-6);
+
+    /* burst: ascent at +5 m/s to 31 km, then three frames falling */
+    flight_reset(&f);
+    memset(&s, 0, sizeof s);
+    for (i = 0; i < 20; i++) { s.alt = 30900 + i * 5; s.vel_v = 5; ev += flight_update(&f, &s, t++); }
+    CHECK(ev == 0 && f.phase == PH_ASCENT);
+    s.vel_v = -4; s.alt = 30990; ev += flight_update(&f, &s, t++);   /* one noisy frame: no alert */
+    s.vel_v = 5;  s.alt = 31000; ev += flight_update(&f, &s, t++);
+    CHECK(ev == 0);
+    for (i = 0; i < 3; i++) { s.vel_v = -40; s.alt = 30960 - i * 40; ev += flight_update(&f, &s, t++); }
+    CHECK(ev == 1 && f.burst && f.phase == PH_DESCENT);
+    NEAR(f.burst_alt, 31000.0, 1e-9);
+    for (i = 0; i < 10; i++) { s.vel_v = -30; ev += flight_update(&f, &s, t++); }
+    CHECK(ev == 1); /* reported once */
+    for (i = 0; i < 5; i++) { s.vel_v = 0.1; s.alt = 20; flight_update(&f, &s, t++); }
+    CHECK(f.phase == PH_LANDED);
+    /* receiver started during descent: phase set, no alert; low-level bounce is not a burst */
+    flight_reset(&f); ev = 0;
+    for (i = 0; i < 5; i++) { s.vel_v = -12; s.alt = 5000; ev += flight_update(&f, &s, t++); }
+    CHECK(ev == 0 && f.phase == PH_DESCENT && !f.burst);
+    flight_reset(&f); ev = 0;
+    for (i = 0; i < 5; i++) { s.vel_v = 4; s.alt = 300; ev += flight_update(&f, &s, t++); }
+    for (i = 0; i < 5; i++) { s.vel_v = -5; s.alt = 280; ev += flight_update(&f, &s, t++); }
+    CHECK(ev == 0);
+
+    /* proximity mapping */
+    NEAR(prox_interval(10000), 2.0, 1e-9);
+    NEAR(prox_interval(1000), 0.59, 0.01);
+    NEAR(prox_interval(100), 0.24, 0.01);
+    NEAR(prox_interval(0), 0.12, 1e-9);
+    CHECK(prox_interval(500) < prox_interval(2000));
+    NEAR(prox_volume(10000), 0.30, 1e-9);
+    NEAR(prox_volume(1000), 0.65, 1e-9);
+    NEAR(prox_volume(100), 1.0, 1e-9);
+    NEAR(prox_volume(5), 1.0, 1e-9);
+    memset(&p, 0, sizeof p);
+    CHECK(prox_update(&p, 1, 12000, 0.0, 10000, 500) == 0 && !p.active);
+    CHECK(prox_update(&p, 1, 9900, 1.0, 10000, 500) == 1 && p.active);   /* enters: beeps at once */
+    CHECK(prox_update(&p, 1, 9900, 1.5, 10000, 500) == 0);               /* interval ~2 s not elapsed */
+    CHECK(prox_update(&p, 1, 9900, 3.1, 10000, 500) == 1);
+    CHECK(prox_update(&p, 1, 10300, 9.0, 10000, 500) == 1 && p.active);  /* inside hysteresis band */
+    CHECK(prox_update(&p, 1, 10600, 20.0, 10000, 500) == 0 && !p.active);
+    CHECK(prox_update(&p, 1, 800, 30.0, 10000, 500) == 1);
+    p.muted = 1;
+    CHECK(prox_update(&p, 1, 800, 40.0, 10000, 500) == 0 && p.active);
+    CHECK(prox_update(&p, 0, 0, 50.0, 10000, 500) == 0 && !p.active);     /* no GPS fix: silent */
+
+    /* audio: 60 ms tone then silence, bounded amplitude scaled by volume */
+    audio_init(&a);
+    CHECK(audio_render(&a, pcm, 100) == 0 && pcm[50] == 0);
+    audio_tone(&a, 2200, 0.06, 0.5);
+    CHECK(audio_render(&a, pcm, 4000) == 1);
+    for (i = 0; i < 4000; i++) {
+        if (pcm[i] != 0) nz = i;
+        CHECK(pcm[i] <= 15000 && pcm[i] >= -15000);
+    }
+    CHECK(nz > 900 && nz < 960); /* 0.06 s * 16 kHz = 960 samples */
+    CHECK(a.nseg == 0);
+
+    /* history: 5 s spacing, decimation when full */
+    hist_reset(&h);
+    memset(&s, 0, sizeof s);
+    CHECK(hist_add(&h, &s, 1000.0) == 1 && hist_add(&h, &s, 1002.0) == 0 && hist_add(&h, &s, 1005.0) == 1);
+    for (i = 2; i < HIST_MAX + 10; i++) { s.alt = i; hist_add(&h, &s, 1000.0 + 5.0 * i); }
+    CHECK(h.n > HIST_MAX / 2 && h.n < HIST_MAX && h.step_s == 10.0);
+    CHECK(h.p[1].t_s == 10.0f && h.p[h.n - 1].alt >= HIST_MAX);
+
+    /* SDR presence from a USB sysfs tree */
+    if (system("rm -rf /tmp/sc_usb && mkdir -p /tmp/sc_usb/usb1 /tmp/sc_usb/1-1 /tmp/sc_usb/1-1:1.0 && "
+               "echo 1d6b > /tmp/sc_usb/usb1/idVendor && echo 0002 > /tmp/sc_usb/usb1/idProduct && "
+               "echo 1a40 > /tmp/sc_usb/1-1/idVendor && echo 0101 > /tmp/sc_usb/1-1/idProduct") == 0) {
+        CHECK(sdr_present("/tmp/sc_usb") == 0);                 /* root hub and a USB hub only */
+        CHECK(system("mkdir -p /tmp/sc_usb/1-1.2 && echo 0bda > /tmp/sc_usb/1-1.2/idVendor && "
+                     "echo 2838 > /tmp/sc_usb/1-1.2/idProduct") == 0);
+        CHECK(sdr_present("/tmp/sc_usb") == 1);                 /* RTL-SDR Blog v4 */
+    }
+    CHECK(sdr_present("/nonexistent/usb") == 0);
+
+    /* tiles: z/x/y of a known point, scale, zoom fit */
+    tile_frac(21.0285, 105.8542, 12, &x, &y);
+    CHECK((int)x == 3252 && (int)y == 1803);
+    tile_frac(0, 0, 1, &x, &y);
+    NEAR(x, 1.0, 1e-9);
+    NEAR(y, 1.0, 1e-9);
+    NEAR(tile_mpp(21.03, 12), 35.67, 0.05);
+    i = tile_fit_zoom(21.03, 105.85, 21.03, 105.95, 260, 100, 8, 14);
+    CHECK(i == 11); /* 10.38 km: 146 px at z11 (71 m/px), 291 px at z12 */
+    CHECK(tile_fit_zoom(21.0, 105.0, 23.0, 108.0, 260, 100, 8, 14) == 8);
+}
+
+static void t_tiles(void)
+{
+    static tilefetch_t t;
+    cfg_t c;
+    char p[320];
+    unsigned char px[4 * 3] = {242, 239, 233, 255, 255, 255, 170, 211, 223, 40, 40, 40};
+    int i, n = 0;
+    double now = 100.0;
+
+    cfg_defaults(&c);
+    CHECK(system("rm -rf /tmp/sc_tc /tmp/sc_pre && mkdir -p /tmp/sc_pre/12/3252 && "
+                 "head -c 300 /dev/zero > /tmp/sc_src.png && cp /tmp/sc_src.png /tmp/sc_pre/12/3252/1803.png") == 0);
+    snprintf(c.tile_dir, sizeof c.tile_dir, "/tmp/sc_pre");
+    snprintf(c.tile_cache_dir, sizeof c.tile_cache_dir, "/tmp/sc_tc");
+    snprintf(c.tile_url, sizeof c.tile_url, "http://tiles.invalid/{z}/{x}/{y}.png");
+    /* stand-in for curl: checks that url, user agent and output path arrive, then writes the file */
+    {
+        FILE *f = fopen("/tmp/sc_fetch.sh", "w");
+        fprintf(f, "case \"$1\" in http://tiles.invalid/11/1626/901.png|http://tiles.invalid/11/1627/901.png) ;; *) exit 22;; esac\n"
+                   "test -n \"$2\" && cp /tmp/sc_src.png \"$3\"\n");
+        fclose(f);
+    }
+    snprintf(c.tile_fetch_cmd, sizeof c.tile_fetch_cmd, "sh /tmp/sc_fetch.sh '{url}' '{ua}' '{out}'");
+    tf_init(&t, &c);
+    CHECK(tf_find(&t, &c, 12, 3252, 1803, p, sizeof p) == 1);        /* preloaded pack wins */
+    CHECK(tf_find(&t, &c, 11, 1626, 901, p, sizeof p) == 0);
+    CHECK(tf_request(&t, &c, 11, 1626, 901, now) == 1);
+    CHECK(tf_busy(&t, 11, 1626, 901) && tf_request(&t, &c, 11, 1626, 901, now) == 0); /* no duplicate */
+    CHECK(tf_request(&t, &c, 11, 1627, 901, now) == 1);
+    CHECK(tf_request(&t, &c, 11, 1628, 901, now) == 0);              /* both job slots in use */
+    for (i = 0; i < 200 && n < 2; i++) { n += tf_poll(&t, &c, now); usleep(10000); }
+    CHECK(n == 2 && t.done == 2 && t.failed == 0);
+    CHECK(tf_find(&t, &c, 11, 1626, 901, p, sizeof p) == 2 && !strcmp(p, "/tmp/sc_tc/11/1626/901.png"));
+    CHECK(access("/tmp/sc_tc/11/1626/901.part", F_OK) != 0);
+    /* failure: wrong URL for the stand-in -> no file, no retry for TF_RETRY_S, then allowed again */
+    CHECK(tf_request(&t, &c, 11, 1628, 901, now) == 1);
+    for (i = 0; i < 200 && t.failed == 0; i++) { tf_poll(&t, &c, now); usleep(10000); }
+    CHECK(t.failed == 1 && tf_find(&t, &c, 11, 1628, 901, p, sizeof p) == 0);
+    CHECK(tf_request(&t, &c, 11, 1628, 901, now + 5) == 0);
+    CHECK(tf_request(&t, &c, 11, 1628, 901, now + TF_RETRY_S + 1) == 1);
+    for (i = 0; i < 200 && t.failed < 2; i++) { tf_poll(&t, &c, now + 40); usleep(10000); }
+    c.tile_online = 0;
+    CHECK(tf_request(&t, &c, 11, 1629, 901, now + 100) == 0);        /* offline mode never spawns */
+    /* cache limit: two 300-byte tiles, cap 400 bytes -> the older one is removed */
+    CHECK(system("touch -d '2020-01-01' /tmp/sc_tc/11/1626/901.png") == 0);
+    CHECK(tf_sweep(&t, 400) == 300);
+    CHECK(access("/tmp/sc_tc/11/1626/901.png", F_OK) != 0 && access("/tmp/sc_tc/11/1627/901.png", F_OK) == 0);
+    tf_close(&t);
+
+    /* recolour: land -> ground, white road -> light, water -> blue tint, dark label -> lightest */
+    {
+        static unsigned char img[256 * 3];
+        for (i = 0; i < 256; i++) memcpy(&img[3 * i], &px[0], 3);    /* mostly land */
+        memcpy(&img[0], &px[3], 3);
+        memcpy(&img[3], &px[6], 3);
+        memcpy(&img[6], &px[9], 3);
+        tile_recolor(img, 256);
+        CHECK(img[9] < 20 && img[10] < 16 && img[11] < 30);          /* land is near the UI ground colour */
+        CHECK(img[0] > 110 && img[2] > 150);                         /* road */
+        CHECK(img[3] == 31 && img[4] == 47 && img[5] == 122);        /* water */
+        CHECK(img[6] == 167 && img[8] == 209);                       /* label */
+    }
+}
+
+int main(int argc, char **argv)
+{
+    t_geo();
+    t_isa();
+    t_predict();
+    t_parse();
+    t_heading();
+    t_subst();
+    t_cfg();
+    t_spec();
+    t_track();
+    t_tiles();
+    t_app(argc > 1 ? argv[1] : "tests/fake_decoder.sh");
+    printf("%d checks, %d failed\n", checks, fails);
+    return fails ? 1 : 0;
+}

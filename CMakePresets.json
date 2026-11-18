@@ -1,0 +1,90 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "cp0-native",
+      "displayName": "CardputerZero Native Build",
+      "description": "Build on the CardputerZero itself (or any aarch64 Debian host)",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "Debug;Release",
+        "FETCHCONTENT_BASE_DIR": "${sourceDir}/.cache/cp0-deps"
+      }
+    },
+    {
+      "name": "cp0-cross",
+      "displayName": "CardputerZero Cross Build",
+      "description": "Cross build for CardputerZero (aarch64-linux-gnu toolchain + BSP sysroot)",
+      "inherits": ["cp0-native"],
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/cp0-aarch64-linux-gnu.cmake",
+        "CM0_SDK_ROOT": "${sourceDir}/.cache/sdk_bsp-src",
+        "CMAKE_SYSROOT": "${sourceDir}/.cache/sdk_bsp-src",
+        "CM0_ALLOW_FETCH_DEPS": "ON"
+      }
+    },
+    {
+      "name": "linux-x86-64",
+      "displayName": "Desktop simulator (SDL2)",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": { "CMAKE_CONFIGURATION_TYPES": "Debug;Release", "SC_SIM": "ON" }
+    },
+    {
+      "name": "render",
+      "displayName": "Headless screenshot tool",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": { "CMAKE_CONFIGURATION_TYPES": "Debug;Release", "SC_RENDER": "ON" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "cp0-native-rel", "configurePreset": "cp0-native", "configuration": "Release" },
+    { "name": "cp0-cross-dbg", "configurePreset": "cp0-cross", "configuration": "Debug" },
+    { "name": "cp0-cross-rel", "configurePreset": "cp0-cross", "configuration": "Release" },
+    { "name": "linux-x86-64-rel", "configurePreset": "linux-x86-64", "configuration": "Release" },
+    { "name": "render-rel", "configurePreset": "render", "configuration": "Release" }
+  ],
+  "packagePresets": [
+    {
+      "name": "cp0-cross-deb",
+      "displayName": "CardputerZero Debian Package",
+      "configurePreset": "cp0-cross",
+      "generators": ["DEB"],
+      "configurations": ["Release"],
+      "configFile": "${sourceDir}/build/cp0-cross/CPackConfig.cmake",
+      "packageDirectory": "${sourceDir}/dist"
+    },
+    {
+      "name": "cp0-native-deb",
+      "displayName": "CardputerZero Debian Package (built on the device)",
+      "configurePreset": "cp0-native",
+      "generators": ["DEB"],
+      "configurations": ["Release"],
+      "configFile": "${sourceDir}/build/cp0-native/CPackConfig.cmake",
+      "packageDirectory": "${sourceDir}/dist"
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "cp0-cross-package",
+      "displayName": "Configure, Build, and Package CardputerZero",
+      "steps": [
+        { "type": "configure", "name": "cp0-cross" },
+        { "type": "build", "name": "cp0-cross-rel" },
+        { "type": "package", "name": "cp0-cross-deb" }
+      ]
+    },
+    {
+      "name": "cp0-native-package",
+      "displayName": "Configure, Build, and Package on the device",
+      "steps": [
+        { "type": "configure", "name": "cp0-native" },
+        { "type": "build", "name": "cp0-native-rel" },
+        { "type": "package", "name": "cp0-native-deb" }
+      ]
+    }
+  ]
+}

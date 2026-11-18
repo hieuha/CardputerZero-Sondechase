@@ -32,6 +32,7 @@ typedef struct {
     double mag_off_x, mag_off_y, mag_rot_deg;
     int mag_flip_y;
     double declination;      /* magnetic declination, degrees east positive */
+    double map_lat, map_lon; /* Map centre while neither this device nor a sonde has a position */
     double stale_s;          /* telemetry older than this is marked stale */
     char log_dir[160];       /* "" = $HOME */
     char kbd_dev[64];        /* "" = auto-detect evdev keyboard */

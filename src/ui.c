@@ -503,12 +503,7 @@ static void p_map(void)
     if (have_me && (map_follow == 1 || !have_s)) { clat = g->lat; clon = g->lon; }
     else if (have_s && (map_follow == 2 || !have_me)) { clat = s->lat; clon = s->lon; }
     else if (have_me && have_s) { clat = (g->lat + s->lat) / 2; clon = (g->lon + s->lon) / 2; }
-    else {
-        top_bar("Map", C_CY, NULL);
-        txt(0, 76, 320, F_M, C_DIM, AL_C, "No position yet: waiting for GPS or a sonde frame");
-        nav_bar(PG_MAP);
-        return;
-    }
+    else { clat = A->cfg.map_lat; clon = A->cfg.map_lon; } /* no position yet: still show the map */
     m_z = map_zoom >= 0 ? map_zoom
         : (have_me && have_s && map_follow == 0)
               ? tile_fit_zoom(g->lat, g->lon, s->lat, s->lon, 260, 100, A->cfg.zoom_min, A->cfg.zoom_max)
@@ -592,7 +587,7 @@ static void p_map(void)
         ln(dx, dy, ax, ay, C_CY, 2);
     }
 
-    top_bar("Map", C_CY, NULL);
+    top_bar("Map", C_CY, have_me || have_s ? NULL : "No position yet: default area");
     box(4, 20, 96, 16, C_L, C_P);
     txt(9, 21, 40, F_S, C_TX, AL_L, "Zoom %d%s", m_z, map_zoom < 0 ? "" : "*");
     txt(49, 21, 46, F_S, C_DIM, AL_R, "%s", fm[map_follow]);

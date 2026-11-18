@@ -32,9 +32,9 @@ on a PC; the hardware paths have not yet run on a real device.
     │  io.c     gpsd, heading, rtl_power spectrum                                      │
     │  ui.c     7 screens + alert, drawn with line / rect / label                      │
     └───────────────────────────────────────────────────────────────────────────┬──────┘
-                                                                                │ PCM 16 kHz over a pipe
+                                                                                │ PCM 16 kHz over a pipe → PipeWire
                                                                             ┌───▼───┐
-                                                                            │ aplay │
+                                                                            │ pacat │
                                                                             └───────┘
 ```
 
@@ -148,7 +148,7 @@ Package contents:
 | `/usr/share/APPLaunch/share/images/sondechase.png` | 100×100 icon |
 
 `Depends: libc6, curl`. Child processes run at use time and are **not in the package**: `rtl_fm`, `rtl_power`
-(RTL-SDR Blog fork of rtl-sdr, for the v4), `fsk_demod`, `rs41mod`, `gpsd`, `aplay`. Install them with:
+(RTL-SDR Blog fork of rtl-sdr, for the v4), `fsk_demod`, `rs41mod`, `gpsd`, `pacat`. Install them with:
 
 ```sh
 ./scripts/install_decoders.sh
@@ -204,6 +204,9 @@ Checked on an x86-64 host (gcc 13, `-Wall -Wextra -Werror`):
   (the download command is replaced by a fake script). The UI tile loading path runs clean under
   AddressSanitizer with both preloaded and "downloaded" tiles.
 - Packaging: a trial `.deb` (amd64) built with CPack; contents and control checked with `dpkg-deb`.
+- On a CardputerZero (Debian 13): the beeper's PCM format plays through PipeWire with `pacat`
+  (plain `aplay` fails because PipeWire owns the ES8389 codec); the `bmm150` IIO driver exposes
+  `in_magn_x/y/z_raw`; `rtl_test` detects the RTL-SDR Blog V4 with Debian's `rtl-sdr` 2.0.2.
 
 Not yet checked:
 
@@ -213,9 +216,8 @@ Not yet checked:
 - The `cp0-cross` cross build (no aarch64 toolchain in the build environment) and installing the arm64 package on a device.
 - The `rtl_fm | fsk_demod | rs41mod` pipeline with an RTL-SDR v4 and a real sonde; parameters taken from the auto_rx wiki.
 - `scripts/install_decoders.sh`.
-- Framebuffer, TCA8418 keyboard evdev, audio path (`aplay`), battery sysfs on the CardputerZero.
-- Magnetometer: BMM150 behind the BMI270; the app reads `in_magn_*_raw` via IIO sysfs. Not verified that the
-  Linux driver exposes these nodes. Axis orientation needs calibration via `mag_off_x/y`, `mag_rot_deg`,
+- Framebuffer, TCA8418 keyboard evdev, battery sysfs on the CardputerZero.
+- Magnetometer: BMM150 behind the BMI270; the app reads `in_magn_*_raw` via IIO sysfs. Axis orientation needs calibration via `mag_off_x/y`, `mag_rot_deg`,
   `mag_flip_y`. No tilt compensation yet.
 
 ## Known limitations

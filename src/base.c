@@ -45,8 +45,10 @@ void cfg_defaults(cfg_t *c)
     c->prox_radius_m = 10000.0;
     c->prox_hyst_m = 500.0;
     c->audio_enable = 1;
+    /* PipeWire owns the speaker codec on the CardputerZero image, so plain ALSA aplay cannot open it. */
     snprintf(c->audio_cmd, sizeof c->audio_cmd,
-             "aplay -q -t raw -f S16_LE -r 16000 -c 1 --buffer-time=120000 - 2>/dev/null");
+             "pacat --raw --format=s16le --rate=16000 --channels=1 --latency-msec=120"
+             " --client-name=SondeChase 2>/dev/null");
     snprintf(c->tile_dir, sizeof c->tile_dir, "/usr/share/sondechase/tiles");
     c->zoom_min = 8;
     c->zoom_max = 16;

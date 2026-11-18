@@ -32,9 +32,9 @@ trên PC; các đường phần cứng chưa được chạy trên thiết bị 
     │  io.c     gpsd, heading, phổ rtl_power                                           │
     │  ui.c     7 màn hình + cảnh báo, vẽ bằng line / rect / label                     │
     └───────────────────────────────────────────────────────────────────────────┬──────┘
-                                                                                │ PCM 16 kHz qua pipe
+                                                                                │ PCM 16 kHz qua pipe → PipeWire
                                                                             ┌───▼───┐
-                                                                            │ aplay │
+                                                                            │ pacat │
                                                                             └───────┘
 ```
 
@@ -148,7 +148,7 @@ Nội dung gói:
 | `/usr/share/APPLaunch/share/images/sondechase.png` | icon 100×100 |
 
 `Depends: libc6, curl`. Các tiến trình con chạy lúc dùng và **không nằm trong gói**: `rtl_fm`, `rtl_power`
-(rtl-sdr bản RTL-SDR Blog cho v4), `fsk_demod`, `rs41mod`, `gpsd`, `aplay`. Cài bằng:
+(rtl-sdr bản RTL-SDR Blog cho v4), `fsk_demod`, `rs41mod`, `gpsd`, `pacat`. Cài bằng:
 
 ```sh
 ./scripts/install_decoders.sh
@@ -204,6 +204,9 @@ màu so với màu nền chiếm đa số; cần chỉnh lại nếu style tile 
   (lệnh tải được thay bằng script giả). Đường nạp tile trong UI chạy sạch dưới AddressSanitizer với cả tile
   nạp sẵn lẫn tile kiểu "tải về".
 - Đóng gói: gói `.deb` thử nghiệm (kiến trúc amd64) build bằng CPack, nội dung và control đã kiểm bằng `dpkg-deb`.
+- Trên CardputerZero (Debian 13): định dạng PCM của beeper phát được qua PipeWire bằng `pacat`
+  (`aplay` trực tiếp bị lỗi vì PipeWire giữ codec ES8389); driver IIO `bmm150` có các node
+  `in_magn_x/y/z_raw`; `rtl_test` nhận RTL-SDR Blog V4 với gói `rtl-sdr` 2.0.2 của Debian.
 
 Chưa kiểm:
 
@@ -213,9 +216,8 @@ Chưa kiểm:
 - Cross build `cp0-cross` (không có toolchain aarch64 trong môi trường build) và việc cài gói arm64 trên máy.
 - Pipeline `rtl_fm | fsk_demod | rs41mod` với RTL-SDR v4 và sonde thật; tham số lấy từ wiki auto_rx.
 - `scripts/install_decoders.sh`.
-- Framebuffer, evdev của bàn phím TCA8418, đường audio (`aplay`), battery sysfs trên CardputerZero.
-- Magnetometer: BMM150 nối phía sau BMI270; app đọc `in_magn_*_raw` qua IIO sysfs. Chưa xác minh driver
-  Linux có xuất các node này. Hướng trục cần hiệu chuẩn bằng `mag_off_x/y`, `mag_rot_deg`, `mag_flip_y`.
+- Framebuffer, evdev của bàn phím TCA8418, battery sysfs trên CardputerZero.
+- Magnetometer: BMM150 nối phía sau BMI270; app đọc `in_magn_*_raw` qua IIO sysfs. Hướng trục cần hiệu chuẩn bằng `mag_off_x/y`, `mag_rot_deg`, `mag_flip_y`.
   Chưa có bù nghiêng.
 
 ## Giới hạn đã biết

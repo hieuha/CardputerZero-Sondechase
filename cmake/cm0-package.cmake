@@ -75,9 +75,9 @@ set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${APP_MAINTAINER}")
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 # curl: map tile download. Child processes started at run time and not shipped in this package:
-# rtl_fm / rtl_power (rtl-sdr), fsk_demod + rs41mod (scripts/install_decoders.sh), gpsd, aplay.
+# rtl_fm / rtl_power (rtl-sdr), fsk_demod + rs41mod (scripts/install_decoders.sh), gpsd, pacat.
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, curl")
-set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "gpsd, alsa-utils, coreutils")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "gpsd, pulseaudio-utils, coreutils")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION TRUE)
 

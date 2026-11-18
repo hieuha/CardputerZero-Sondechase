@@ -163,7 +163,9 @@ void app_on_frame(app_t *a, const char *line, double now)
     if (!r) return;
     s.t_rx = now;
     if (r == 2) { /* telemetry without a position: shown, but kept out of track, history and prediction */
+        if (strcmp(s.id, a->have_sonde ? a->sonde.id : a->nofix.id)) a->frames = 0;
         a->nofix = s;
+        a->frames++;
         return;
     }
     if (!a->have_sonde || strcmp(s.id, a->sonde.id)) { /* new sonde: discard old profile */
@@ -171,7 +173,7 @@ void app_on_frame(app_t *a, const char *line, double now)
         hist_reset(&a->hist);
         flight_reset(&a->flight);
         a->burst_alert = 0;
-        a->frames = 0;
+        if (strcmp(s.id, a->nofix.id)) a->frames = 0; /* keep counting a sonde whose GPS just locked */
         a->vv_s = s.vel_v;
     }
     a->sonde = s;

@@ -848,23 +848,29 @@ static void p_info(void)
 {
     static const char *src[] = {"none", "from GPS", "from compass", "held"};
     const sonde_t *s = &A->sonde;
+    /* until the sonde's GPS locks, its telemetry comes from the frames without a position */
+    const sonde_t *t = A->have_sonde ? s : (A->nofix.t_rx > 0 ? &A->nofix : NULL);
     top_bar("Info", C_CY, NULL);
     box(4, 19, 154, 114, C_PK, C_P);
     txt(11, 22, 100, F_S, C_PK, AL_L, "Sonde");
-    if (A->have_sonde) {
-        kv(11, 36, 140, "Serial", C_TX, "%s", s->id);
-        kv(11, 50, 140, "Model", C_TX, "%s", s->subtype[0] ? s->subtype : "RS41");
-        kv(11, 64, 140, "Frame", C_TX, "%d", s->frame);
-        kv(11, 78, 140, "Satellites", C_TX, "%d", s->sats);
-        kv(11, 92, 140, "Battery", C_TX, "%.1f V", s->batt);
-        kv(11, 106, 140, "Phase", C_TX, "%s", phase_name());
+    if (t) {
+        kv(11, 36, 140, "Serial", C_TX, "%s", t->id);
+        kv(11, 50, 140, "Model", C_TX, "%s", t->subtype[0] ? t->subtype : "RS41");
+        kv(11, 64, 140, "Frame", C_TX, "%d", t->frame);
+        kv(11, 78, 140, "Satellites", t->sats < 4 ? C_RD : C_TX, "%d", t->sats);
+        kv(11, 92, 140, "Battery", C_TX, "%.1f V", t->batt);
+        if (A->have_sonde) kv(11, 106, 140, "Phase", C_TX, "%s", phase_name());
+        else kv(11, 106, 140, "Phase", C_RD, "no GPS fix");
     } else {
         txt(11, 36, 140, F_S, C_DIM, AL_L, "No frame decoded yet");
     }
     box(162, 19, 154, 70, C_L, C_P);
     txt(169, 22, 100, F_S, C_TX, AL_L, "Reception");
     kv(169, 36, 140, "Frames decoded", C_TX, "%u", A->frames);
-    if (A->have_sonde) kv(169, 50, 140, "Last frame", fresh() ? C_TX : C_RD, "%.0f s ago", sc_now() - s->t_rx);
+    if (t) { /* newest frame, with or without a position */
+        double ago = sc_now() - (A->nofix.t_rx > s->t_rx ? A->nofix.t_rx : s->t_rx);
+        kv(169, 50, 140, "Last frame", ago <= A->cfg.stale_s ? C_TX : C_RD, "%.0f s ago", ago);
+    }
     kv(169, 64, 140, "Gain", C_TX, "%s", A->cfg.gain[0] ? A->cfg.gain : "auto");
     kv(169, 76, 140, "Correction", C_TX, "%d ppm", A->cfg.ppm);
     box(162, 91, 154, 42, C_CY, C_P);

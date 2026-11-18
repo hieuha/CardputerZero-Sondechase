@@ -338,6 +338,25 @@ static int live_in_group(pid_t pg)
     return n;
 }
 
+/* Frames from a sonde without a GPS fix are counted and kept apart; the count carries on once it locks. */
+static void t_frames(void)
+{
+    static app_t a;
+    const char *nofix = "{\"id\":\"Y0532351\",\"frame\":10,\"lat\":7.8,\"lon\":112.8,\"alt\":398,\"sats\":0,\"batt\":3.0}";
+    const char *fix = "{\"id\":\"Y0532351\",\"frame\":12,\"lat\":21.03,\"lon\":105.85,\"alt\":40,\"sats\":9,\"batt\":3.0}";
+    app_init(&a, NULL);
+    snprintf(a.cfg.log_dir, sizeof a.cfg.log_dir, "/tmp");
+    app_on_frame(&a, nofix, 1.0);
+    app_on_frame(&a, nofix, 2.0);
+    CHECK(!a.have_sonde && a.frames == 2 && a.nofix.frame == 10 && a.nofix.t_rx == 2.0);
+    app_on_frame(&a, fix, 3.0);
+    CHECK(a.have_sonde && a.frames == 3 && a.sonde.frame == 12);
+    app_on_frame(&a, "{\"id\":\"S1111111\",\"frame\":1,\"lat\":0.5,\"lon\":100,\"alt\":5,\"sats\":0}", 4.0);
+    CHECK(a.frames == 1 && !strcmp(a.nofix.id, "S1111111")); /* a different sonde starts over */
+    app_free(&a);
+    unlink("/tmp/sondechase.csv");
+}
+
 static void t_app(const char *fake)
 {
     static app_t a;
@@ -607,6 +626,7 @@ int main(int argc, char **argv)
     t_spec();
     t_ring();
     t_dsp();
+    t_frames();
     t_track();
     t_tiles();
     t_app(argc > 1 ? argv[1] : "tests/fake_decoder.sh");

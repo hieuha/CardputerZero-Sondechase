@@ -227,7 +227,7 @@ static void top_bar(const char *name, uint32_t chip, const char *mid)
 
 static void nav_bar(int active)
 {
-    static const char *nm[] = {"1 Track", "2 Map", "3 Graph", "4 Scan", "5 Info"};
+    static const char *nm[] = {"4 Track", "5 Map", "6 Graph", "7 Scan", "8 Info"};
     int i;
     fill(0, 156, 320, 14, C_P);
     for (i = 0; i < 5; i++) {
@@ -236,7 +236,7 @@ static void nav_bar(int active)
     }
 }
 
-/* ---------------- 1 Track ---------------- */
+/* ---------------- 4 Track ---------------- */
 static void compass(double hdg, int have_rel, double rel, uint32_t col, int dashed, int have_land, double land_rel)
 {
     const double cx = 68, cy = 86;
@@ -371,7 +371,7 @@ static void p_track(void)
     compass(hdg, A->have_geo, A->rel, col, !ok, A->have_land && ok, norm180(A->land_brg - hdg));
     if (!A->have_sonde) {
         txt(140, 60, 174, F_M, C_DIM, AL_L, A->state == ST_DECODE ? "Waiting for the first frame" : "No frequency tuned");
-        txt(140, 76, 174, F_S, C_DIM, AL_L, "4 scan     F type a frequency");
+        txt(140, 76, 174, F_S, C_DIM, AL_L, "7 scan     F type a frequency");
         nav_bar(PG_TRACK);
         return;
     }
@@ -409,7 +409,7 @@ static void p_track(void)
     nav_bar(PG_TRACK);
 }
 
-/* ---------------- 2 Map ---------------- */
+/* ---------------- 5 Map ---------------- */
 static const lv_image_dsc_t *tile_get(int z, int x, int y)
 {
     static unsigned char rgb[TILE_PX * TILE_PX * 3];
@@ -620,7 +620,7 @@ static void p_map(void)
     nav_bar(PG_MAP);
 }
 
-/* ---------------- 3 Graph ---------------- */
+/* ---------------- 6 Graph ---------------- */
 #define SK_X0 30
 #define SK_X1 222
 #define SK_YB 143
@@ -762,7 +762,7 @@ static void p_flight(void)
     nav_bar(PG_GRAPH);
 }
 
-/* ---------------- 4 Scan ---------------- */
+/* ---------------- 7 Scan ---------------- */
 static int peak_step(int dir) /* neighbour of the selected peak in frequency order */
 {
     int i, best = A->sel;
@@ -840,7 +840,7 @@ static void p_scan(void)
     nav_bar(PG_SCAN);
 }
 
-/* ---------------- 5 Info ---------------- */
+/* ---------------- 8 Info ---------------- */
 static void p_info(void)
 {
     static const char *src[] = {"none", "from GPS", "from compass", "held"};
@@ -1037,7 +1037,7 @@ void ui_key(int k)
             if (khz >= 24000 && khz <= 1766000) { app_tune(A, khz * 1000L); page = PG_TRACK; }
             entry = 0;
         }
-    } else if (k >= '1' && k <= '5') page = k - '1';
+    } else if (k >= '4' && k <= '8') page = k - '4'; /* keys 4-8 sit right under the nav bar labels */
     else if (k == 'q') quit = 1;
     else if (k == 'm') A->prox.muted = !A->prox.muted;
     else if (k == 's') { app_scan(A); page = PG_SCAN; }

@@ -48,11 +48,11 @@ dừng; sau khi chọn peak, pipeline giải mã khởi động lại ở tần 
 
 | Phím | Chức năng |
 |---|---|
-| `1` Track | La bàn HUD, khoảng cách, bearing, elevation, điểm rơi dự đoán |
-| `2` Map | Tile nạp sẵn, vị trí máy, sonde, vệt bay, điểm rơi. `Up/Down` zoom, `C` đổi chế độ bám (both / device / sonde) |
-| `3` Graph | `Left/Right` đổi trang: Skew-T log-P, độ cao + tốc độ đứng theo thời gian |
-| `4` Scan | Phổ 400–406 MHz. `Left/Right` chọn peak, `Enter` tune, `S` quét lại |
-| `5` Info | Sonde, thu nhận, thiết bị, một cặp tọa độ đích |
+| `4` Track | La bàn HUD, khoảng cách, bearing, elevation, điểm rơi dự đoán |
+| `5` Map | Tile nạp sẵn, vị trí máy, sonde, vệt bay, điểm rơi. `Up/Down` zoom, `C` đổi chế độ bám (both / device / sonde) |
+| `6` Graph | `Left/Right` đổi trang: Skew-T log-P, độ cao + tốc độ đứng theo thời gian |
+| `7` Scan | Phổ 400–406 MHz. `Left/Right` chọn peak, `Enter` tune, `S` quét lại |
+| `8` Info | Sonde, thu nhận, thiết bị, một cặp tọa độ đích |
 | `F` | Nhập tần số (kHz) |
 | `M` | Tắt / bật tiếng beeper |
 | `R` / `X` / `Q` | Khởi động lại decoder / dừng / thoát |

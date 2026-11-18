@@ -112,14 +112,14 @@ int main(int argc, char **argv)
 
     while (app.demo.alt > 2976) demo_advance(&app, 1, now);
     place_me(10380.0, 90.0);
-    ui_key('1'); shot("01_track");
-    ui_key('2'); shot("02_map");
-    ui_key('3'); shot("03_graph_skewt");
+    ui_key('4'); shot("01_track");
+    ui_key('5'); shot("02_map");
+    ui_key('6'); shot("03_graph_skewt");
     ui_key(K_RIGHT); shot("03_graph_flight");
     ui_key(K_LEFT);
-    ui_key('5'); shot("05_info");
+    ui_key('8'); shot("05_info");
     place_me(2400.0, 60.0); /* inside the beeper radius, sonde ahead-right */
-    ui_key('1'); shot("01_track_near");
+    ui_key('4'); shot("01_track_near");
 
     /* no GPS: decoding continues */
     app_poll(&app);
@@ -129,7 +129,7 @@ int main(int argc, char **argv)
         app.cfg.demo = 0; app.cfg.gpsd_port = 0; app.cfg.mag_enable = 0; /* stop demo_poll refreshing the fix */
         app.gps.t_fix = sc_now() - 35.0;
         shot("01_track_nogps");
-        ui_key('2'); shot("02_map_nogps");
+        ui_key('5'); shot("02_map_nogps");
         app.cfg.demo = 1;
         (void)keep;
     }
@@ -144,8 +144,8 @@ int main(int argc, char **argv)
     app.gps.t_fix = sc_now(); app.gps.speed = 1.1; app.gps.has_track = 0;
     geo_dest(app.sonde.lat, app.sonde.lon, 270.0, 412.0, &app.gps.lat, &app.gps.lon);
     app.hdg.deg = 211.0; app.hdg.src = HDG_MAG;
-    ui_key('1'); shot("01_track_lost");
-    ui_key('2'); shot("02_map_lost");
-    ui_key('5'); shot("05_info_lost");
+    ui_key('4'); shot("01_track_lost");
+    ui_key('5'); shot("02_map_lost");
+    ui_key('8'); shot("05_info_lost");
     return 0;
 }

@@ -5,6 +5,7 @@
 #include <linux/input.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <time.h>
 #include <unistd.h>
 
 #define BIT(arr, n) ((arr[(n) / 8] >> ((n) % 8)) & 1)
@@ -50,11 +51,26 @@ static int xlate(int c)
     return 0;
 }
 
+static double esc_down; /* monotonic time Esc went down, 0 while it is up */
+
+static double mono_s(void)
+{
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec + t.tv_nsec / 1e9;
+}
+
+int keys_esc_held(double secs)
+{
+    return esc_down > 0 && mono_s() - esc_down >= secs;
+}
+
 int keys_read(int fd)
 {
     struct input_event ev;
     if (fd < 0) return 0;
     while (read(fd, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+        if (ev.type == EV_KEY && ev.code == KEY_ESC && ev.value != 2) esc_down = ev.value ? mono_s() : 0;
         if (ev.type == EV_KEY && ev.value == 1) { /* press only, no auto-repeat */
             int k = xlate(ev.code);
             if (k) return k;

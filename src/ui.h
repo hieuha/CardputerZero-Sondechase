@@ -11,4 +11,5 @@ int ui_should_quit(void);
 
 int keys_open(const char *dev); /* "" = auto-detect; returns fd or -1 */
 int keys_read(int fd);          /* next key press, 0 = none */
+int keys_esc_held(double secs); /* Esc has been held down for at least secs */
 #endif

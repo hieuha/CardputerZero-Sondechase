@@ -25,6 +25,7 @@ void app_init(app_t *a, const char *cfg_path)
     audio_init(&a->audio);
     tf_init(&a->tf, &a->cfg);
     a->freq_hz = a->cfg.freq_hz;
+    a->scan_auto = a->cfg.scan_auto;
     a->sdr_ok = (a->cfg.sdr_check && !a->cfg.demo) ? sdr_present("/sys/bus/usb/devices") : 1;
     set_status(a, "idle");
     if (a->freq_hz > 0) app_tune(a, a->freq_hz);
@@ -147,6 +148,7 @@ void app_stop(app_t *a)
     sweep_stop(a);
     decode_stop(a);
     proc_stop(&a->proc);
+    a->verify = 0;
     a->state = ST_IDLE;
     set_status(a, "idle");
 }
@@ -155,12 +157,14 @@ void app_tune(app_t *a, long f_hz)
 {
     sweep_stop(a); /* the decoder needs the dongle (an in-process decode keeps it and just retunes) */
     proc_stop(&a->proc);
+    a->verify = 0; /* a tune from the user (or auto_tune) is not a trial */
     a->freq_hz = f_hz;
     a->state = ST_DECODE;
     start_decoder(a);
 }
 
-void app_scan(app_t *a)
+/* keep_spectrum: resuming the auto sweep after a trial decode keeps the picture and peak selection. */
+static void scan_begin(app_t *a, int keep_spectrum)
 {
     char cmd[640], err[96];
     if (!a->sdr_ok) {
@@ -169,9 +173,12 @@ void app_scan(app_t *a)
     }
     decode_stop(a); /* one dongle: stop the decoder (or a previous rtl_power) first */
     proc_stop(&a->proc);
-    spec_reset(&a->spec, a->cfg.scan_lo_hz, a->cfg.scan_hi_hz, a->cfg.scan_step_hz);
-    a->npeaks = 0;
-    a->sel = 0;
+    a->verify = 0;
+    if (!keep_spectrum) {
+        spec_reset(&a->spec, a->cfg.scan_lo_hz, a->cfg.scan_hi_hz, a->cfg.scan_step_hz);
+        a->npeaks = 0;
+        a->sel = 0;
+    }
     if (a->cfg.demo) { /* demo_poll fills the spectrum after a simulated sweep time */
         a->state = ST_SCAN;
         a->t_restart = sc_now() + 1.5;
@@ -190,6 +197,65 @@ void app_scan(app_t *a)
     }
     a->state = ST_SCAN;
     snprintf(a->status, sizeof a->status, "scanning with rtl_power (%s)", err);
+}
+
+void app_scan(app_t *a)
+{
+    scan_begin(a, 0);
+}
+
+void app_set_scan_auto(app_t *a, int on)
+{
+    a->scan_auto = on;
+    if (on && a->state != ST_DECODE) scan_begin(a, 1); /* manual -> auto: keep sweeping from here */
+}
+
+/* ---------------- known frequencies ---------------- */
+const known_t *app_known(const app_t *a, long f_hz)
+{
+    int i;
+    for (i = 0; i < MAX_KNOWN; i++) {
+        const known_t *k = &a->known[i];
+        if (!k->f_hz || labs(k->f_hz - f_hz) > (k->rs41 ? KNOWN_MATCH_HZ : REJECT_MATCH_HZ)) continue;
+        if (!k->rs41 && sc_now() - k->t > KNOWN_REJECT_S) continue;
+        return k;
+    }
+    return NULL;
+}
+
+/* Remember what is on f_hz; an RS41 serial replaces a rejection, the oldest slot is reused. */
+static void known_set(app_t *a, long f_hz, const char *id, int rs41)
+{
+    int i, slot = 0;
+    for (i = 0; i < MAX_KNOWN; i++) {
+        if (a->known[i].f_hz && labs(a->known[i].f_hz - f_hz) <= KNOWN_MATCH_HZ) {
+            slot = i;
+            break;
+        }
+        if (a->known[i].t < a->known[slot].t) slot = i;
+    }
+    if (!rs41 && a->known[slot].rs41 && a->known[slot].f_hz && labs(a->known[slot].f_hz - f_hz) <= KNOWN_MATCH_HZ)
+        return; /* a sonde seen here before is not forgotten because one trial missed it */
+    a->known[slot].f_hz = f_hz;
+    snprintf(a->known[slot].id, sizeof a->known[slot].id, "%s", id);
+    a->known[slot].rs41 = rs41;
+    a->known[slot].t = sc_now();
+}
+
+/* Auto mode: start a trial decode of the strongest peak nothing is known about. */
+static int verify_next(app_t *a)
+{
+    int i;
+    for (i = 0; i < a->npeaks; i++)
+        if (a->peaks[i].snr_db >= a->cfg.verify_snr_db && !app_known(a, a->peaks[i].f_hz)) {
+            app_tune(a, a->peaks[i].f_hz);
+            a->verify = 1;
+            a->verify_hit = 0;
+            a->verify_until = sc_now() + a->cfg.verify_s;
+            snprintf(a->status, sizeof a->status, "checking %.3f MHz", a->peaks[i].f_hz / 1e6);
+            return 1;
+        }
+    return 0;
 }
 
 static void log_frame(app_t *a)
@@ -220,6 +286,8 @@ void app_on_frame(app_t *a, const char *line, double now)
     int r = sonde_parse(line, &s);
     if (!r) return;
     s.t_rx = now;
+    known_set(a, a->freq_hz, s.id, 1);
+    a->verify_hit = 1;
     if (r == 2) { /* telemetry without a position: shown, but kept out of track, history and prediction */
         if (strcmp(s.id, a->have_sonde ? a->sonde.id : a->nofix.id)) a->frames = 0;
         a->nofix = s;
@@ -291,6 +359,13 @@ static void sweep_poll(app_t *a)
                 app_tune(a, a->peaks[0].f_hz); /* first complete pass */
                 return;
             }
+            if (!a->scan_auto && w->passes >= SCAN_MANUAL_PASSES) { /* manual: one scan, then hold the picture */
+                sweep_stop(a);
+                a->state = ST_IDLE;
+                set_status(a, a->npeaks ? "scan done" : "scan done: no signal");
+                return;
+            }
+            if (a->scan_auto && verify_next(a)) return;
         }
         sweep_tune(a);
     }
@@ -336,6 +411,10 @@ void app_poll(app_t *a)
             }
         } else if (now >= a->t_restart) {
             start_decoder(a);
+        }
+        if (a->verify && (a->verify_hit || now >= a->verify_until)) {
+            if (!a->verify_hit) known_set(a, a->freq_hz, "", 0);
+            scan_begin(a, 1); /* back to the auto sweep, with the verdict on the peak */
         }
     } else if (a->state == ST_SCAN && a->sw.sdr) {
         sweep_poll(a);

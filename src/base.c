@@ -37,6 +37,8 @@ void cfg_defaults(cfg_t *c)
     c->scan_int_s = 1; /* one full 400-406 MHz pass per second on the CM0 */
     c->scan_snr_db = 8.0;
     c->auto_tune = 0;
+    c->verify_snr_db = 15.0;
+    c->verify_s = 8.0;
     snprintf(c->gpsd_host, sizeof c->gpsd_host, "127.0.0.1");
     c->gpsd_port = 2947;
     c->ground_alt = -1000.0;
@@ -79,6 +81,7 @@ static const cfg_ent ents[] = {
     E(freq_hz, 'l'),      E(ppm, 'i'),          E(gain, 's'),         E(rtl_dev, 'i'),
     E(bias_tee, 'i'),     E(decoder_cmd, 's'),  E(scan_cmd, 's'),     E(scan_lo_hz, 'l'),
     E(scan_hi_hz, 'l'),   E(scan_step_hz, 'l'), E(scan_int_s, 'i'),   E(scan_snr_db, 'd'),
+    E(scan_auto, 'i'),    E(verify_snr_db, 'd'), E(verify_s, 'd'),
     E(auto_tune, 'i'),    E(gpsd_host, 's'),    E(gpsd_port, 'i'),    E(ground_alt, 'd'),
     E(burst_alt, 'd'),    E(descent_v0, 'd'),   E(cog_min_speed, 'd'), E(mag_enable, 'i'),
     E(mag_off_x, 'd'),    E(mag_off_y, 'd'),    E(mag_rot_deg, 'd'),  E(mag_flip_y, 'i'),

@@ -24,6 +24,9 @@ typedef struct {
     int scan_int_s;          /* rtl_power integration time */
     double scan_snr_db;      /* peak threshold above median noise floor */
     int auto_tune;           /* tune to strongest peak after a scan */
+    int scan_auto;           /* start-up scan mode: 0 = one scan per S press, 1 = continuous + check peaks */
+    double verify_snr_db;    /* auto mode: peaks at least this strong get a trial decode */
+    double verify_s;         /* auto mode: seconds a trial decode may take to produce an RS41 frame */
     char gpsd_host[64];
     int gpsd_port;           /* 0 = gpsd disabled */
     double ground_alt;       /* landing altitude AMSL; < -900 = use own GPS altitude */
@@ -316,6 +319,20 @@ void tile_recolor(unsigned char *rgb, int npix);
 /* ---------------- application state ---------------- */
 enum { ST_IDLE, ST_DECODE, ST_SCAN };
 
+/* Frequencies whose nature is known from decoding: an RS41 (with its serial) or, after a trial decode
+ * that produced nothing, "not an RS41" (forgotten after KNOWN_REJECT_S, the sonde may start later). */
+#define MAX_KNOWN 16
+#define KNOWN_MATCH_HZ 10000L  /* an RS41: two sondes can sit 10 kHz apart */
+#define REJECT_MATCH_HZ 50000L /* not an RS41: interferers seen wandering by ~40 kHz between passes */
+#define KNOWN_REJECT_S 300.0
+#define SCAN_MANUAL_PASSES 4 /* one manual scan: ~1 s of passes, enough to catch an RS41 between frames */
+typedef struct {
+    long f_hz;               /* 0 = empty slot */
+    char id[16];
+    int rs41;
+    double t;                /* last confirmation */
+} known_t;
+
 /* In-process sweep of scan_lo_hz..scan_hi_hz: retune in steps of the central SWEEP_KEEP of the
  * SWEEP_RATE band, drop the samples of the settling time, FFT SWEEP_FRAMES frames per step.
  * Measured on the CardputerZero: 2.048 MS/s keeping 80 % gives a flat floor (step edges -0.2 dB);
@@ -342,6 +359,11 @@ typedef struct {
     long freq_hz;
     proc_t proc;
     sweep_t sw;
+    int scan_auto;           /* current scan mode, toggled with A on the Scan screen */
+    int verify;              /* the current decode is a trial of an unknown peak (auto mode) */
+    int verify_hit;          /* ... and it produced an RS41 frame */
+    double verify_until;
+    known_t known[MAX_KNOWN];
     sdr_t *dsdr;             /* in-process decode: dongle at freq_hz - 12 kHz + DDC_RATE/4, NULL otherwise */
     ddc_t ddc;
     spectrum_t live;         /* spectrum of the decode window (+-DDC_RATE/2 around the dongle) */
@@ -384,6 +406,8 @@ void app_poll(app_t *a);
 void app_tune(app_t *a, long f_hz);
 void app_scan(app_t *a);
 void app_stop(app_t *a);
+void app_set_scan_auto(app_t *a, int on);
+const known_t *app_known(const app_t *a, long f_hz); /* NULL: nothing known about this frequency */
 void app_free(app_t *a);
 void app_on_frame(app_t *a, const char *json_line, double now); /* one decoder output line */
 

@@ -347,9 +347,15 @@ static void t_frames(void)
     const char *fix = "{\"id\":\"Y0532351\",\"frame\":12,\"lat\":21.03,\"lon\":105.85,\"alt\":40,\"sats\":9,\"batt\":3.0}";
     app_init(&a, NULL);
     snprintf(a.cfg.log_dir, sizeof a.cfg.log_dir, "/tmp");
+    a.freq_hz = 403000000L;
+    CHECK(app_known(&a, 403000000L) == NULL);
     app_on_frame(&a, nofix, 1.0);
     app_on_frame(&a, nofix, 2.0);
     CHECK(!a.have_sonde && a.frames == 2 && a.nofix.frame == 10 && a.nofix.t_rx == 2.0);
+    /* any decoded frame marks its frequency as an RS41 with that serial, within +-10 kHz */
+    CHECK(app_known(&a, 403010000L) && app_known(&a, 403010000L)->rs41 &&
+          !strcmp(app_known(&a, 403010000L)->id, "Y0532351"));
+    CHECK(app_known(&a, 403020000L) == NULL);
     app_on_frame(&a, fix, 3.0);
     CHECK(a.have_sonde && a.frames == 3 && a.sonde.frame == 12);
     app_on_frame(&a, "{\"id\":\"S1111111\",\"frame\":1,\"lat\":0.5,\"lon\":100,\"alt\":5,\"sats\":0}", 4.0);

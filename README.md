@@ -144,8 +144,7 @@ Gói không cài systemd service: app được mở từ APPLaunch và chạy v�
 `plugdev`).
 
 `app-builder.json` là manifest cho `czdev publish`; script kiểm tra của Template
-(`validate_app_builder.cmake`) chấp nhận file này. Hai trường còn `TODO` phải điền trước khi publish:
-`store.license` và `store.source_repo`.
+(`validate_app_builder.cmake`) chấp nhận file này.
 
 ### Chế độ demo và ảnh chụp màn hình
 
@@ -212,3 +211,19 @@ Chưa kiểm:
   độ cao hiện tại.
 - Lịch sử bay giữ 2048 mẫu (5 s/mẫu, tự giảm độ phân giải khi đầy); không khôi phục sau khi khởi động lại app.
   Log CSV đầy đủ ghi tại `~/sondechase.csv`.
+
+## Giấy phép
+
+SondeChase phát hành theo GNU General Public License v3.0 (`GPL-3.0-only`), xem [`LICENSE`](LICENSE).
+Giấy phép này cho phép đưa kèm các decoder upstream vào repo hoặc gói cài đặt.
+
+Thành phần bên thứ ba:
+
+| Thành phần | Giấy phép |
+|---|---|
+| `rs41mod` (zilog80, [rs1729/RS](https://github.com/rs1729/RS), qua [radiosonde_auto_rx](https://github.com/projecthorus/radiosonde_auto_rx)) | GPL-3.0 |
+| `fsk_demod` ([codec2](https://github.com/drowe67/codec2), David Rowe) | LGPL-2.1 |
+| [LVGL](https://github.com/lvgl/lvgl) v9.5 | MIT |
+| Các file trong `cmake/` lấy từ CardputerZero Template | MIT, xem `cmake/LICENSE-CardputerZero-Template.txt` |
+| Font Rajdhani, Orbitron | SIL OFL 1.1, xem `assets/fonts/OFL-*.txt` |
+| Dữ liệu bản đồ | © OpenStreetMap contributors, ODbL |

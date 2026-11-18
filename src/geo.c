@@ -165,11 +165,19 @@ int sonde_parse(const char *line, sonde_t *s)
     memset(s, 0, sizeof *s);
     if (!js_num(line, "lat", &s->lat) || !js_num(line, "lon", &s->lon) || !js_num(line, "alt", &s->alt))
         return 0;
-    if (fabs(s->lat) < 1e-6 && fabs(s->lon) < 1e-6) return 0; /* no GPS solution on the sonde */
-    if (fabs(s->lat) > 90.0 || fabs(s->lon) > 180.0) return 0;
     if (!js_str(line, "id", s->id, sizeof s->id)) strcpy(s->id, "?");
     if (js_num(line, "frame", &v)) s->frame = (int)v;
-    if (js_num(line, "sats", &v)) s->sats = (int)v;
+    /* Before its GPS locks (e.g. still on the ground indoors) an RS41 reports sats 0, a 1980 date
+     * and a position that wanders around a meaningless point: keep the telemetry, not the position. */
+    if (js_num(line, "sats", &v)) {
+        s->sats = (int)v;
+        if (s->sats < 4) {
+            js_num(line, "batt", &s->batt);
+            return 2;
+        }
+    }
+    if (fabs(s->lat) < 1e-6 && fabs(s->lon) < 1e-6) return 0; /* no GPS solution on the sonde */
+    if (fabs(s->lat) > 90.0 || fabs(s->lon) > 180.0) return 0;
     s->bt = -1;
     if (js_num(line, "bt", &v)) s->bt = (int)v;
     js_num(line, "vel_h", &s->vel_h);

@@ -369,6 +369,14 @@ static void p_track(void)
         return;
     }
     compass(hdg, A->have_geo, A->rel, col, !ok, A->have_land && ok, norm180(A->land_brg - hdg));
+    if (!A->have_sonde && A->nofix.t_rx > 0 && sc_now() - A->nofix.t_rx < 10.0) {
+        txt(140, 44, 174, F_M, C_CY, AL_L, "%s", A->nofix.id);
+        txt(140, 60, 174, F_M, C_TX, AL_L, "Frame %d   batt %.1f V", A->nofix.frame, A->nofix.batt);
+        txt(140, 80, 174, F_S, C_RD, AL_L, "Sonde has no GPS fix (%d sats)", A->nofix.sats);
+        txt(140, 94, 174, F_S, C_DIM, AL_L, "Position appears once it locks");
+        nav_bar(PG_TRACK);
+        return;
+    }
     if (!A->have_sonde) {
         txt(140, 60, 174, F_M, C_DIM, AL_L, A->state == ST_DECODE ? "Waiting for the first frame" : "No frequency tuned");
         txt(140, 76, 174, F_S, C_DIM, AL_L, "7 scan     F type a frequency");

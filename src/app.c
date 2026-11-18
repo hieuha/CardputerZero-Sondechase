@@ -114,8 +114,13 @@ void app_on_frame(app_t *a, const char *line, double now)
 {
     sonde_t s;
     double ground;
-    if (!sonde_parse(line, &s)) return;
+    int r = sonde_parse(line, &s);
+    if (!r) return;
     s.t_rx = now;
+    if (r == 2) { /* telemetry without a position: shown, but kept out of track, history and prediction */
+        a->nofix = s;
+        return;
+    }
     if (!a->have_sonde || strcmp(s.id, a->sonde.id)) { /* new sonde: discard old profile */
         memset(&a->wind, 0, sizeof a->wind);
         hist_reset(&a->hist);

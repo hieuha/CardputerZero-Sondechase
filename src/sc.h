@@ -112,7 +112,9 @@ typedef struct {
     char subtype[16];
     double t_rx;
 } sonde_t;
-int sonde_parse(const char *line, sonde_t *s); /* 1 = valid position frame */
+/* 1 = valid position frame; 2 = telemetry decoded but the sonde has no GPS solution yet
+ * (fewer than 4 satellites: lat/lon/alt are not usable); 0 = not a sonde frame. */
+int sonde_parse(const char *line, sonde_t *s);
 
 typedef struct {
     int valid;
@@ -254,6 +256,7 @@ typedef struct {
     double t_restart;
     sonde_t sonde;
     int have_sonde;
+    sonde_t nofix;           /* last frame from a sonde without a GPS solution (t_rx = 0: none) */
     unsigned frames;
     double vv_s; /* smoothed vertical velocity */
     gps_t gps;

@@ -94,6 +94,13 @@ static void t_parse(void)
     NEAR(s.temp, -55.2, 1e-9);
     CHECK(sonde_parse("{\"id\":\"X\",\"lat\":0.0,\"lon\":0.0,\"alt\":0.0}", &s) == 0);
     CHECK(sonde_parse("{\"id\":\"X\",\"frame\":1}", &s) == 0);
+    /* Real RS41 frame before its GPS locks (Y0532351 on the bench): telemetry only. */
+    CHECK(sonde_parse("{ \"type\": \"RS41\", \"frame\": 471, \"id\": \"Y0532351\", \"datetime\": "
+                      "\"1980-01-06T00:00:00.000Z\", \"lat\": 7.87821, \"lon\": 112.81147, \"alt\": 398.46852, "
+                      "\"vel_h\": 0.00000, \"heading\": -0.00000, \"vel_v\": 0.00000, \"sats\": 0, "
+                      "\"bt\": 65535, \"batt\": 3.30, \"subtype\": \"RS41\" }", &s) == 2);
+    CHECK(!strcmp(s.id, "Y0532351") && s.frame == 471 && s.sats == 0);
+    NEAR(s.batt, 3.30, 1e-9);
     CHECK(js_num(l, "alt", &v) && v == 15234.5);          /* "alt" must not match inside other keys */
     CHECK(!js_num(l, "al", &v));
     CHECK(js_str(l, "subtype", buf, sizeof buf) && !strcmp(buf, "RS41-SGP"));

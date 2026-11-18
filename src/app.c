@@ -143,7 +143,7 @@ void app_on_frame(app_t *a, const char *line, double now)
 
 void app_poll(app_t *a)
 {
-    char line[2048];
+    char line[LR_MAX];
     double now = sc_now();
     int r;
 

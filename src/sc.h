@@ -59,11 +59,13 @@ int cfg_load(cfg_t *c, const char *path); /* 0 ok, -1 file not readable */
 /* Expand {ppm} {dev} {gain} {bias} {f_hz} {f_tune} {lo} {hi} {step} {int}. */
 int sc_subst(char *out, size_t n, const char *tpl, const cfg_t *c, long f_hz);
 
-/* Non-blocking line reader on a file descriptor. */
+/* Non-blocking line reader on a file descriptor. One rtl_power CSV row is ~7 bytes per bin:
+ * ~3 kB at the default 5 kHz step, ~14 kB at 1 kHz, so callers size their line buffer with LR_MAX. */
+#define LR_MAX 16384
 typedef struct {
     int fd;
     size_t len;
-    char buf[8192];
+    char buf[LR_MAX];
 } lr_t;
 int lr_readline(lr_t *r, char *out, size_t n); /* 1 line, 0 nothing yet, -1 EOF/error */
 

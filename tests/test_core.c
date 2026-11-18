@@ -168,10 +168,14 @@ static void t_cfg(void)
 static void t_spec(void)
 {
     static spectrum_t s;
+    static lr_t lr;
     peak_t pk[MAX_PEAKS];
-    char line[16384];
-    int hop, i, n;
+    char line[LR_MAX], got[LR_MAX];
+    int hop, i, n, fd[2];
     spec_reset(&s, 400000000, 406000000, 5000);
+    CHECK(pipe(fd) == 0);
+    lr.fd = fd[0];
+    lr.len = 0;
     CHECK(s.n == 1200);
     /* Three 2 MHz hops, bin 4882.8125 Hz (not equal to the requested 5 kHz), noise -42 dB
      * with ripple, carriers at 403.500 MHz (+20 dB) and 401.100 MHz (+11 dB). */
@@ -184,8 +188,15 @@ static void t_spec(void)
             if (fabs(f - 401.1e6) < 6000) db = -31.0;
             o += snprintf(line + o, sizeof line - (size_t)o, ", %.2f", db);
         }
-        CHECK(spec_add_line(&s, line) > 300);
+        /* Each row (~2.9 kB) goes through the same pipe + line reader path as rtl_power output. */
+        line[o++] = '\n';
+        CHECK(write(fd[1], line, (size_t)o) == o);
+        CHECK(lr_readline(&lr, got, sizeof got) == 1);
+        CHECK(strlen(got) == (size_t)o - 1);
+        CHECK(spec_add_line(&s, got) > 300);
     }
+    close(fd[0]);
+    close(fd[1]);
     CHECK(spec_add_line(&s, "garbage") == 0);
     n = spec_peaks(&s, 8.0, pk, MAX_PEAKS);
     CHECK(n == 2);

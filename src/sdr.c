@@ -100,6 +100,7 @@ struct sdr {
 };
 
 #define SDR_RING_BYTES (4u << 20) /* ~1.4 s of IQ at 1.536 MS/s */
+#define SDR_USB_BUFS 32
 
 static void on_samples(unsigned char *buf, uint32_t len, void *ctx)
 {
@@ -109,7 +110,10 @@ static void on_samples(unsigned char *buf, uint32_t len, void *ctx)
 static void *reader(void *arg)
 {
     sdr_t *s = arg;
-    s->api.read_async(s->dev, on_samples, s, 0, 0); /* returns when cancelled or the dongle is gone */
+    /* Small USB transfers (16 KiB = 4 ms at 2.048 MS/s; the library default is 256 KiB = 64 ms) so
+     * little pre-retune data is still in flight when a sweep step starts. Returns when cancelled or
+     * when the dongle is gone. */
+    s->api.read_async(s->dev, on_samples, s, SDR_USB_BUFS, SDR_USB_BUF_BYTES);
     atomic_store(&s->alive, 0);
     return NULL;
 }

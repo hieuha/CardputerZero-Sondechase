@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "sc.h"
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -18,6 +19,7 @@ void app_init(app_t *a, const char *cfg_path)
     gps_init(&a->gps);
     heading_init(&a->hdg, &a->cfg);
     spec_reset(&a->spec, a->cfg.scan_lo_hz, a->cfg.scan_hi_hz, a->cfg.scan_step_hz);
+    fft_init(&a->sw.fft, SWEEP_FFT);
     hist_reset(&a->hist);
     flight_reset(&a->flight);
     audio_init(&a->audio);
@@ -48,8 +50,45 @@ static void start_decoder(app_t *a)
     set_status(a, "decoding");
 }
 
+/* ---------------- in-process sweep (librtlsdr) ---------------- */
+#define SWEEP_SETTLE_BYTES ((size_t)(SWEEP_RATE * 2 * 15 / 1000)) /* 15 ms of IQ after each retune */
+
+static void sweep_tune(app_t *a)
+{
+    sweep_t *w = &a->sw;
+    sdr_tune(w->sdr, (long)(w->f_first + w->step * w->f_step));
+    w->skip = SWEEP_SETTLE_BYTES + SDR_USB_BUF_BYTES; /* settling time + a transfer begun before the retune */
+    w->have = 0;
+}
+
+static void sweep_stop(app_t *a)
+{
+    sdr_close(a->sw.sdr);
+    a->sw.sdr = NULL;
+}
+
+/* 0: the sweep runs in the app; -1: use the rtl_power command instead (reason in err). */
+static int sweep_start(app_t *a, char *err, size_t n)
+{
+    sweep_t *w = &a->sw;
+    if (!strcmp(a->cfg.sdr_backend, "cmd")) {
+        snprintf(err, n, "sdr_backend = cmd");
+        return -1;
+    }
+    if (!w->sdr && !(w->sdr = sdr_open(&a->cfg, SWEEP_RATE, err, n))) return -1;
+    w->f_step = SWEEP_RATE * SWEEP_KEEP; /* central part of each FFT, like rtl_power -c */
+    w->nstep = (int)ceil((double)(a->cfg.scan_hi_hz - a->cfg.scan_lo_hz) / w->f_step);
+    if (w->nstep < 1) w->nstep = 1;
+    w->f_first = (double)a->cfg.scan_lo_hz + w->f_step / 2.0;
+    w->step = 0;
+    w->passes = 0;
+    sweep_tune(a);
+    return 0;
+}
+
 void app_stop(app_t *a)
 {
+    sweep_stop(a);
     proc_stop(&a->proc);
     a->state = ST_IDLE;
     set_status(a, "idle");
@@ -57,6 +96,7 @@ void app_stop(app_t *a)
 
 void app_tune(app_t *a, long f_hz)
 {
+    sweep_stop(a); /* the decoder needs the dongle */
     proc_stop(&a->proc);
     a->freq_hz = f_hz;
     a->state = ST_DECODE;
@@ -65,12 +105,12 @@ void app_tune(app_t *a, long f_hz)
 
 void app_scan(app_t *a)
 {
-    char cmd[640];
+    char cmd[640], err[96];
     if (!a->sdr_ok) {
         set_status(a, "no SDR device");
         return;
     }
-    proc_stop(&a->proc); /* rtl_fm and rtl_power cannot share one dongle */
+    proc_stop(&a->proc); /* one dongle: stop the decoder (or a previous rtl_power) first */
     spec_reset(&a->spec, a->cfg.scan_lo_hz, a->cfg.scan_hi_hz, a->cfg.scan_step_hz);
     a->npeaks = 0;
     a->sel = 0;
@@ -80,13 +120,18 @@ void app_scan(app_t *a)
         set_status(a, "scanning");
         return;
     }
+    if (sweep_start(a, err, sizeof err) == 0) {
+        a->state = ST_SCAN;
+        set_status(a, "scanning");
+        return;
+    }
     if (sc_subst(cmd, sizeof cmd, a->cfg.scan_cmd, &a->cfg, 0) < 0 || proc_start(&a->proc, cmd) < 0) {
         a->state = ST_IDLE;
         set_status(a, "scan start failed");
         return;
     }
     a->state = ST_SCAN;
-    set_status(a, "scanning");
+    snprintf(a->status, sizeof a->status, "scanning with rtl_power (%s)", err);
 }
 
 static void log_frame(app_t *a)
@@ -161,6 +206,41 @@ static void scan_refresh(app_t *a)
         }
 }
 
+static void sweep_poll(app_t *a)
+{
+    static unsigned char junk[SDR_USB_BUF_BYTES];
+    sweep_t *w = &a->sw;
+    const int nbin = (int)(SWEEP_FFT * SWEEP_KEEP), lo_bin = (SWEEP_FFT - nbin) / 2;
+    const double bin_hz = (double)SWEEP_RATE / SWEEP_FFT;
+    for (;;) {
+        size_t k;
+        if (w->skip) {
+            if (!(k = sdr_read(w->sdr, junk, w->skip < sizeof junk ? w->skip : sizeof junk))) break;
+            w->skip -= k;
+            continue;
+        }
+        if (!(k = sdr_read(w->sdr, w->buf + w->have, sizeof w->buf - w->have))) break;
+        if ((w->have += k) < sizeof w->buf) continue;
+        fft_spectrum(&w->fft, w->buf, SWEEP_FRAMES, w->db);
+        spec_add_bins(&a->spec, w->f_first + w->step * w->f_step - SWEEP_RATE / 2.0 + lo_bin * bin_hz, bin_hz,
+                      w->db + lo_bin, nbin);
+        scan_refresh(a);
+        if (++w->step == w->nstep) {
+            w->step = 0;
+            if (++w->passes == 1 && a->cfg.auto_tune && a->npeaks) {
+                app_tune(a, a->peaks[0].f_hz); /* first complete pass */
+                return;
+            }
+        }
+        sweep_tune(a);
+    }
+    if (!sdr_alive(w->sdr)) {
+        sweep_stop(a);
+        a->state = ST_IDLE;
+        set_status(a, "receiver stream ended");
+    }
+}
+
 void app_poll(app_t *a)
 {
     char line[LR_MAX];
@@ -177,6 +257,7 @@ void app_poll(app_t *a)
         a->t_sdr = now;
         a->sdr_ok = sdr_present("/sys/bus/usb/devices");
         if (!a->sdr_ok && a->state == ST_SCAN) { /* receiver unplugged during a sweep */
+            sweep_stop(a);
             proc_stop(&a->proc);
             a->state = ST_IDLE;
             set_status(a, "no SDR device");
@@ -195,6 +276,8 @@ void app_poll(app_t *a)
         } else if (now >= a->t_restart) {
             start_decoder(a);
         }
+    } else if (a->state == ST_SCAN && a->sw.sdr) {
+        sweep_poll(a);
     } else if (a->state == ST_SCAN) {
         int rows = 0;
         while ((r = lr_readline(&a->proc.lr, line, sizeof line)) == 1) rows += spec_add_line(&a->spec, line) > 0;
@@ -237,6 +320,8 @@ derived:
 
 void app_free(app_t *a)
 {
+    sweep_stop(a);
+    fft_free(&a->sw.fft);
     proc_stop(&a->proc);
     gps_close(&a->gps);
     audio_close(&a->audio);

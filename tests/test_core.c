@@ -210,6 +210,25 @@ static void t_spec(void)
     CHECK(pk[0].f_hz == 403500000 && pk[1].f_hz == 401100000);
     NEAR(pk[0].snr_db, 20.0, 1.5);
     NEAR(s.floor_db, -42.0, 1.0);
+
+    { /* in-process sweep steps: 2 kHz FFT bins onto the 5 kHz grid, newest pass wins */
+        static float bins[800];
+        spec_reset(&s, 400000000, 406000000, 5000);
+        for (hop = 0; hop < 4; hop++) {
+            for (i = 0; i < 800; i++) bins[i] = -60.0f;
+            if (hop == 1) bins[300] = -20.0f; /* 401.6 + 300 * 2 kHz = 402.200 MHz */
+            /* bins lo .. lo + 1598 kHz round onto cells 0 .. 320 (321 cells); the last step runs past
+             * 406 MHz and keeps the 240 cells up to the end of the band */
+            CHECK(spec_add_bins(&s, 400.0e6 + hop * 1.6e6, 2000.0, bins, 800) == (hop < 3 ? 321 : 240));
+        }
+        n = spec_peaks(&s, 8.0, pk, MAX_PEAKS);
+        CHECK(n == 1 && pk[0].f_hz == 402200000);
+        NEAR(s.db[(402200000 - 400000000) / 5000], -20.0, 1e-6);
+        for (i = 0; i < 800; i++) bins[i] = -60.0f; /* next pass: the carrier is gone */
+        spec_add_bins(&s, 401.6e6, 2000.0, bins, 800);
+        NEAR(s.db[(402200000 - 400000000) / 5000], -60.0, 1e-6);
+        CHECK(spec_peaks(&s, 8.0, pk, MAX_PEAKS) == 0);
+    }
 }
 
 static void t_ring(void)

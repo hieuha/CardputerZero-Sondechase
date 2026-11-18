@@ -37,6 +37,7 @@ typedef struct {
     double stale_s;          /* telemetry older than this is marked stale */
     char log_dir[160];       /* "" = $HOME */
     char kbd_dev[64];        /* "" = auto-detect evdev keyboard */
+    char sdr_backend[8];     /* "auto": librtlsdr in the app when available; "cmd": rtl_power / rtl_fm */
     char fb_dev[64];
     double prox_radius_m;    /* proximity beeper starts inside this ground distance */
     double prox_hyst_m;      /* ...and stops beyond radius + hysteresis */
@@ -202,6 +203,7 @@ size_t iqring_avail(iqring_t *r);
 void iqring_flush(iqring_t *r); /* consumer: discard everything buffered (after a retune) */
 
 typedef struct sdr sdr_t; /* opaque */
+#define SDR_USB_BUF_BYTES 16384u /* one USB transfer; callers skip one of these after a retune */
 /* Open cfg->rtl_dev at `rate` S/s with cfg ppm/gain/bias_tee and start streaming.
  * NULL on failure, with the reason in err (librtlsdr0 missing, no device, busy...). */
 sdr_t *sdr_open(const cfg_t *c, long rate, char *err, size_t n);
@@ -227,6 +229,7 @@ typedef struct {
 } peak_t;
 void spec_reset(spectrum_t *s, long lo, long hi, long step);
 int spec_add_line(spectrum_t *s, const char *line); /* one rtl_power CSV row */
+int spec_add_bins(spectrum_t *s, double f_lo, double bin_hz, const float *db, int n); /* one sweep step */
 int spec_peaks(spectrum_t *s, double snr_db, peak_t *out, int max);
 
 /* ---------------- flight history, burst detection, proximity beeper, audio, map tiles ---------------- */
@@ -306,12 +309,32 @@ void tile_recolor(unsigned char *rgb, int npix);
 
 /* ---------------- application state ---------------- */
 enum { ST_IDLE, ST_DECODE, ST_SCAN };
+
+/* In-process sweep of scan_lo_hz..scan_hi_hz: retune in steps of the central SWEEP_KEEP of the
+ * SWEEP_RATE band, drop the samples of the settling time, FFT SWEEP_FRAMES frames per step.
+ * Measured on the CardputerZero: 2.048 MS/s keeping 80 % gives a flat floor (step edges -0.2 dB);
+ * 2.4 MS/s keeping 85 % saves a step but the edges droop 4 dB, hiding weak sondes there. */
+#define SWEEP_RATE 2048000L
+#define SWEEP_KEEP 0.80
+#define SWEEP_FFT 1024
+#define SWEEP_FRAMES 5
+typedef struct {
+    sdr_t *sdr;              /* open while sweeping, NULL otherwise */
+    fft_t fft;
+    int step, nstep;
+    double f_first, f_step;  /* centre of step 0, spacing between step centres */
+    size_t skip, have;       /* bytes still to discard after a retune / bytes collected */
+    unsigned passes;         /* completed full passes since the sweep started */
+    unsigned char buf[2 * SWEEP_FFT * SWEEP_FRAMES];
+    float db[SWEEP_FFT];
+} sweep_t;
 #define MAX_PEAKS 8
 typedef struct {
     cfg_t cfg;
     int state;
     long freq_hz;
     proc_t proc;
+    sweep_t sw;
     double t_restart;
     sonde_t sonde;
     int have_sonde;

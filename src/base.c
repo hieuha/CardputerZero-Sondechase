@@ -42,6 +42,7 @@ void cfg_defaults(cfg_t *c)
     c->mag_enable = 1;
     c->stale_s = 5.0;
     snprintf(c->fb_dev, sizeof c->fb_dev, "/dev/fb0");
+    snprintf(c->sdr_backend, sizeof c->sdr_backend, "auto");
     c->prox_radius_m = 10000.0;
     c->prox_hyst_m = 500.0;
     c->audio_enable = 1;
@@ -82,6 +83,7 @@ static const cfg_ent ents[] = {
     E(audio_cmd, 's'),    E(tile_dir, 's'),     E(zoom_min, 'i'),     E(zoom_max, 'i'),
     E(map_lat, 'd'),      E(map_lon, 'd'),
     E(font_dir, 's'),     E(sdr_check, 'i'),    E(demo, 'i'),         E(demo_speed, 'd'),
+    E(sdr_backend, 's'),
     E(tile_online, 'i'),  E(tile_url, 's'),     E(tile_user_agent, 's'), E(tile_fetch_cmd, 's'),
     E(tile_cache_dir, 's'), E(tile_cache_mb, 'i'),
 };

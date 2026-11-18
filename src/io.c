@@ -178,6 +178,36 @@ void spec_reset(spectrum_t *s, long lo, long hi, long step)
     if (s->n < 0) s->n = 0;
 }
 
+static int spec_cell(const spectrum_t *s, double f_hz)
+{
+    return (int)floor((f_hz - (double)s->f0) / (double)s->step + 0.5);
+}
+
+/* One in-process sweep step: the cells it covers get this step's values (max of the FFT bins
+ * falling in each cell), replacing the previous pass so faded signals disappear. */
+int spec_add_bins(spectrum_t *s, double f_lo, double bin_hz, const float *db, int n)
+{
+    static float best[SPEC_MAX];
+    static unsigned char seen[SPEC_MAX];
+    int i, lo = s->n, hi = -1, added = 0;
+    for (i = 0; i < n; i++) {
+        int idx = spec_cell(s, f_lo + i * bin_hz);
+        if (idx < 0 || idx >= s->n || !isfinite(db[i])) continue;
+        if (!seen[idx] || db[i] > best[idx]) best[idx] = db[i];
+        seen[idx] = 1;
+        if (idx < lo) lo = idx;
+        if (idx > hi) hi = idx;
+    }
+    for (i = lo; i <= hi; i++)
+        if (seen[i]) {
+            s->db[i] = best[i];
+            s->ok[i] = 1;
+            seen[i] = 0;
+            added++;
+        }
+    return added;
+}
+
 /* Row format: date, time, Hz low, Hz high, Hz step, samples, dB, dB, ... */
 int spec_add_line(spectrum_t *s, const char *line)
 {
@@ -206,7 +236,7 @@ int spec_add_line(spectrum_t *s, const char *line)
         v = strtod(p, &e);
         if (e == p) break;
         if (isfinite(v)) {
-            int idx = (int)floor((lo + i * st - (double)s->f0) / (double)s->step + 0.5);
+            int idx = spec_cell(s, lo + i * st);
             if (idx >= 0 && idx < s->n && (!s->ok[idx] || v > s->db[idx])) {
                 s->db[idx] = (float)v;
                 s->ok[idx] = 1;

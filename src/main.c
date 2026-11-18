@@ -72,6 +72,8 @@ int main(int argc, char **argv)
         if (keys_esc_held_s() >= ESC_QUIT_S) break; /* hold Esc: quit back to the launcher */
         app_poll(&app);
         wait = lv_timer_handler();
+        /* a sweep step can only start when the previous one has been polled: poll faster while scanning */
+        if (app.state == ST_SCAN && app.sw.sdr && wait > 10) wait = 10;
         usleep((wait > 30 ? 30 : (wait < 5 ? 5 : wait)) * 1000);
     }
     app_free(&app);

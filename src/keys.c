@@ -60,9 +60,9 @@ static double mono_s(void)
     return t.tv_sec + t.tv_nsec / 1e9;
 }
 
-int keys_esc_held(double secs)
+double keys_esc_held_s(void)
 {
-    return esc_down > 0 && mono_s() - esc_down >= secs;
+    return esc_down > 0 ? mono_s() - esc_down : 0.0;
 }
 
 int keys_read(int fd)

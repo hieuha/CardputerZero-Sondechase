@@ -11,5 +11,6 @@ int ui_should_quit(void);
 
 int keys_open(const char *dev); /* "" = auto-detect; returns fd or -1 */
 int keys_read(int fd);          /* next key press, 0 = none */
-int keys_esc_held(double secs); /* Esc has been held down for at least secs */
+double keys_esc_held_s(void);   /* seconds Esc has been held down, 0 while it is up */
+#define ESC_QUIT_S 3.0          /* holding Esc this long quits the app */
 #endif

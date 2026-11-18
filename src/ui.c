@@ -985,6 +985,17 @@ static void draw_cb(lv_event_t *e)
     else if (page == PG_GRAPH) { if (gpage == 0) p_skewt(); else p_flight(); }
     else if (page == PG_SCAN) p_scan();
     else p_info();
+    { /* hold-Esc-to-quit countdown over every screen; a short Esc press never shows it */
+        double h = keys_esc_held_s();
+        if (h >= 0.4) {
+            double f = h >= ESC_QUIT_S ? 1.0 : h / ESC_QUIT_S;
+            box(60, 56, 200, 58, C_RD, C_G);
+            txt(60, 61, 200, F_M, C_TX, AL_C, "Hold Esc to quit");
+            fill(76, 84, 168, 8, C_P);
+            fill(76, 84, (int)(168 * f), 8, C_RD);
+            txt(60, 95, 200, F_S, C_DIM, AL_C, "Quitting in %.0f s", ceil(ESC_QUIT_S - h));
+        }
+    }
 }
 
 static void tick_cb(lv_timer_t *t)

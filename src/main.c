@@ -69,7 +69,7 @@ int main(int argc, char **argv)
         int k;
         uint32_t wait;
         while ((k = keys_read(kfd)) != 0) ui_key(k);
-        if (keys_esc_held(3.0)) break; /* hold Esc 3 s: quit back to the launcher */
+        if (keys_esc_held_s() >= ESC_QUIT_S) break; /* hold Esc: quit back to the launcher */
         app_poll(&app);
         wait = lv_timer_handler();
         usleep((wait > 30 ? 30 : (wait < 5 ? 5 : wait)) * 1000);

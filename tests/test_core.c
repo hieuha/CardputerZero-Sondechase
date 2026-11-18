@@ -212,6 +212,29 @@ static void t_spec(void)
     NEAR(s.floor_db, -42.0, 1.0);
 }
 
+static void t_ring(void)
+{
+    iqring_t r;
+    unsigned char in[64], out[64];
+    int i;
+    for (i = 0; i < 64; i++) in[i] = (unsigned char)i;
+    CHECK(iqring_init(&r, 48) == -1); /* not a power of two */
+    CHECK(iqring_init(&r, 32) == 0);
+    CHECK(iqring_write(&r, in, 20) == 20 && iqring_avail(&r) == 20);
+    CHECK(iqring_read(&r, out, 8) == 8 && !memcmp(out, in, 8));
+    /* 12 buffered + 20 more wraps the end of the buffer and fills it exactly */
+    CHECK(iqring_write(&r, in + 20, 20) == 20 && iqring_avail(&r) == 32 && r.dropped == 0);
+    CHECK(iqring_read(&r, out, 64) == 32 && !memcmp(out, in + 8, 32));
+    /* full ring: new data is dropped and counted, never overwriting unread bytes */
+    CHECK(iqring_write(&r, in, 30) == 30);
+    CHECK(iqring_write(&r, in, 7) == 2 && r.dropped == 5); /* whole IQ pairs only */
+    CHECK(iqring_read(&r, out, 4) == 4 && !memcmp(out, in, 4));
+    iqring_flush(&r);
+    CHECK(iqring_avail(&r) == 0 && iqring_read(&r, out, 8) == 0);
+    CHECK(iqring_write(&r, in, 5) == 4); /* odd byte of a split pair is not stored */
+    iqring_free(&r);
+}
+
 /* Number of non-zombie processes in process group pg (zombies await reaping by init). */
 static int live_in_group(pid_t pg)
 {
@@ -496,6 +519,7 @@ int main(int argc, char **argv)
     t_subst();
     t_cfg();
     t_spec();
+    t_ring();
     t_track();
     t_tiles();
     t_app(argc > 1 ? argv[1] : "tests/fake_decoder.sh");

@@ -9,10 +9,11 @@ option(SC_BUILD_UI "Build the LVGL application (fetches LVGL v9.5.0)" ON)
 option(SC_SIM "Desktop build: SDL2 window instead of /dev/fb0 + evdev" OFF)
 
 # Core: no LVGL dependency, unit-tested on any Linux host.
-add_library(sc_core STATIC src/base.c src/geo.c src/io.c src/track.c src/app.c src/demo.c src/tiles.c)
+add_library(sc_core STATIC src/base.c src/geo.c src/io.c src/track.c src/app.c src/demo.c src/tiles.c src/sdr.c)
 target_include_directories(sc_core PUBLIC src)
 target_compile_options(sc_core PRIVATE -Wall -Wextra)
-target_link_libraries(sc_core PUBLIC m)
+find_package(Threads REQUIRED)
+target_link_libraries(sc_core PUBLIC m Threads::Threads ${CMAKE_DL_LIBS}) # sdr.c: USB thread, dlopen(librtlsdr)
 
 enable_testing()
 add_executable(test_core tests/test_core.c)

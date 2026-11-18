@@ -154,6 +154,33 @@ double heading_from_mag(double x, double y, const cfg_t *c);
 /* 1 when an RTL2832U receiver is listed under <usb_sysfs> (normally /sys/bus/usb/devices). */
 int sdr_present(const char *usb_sysfs);
 
+/* ---------------- in-process RTL-SDR (librtlsdr loaded at run time) ---------------- */
+/* Lock-free single-producer (USB thread) / single-consumer (main loop) ring of u8 IQ bytes.
+ * When full, new data is dropped and counted: the producer never moves the consumer's tail. */
+typedef struct {
+    unsigned char *buf;
+    size_t size;                    /* power of two */
+    _Atomic size_t head, tail;      /* free-running byte counters */
+    _Atomic unsigned long dropped;  /* bytes discarded because the ring was full */
+} iqring_t;
+int iqring_init(iqring_t *r, size_t size); /* size: power of two */
+void iqring_free(iqring_t *r);
+size_t iqring_write(iqring_t *r, const unsigned char *p, size_t n); /* producer; stores whole IQ pairs */
+size_t iqring_read(iqring_t *r, unsigned char *p, size_t n);        /* consumer */
+size_t iqring_avail(iqring_t *r);
+void iqring_flush(iqring_t *r); /* consumer: discard everything buffered (after a retune) */
+
+typedef struct sdr sdr_t; /* opaque */
+/* Open cfg->rtl_dev at `rate` S/s with cfg ppm/gain/bias_tee and start streaming.
+ * NULL on failure, with the reason in err (librtlsdr0 missing, no device, busy...). */
+sdr_t *sdr_open(const cfg_t *c, long rate, char *err, size_t n);
+int sdr_tune(sdr_t *s, long f_hz);                       /* retune and flush buffered IQ */
+size_t sdr_read(sdr_t *s, unsigned char *iq, size_t n); /* non-blocking, u8 IQ pairs */
+void sdr_flush(sdr_t *s);
+int sdr_alive(const sdr_t *s);                 /* 0 once the stream ended (dongle unplugged) */
+unsigned long sdr_dropped(const sdr_t *s);     /* IQ bytes lost to a full ring */
+void sdr_close(sdr_t *s);
+
 /* ---------------- spectrum scan ---------------- */
 #define SPEC_MAX 2048
 typedef struct {

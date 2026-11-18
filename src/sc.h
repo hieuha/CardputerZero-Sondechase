@@ -2,6 +2,7 @@
 #ifndef SC_H
 #define SC_H
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/types.h>
 
@@ -153,6 +154,36 @@ double heading_from_mag(double x, double y, const cfg_t *c);
 
 /* 1 when an RTL2832U receiver is listed under <usb_sysfs> (normally /sys/bus/usb/devices). */
 int sdr_present(const char *usb_sysfs);
+
+/* ---------------- DSP on u8 IQ from the RTL-SDR ---------------- */
+typedef struct {
+    int n;                      /* FFT size, power of two */
+    float *re, *im, *win, *cs, *sn;
+    int *rev;
+} fft_t;
+int fft_init(fft_t *f, int n);
+void fft_free(fft_t *f);
+/* Average power of `frames` consecutive n-pair FFTs of u8 IQ (2*n*frames bytes), Hann window,
+ * written to db[n] in dB relative to a full-scale tone, lowest frequency first (DC at n/2). */
+void fft_spectrum(fft_t *f, const unsigned char *iq, int frames, float *db);
+
+/* Decoder front end, a port of rtl_fm's "-M raw -F9 -s 48000" chain: the dongle samples at
+ * DDC_RATE and is tuned DDC_RATE/4 above the wanted centre; a 90-degree rotation brings that
+ * centre to 0 Hz, five half-band (binomial) decimate-by-2 stages and a 9-tap droop-compensation
+ * FIR give 48 kHz complex int16, the stream fsk_demod --cs16 reads. */
+#define DDC_RATE 1536000L
+#define DDC_DECIM 32
+#define DDC_BLOCK 8192 /* input IQ pairs per processing block, a multiple of DDC_DECIM */
+typedef struct {
+    unsigned phase;            /* rotation step (0..3) of the next input pair */
+    int npend;                 /* IQ pairs waiting in pend */
+    int16_t pend[2 * DDC_BLOCK];
+    int16_t hist_i[5][6], hist_q[5][6], droop_i[9], droop_q[9];
+} ddc_t;
+void ddc_init(ddc_t *d);
+/* Consume nbytes (even) of u8 IQ; write 48 kHz cs16 pairs to out, which must hold at least
+ * nbytes / (2 * DDC_DECIM) + DDC_BLOCK / DDC_DECIM pairs. Returns pairs written. */
+size_t ddc_process(ddc_t *d, const unsigned char *iq, size_t nbytes, int16_t *out);
 
 /* ---------------- in-process RTL-SDR (librtlsdr loaded at run time) ---------------- */
 /* Lock-free single-producer (USB thread) / single-consumer (main loop) ring of u8 IQ bytes.

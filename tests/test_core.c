@@ -235,6 +235,70 @@ static void t_ring(void)
     iqring_free(&r);
 }
 
+/* u8 IQ (rtl-sdr format) of a complex tone at f_hz, sampled at rate. */
+static void tone_u8(unsigned char *iq, int pairs, double f_hz, double rate, double amp)
+{
+    int i;
+    for (i = 0; i < pairs; i++) {
+        double ph = 2.0 * M_PI * f_hz * i / rate;
+        iq[2 * i] = (unsigned char)lround(127.5 + amp * cos(ph));
+        iq[2 * i + 1] = (unsigned char)lround(127.5 + amp * sin(ph));
+    }
+}
+
+/* Power of complex int16 IQ at f_hz (single-bin DFT), skipping the filter start-up. */
+static double cs16_power(const int16_t *x, int pairs, double f_hz, double rate)
+{
+    double re = 0, im = 0;
+    int i;
+    for (i = 64; i < pairs; i++) {
+        double ph = -2.0 * M_PI * f_hz * i / rate;
+        re += x[2 * i] * cos(ph) - x[2 * i + 1] * sin(ph);
+        im += x[2 * i] * sin(ph) + x[2 * i + 1] * cos(ph);
+    }
+    return re * re + im * im;
+}
+
+static void t_dsp(void)
+{
+    enum { N = 1024, PAIRS = 8 * DDC_BLOCK };
+    static unsigned char iq[2 * PAIRS];
+    static int16_t a[2 * (PAIRS / DDC_DECIM + DDC_BLOCK / DDC_DECIM)], b[sizeof a / sizeof a[0]];
+    static ddc_t d1, d2;
+    static float db[N];
+    fft_t f;
+    size_t na, nb, off;
+    int i, best = 0;
+    double p12;
+
+    /* FFT: a tone exactly on bin +100 peaks there (DC sits at N/2), ~0 dBFS at full scale */
+    CHECK(fft_init(&f, 1000) == -1);
+    CHECK(fft_init(&f, N) == 0);
+    tone_u8(iq, 4 * N, 100.0 * DDC_RATE / N, DDC_RATE, 120.0);
+    fft_spectrum(&f, iq, 4, db);
+    for (i = 1; i < N; i++)
+        if (db[i] > db[best]) best = i;
+    CHECK(best == N / 2 + 100);
+    NEAR(db[best], 20.0 * log10(120.0 / 127.5), 0.5);
+    CHECK(db[N / 2 + 300] < db[best] - 40.0);
+    fft_free(&f);
+
+    /* DDC: the sonde sits DDC_RATE/4 - 12 kHz below the dongle's centre (rtl_fm's offset tuning);
+     * it must come out at +12 kHz in the 48 kHz stream, where fsk_demod expects it */
+    tone_u8(iq, PAIRS, -(DDC_RATE / 4.0 - 12000.0), DDC_RATE, 60.0);
+    ddc_init(&d1);
+    na = ddc_process(&d1, iq, sizeof iq, a);
+    CHECK(na == PAIRS / DDC_DECIM);
+    p12 = cs16_power(a, (int)na, 12000.0, 48000.0);
+    CHECK(p12 > 100.0 * cs16_power(a, (int)na, -12000.0, 48000.0));
+    CHECK(p12 > 100.0 * cs16_power(a, (int)na, 20000.0, 48000.0));
+    /* the same input fed in small odd-sized pieces gives a bit-identical stream */
+    ddc_init(&d2);
+    for (off = 0, nb = 0; off < sizeof iq; off += 38)
+        nb += ddc_process(&d2, iq + off, off + 38 <= sizeof iq ? 38 : sizeof iq - off, b + 2 * nb);
+    CHECK(nb == na && !memcmp(a, b, na * 2 * sizeof a[0]));
+}
+
 /* Number of non-zombie processes in process group pg (zombies await reaping by init). */
 static int live_in_group(pid_t pg)
 {
@@ -520,6 +584,7 @@ int main(int argc, char **argv)
     t_cfg();
     t_spec();
     t_ring();
+    t_dsp();
     t_track();
     t_tiles();
     t_app(argc > 1 ? argv[1] : "tests/fake_decoder.sh");

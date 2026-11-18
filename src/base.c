@@ -26,11 +26,11 @@ void cfg_defaults(cfg_t *c)
              " | fsk_demod --cs16 -b 1200 -u 22800 -s 2 48000 4800 - - 2>/dev/null"
              " | stdbuf -oL rs41mod --ptu2 --json --softin -i --jsn_cfq {f_hz} 2>/dev/null");
     snprintf(c->scan_cmd, sizeof c->scan_cmd,
-             "rtl_power -f {lo}:{hi}:{step} -i {int} -1 -c 20%% -p {ppm} -d {dev} {gain} - 2>/dev/null");
+             "stdbuf -oL rtl_power -f {lo}:{hi}:{step} -i {int} -c 20%% -p {ppm} -d {dev} {gain} - 2>/dev/null");
     c->scan_lo_hz = 400000000L;
     c->scan_hi_hz = 406000000L;
     c->scan_step_hz = 5000;
-    c->scan_int_s = 4;
+    c->scan_int_s = 1; /* one full 400-406 MHz pass per second on the CM0 */
     c->scan_snr_db = 8.0;
     c->auto_tune = 0;
     snprintf(c->gpsd_host, sizeof c->gpsd_host, "127.0.0.1");

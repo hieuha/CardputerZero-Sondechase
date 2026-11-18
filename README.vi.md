@@ -51,7 +51,7 @@ dừng; sau khi chọn peak, pipeline giải mã khởi động lại ở tần 
 | `4` Track | La bàn HUD, khoảng cách, bearing, elevation, điểm rơi dự đoán |
 | `5` Map | Tile nạp sẵn, vị trí máy, sonde, vệt bay, điểm rơi. `Up/Down` zoom, `C` đổi chế độ bám (both / device / sonde) |
 | `6` Graph | `Left/Right` đổi trang: Skew-T log-P, độ cao + tốc độ đứng theo thời gian |
-| `7` Scan | Phổ 400–406 MHz. `Left/Right` chọn peak, `Enter` tune, `S` quét lại |
+| `7` Scan | Phổ 400–406 MHz, quét liên tục (mỗi lượt `scan_int_s` giây). `Left/Right` chọn peak, `Enter` tune, `S` quét lại từ đầu, `X` dừng |
 | `8` Info | Sonde, thu nhận, thiết bị, một cặp tọa độ đích |
 | `F` | Nhập tần số (kHz) |
 | `M` | Tắt / bật tiếng beeper |

@@ -51,7 +51,7 @@ stopped; after a peak is chosen, the decode pipeline restarts on the new frequen
 | `4` Track | HUD compass, distance, bearing, elevation, predicted landing point |
 | `5` Map | Preloaded tiles, device position, sonde, flight track, landing point. `Up/Down` zoom, `C` cycles follow mode (both / device / sonde) |
 | `6` Graph | `Left/Right` switch page: Skew-T log-P, altitude + vertical speed over time |
-| `7` Scan | 400–406 MHz spectrum. `Left/Right` select peak, `Enter` tune, `S` rescan |
+| `7` Scan | 400–406 MHz spectrum, swept continuously (one pass per `scan_int_s`). `Left/Right` select peak, `Enter` tune, `S` restart the sweep, `X` stop |
 | `8` Info | Sonde, reception, device, one pair of target coordinates |
 | `F` | Enter frequency (kHz) |
 | `M` | Mute / unmute beeper |

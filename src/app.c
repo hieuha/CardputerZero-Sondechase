@@ -141,6 +141,21 @@ void app_on_frame(app_t *a, const char *line, double now)
     log_frame(a);
 }
 
+/* rtl_power sweeps continuously, so peaks follow the live spectrum. The selected peak stays
+ * selected while it is still present (within 20 kHz), otherwise the strongest one is. */
+static void scan_refresh(app_t *a)
+{
+    long keep = a->npeaks ? a->peaks[a->sel].f_hz : 0;
+    int i;
+    a->npeaks = spec_peaks(&a->spec, a->cfg.scan_snr_db, a->peaks, MAX_PEAKS);
+    a->sel = 0;
+    for (i = 0; keep && i < a->npeaks; i++)
+        if (labs(a->peaks[i].f_hz - keep) <= 20000) {
+            a->sel = i;
+            break;
+        }
+}
+
 void app_poll(app_t *a)
 {
     char line[LR_MAX];
@@ -176,13 +191,15 @@ void app_poll(app_t *a)
             start_decoder(a);
         }
     } else if (a->state == ST_SCAN) {
-        while ((r = lr_readline(&a->proc.lr, line, sizeof line)) == 1) spec_add_line(&a->spec, line);
+        int rows = 0;
+        while ((r = lr_readline(&a->proc.lr, line, sizeof line)) == 1) rows += spec_add_line(&a->spec, line) > 0;
+        if (rows) scan_refresh(a);
         if (r < 0) {
             proc_stop(&a->proc);
-            a->npeaks = spec_peaks(&a->spec, a->cfg.scan_snr_db, a->peaks, MAX_PEAKS);
             a->state = ST_IDLE;
-            set_status(a, a->npeaks ? "scan done" : "scan done: no signal");
-            if (a->npeaks && a->cfg.auto_tune) app_tune(a, a->peaks[0].f_hz);
+            set_status(a, a->npeaks ? "scan stopped" : "scan stopped: no signal");
+        } else if (rows && a->cfg.auto_tune && a->npeaks && a->spec.n > 0 && a->spec.ok[a->spec.n - 1]) {
+            app_tune(a, a->peaks[0].f_hz); /* first complete sweep reached the top of the band */
         }
     }
 

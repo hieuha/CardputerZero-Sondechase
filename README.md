@@ -5,20 +5,20 @@
 RS41 radiosonde receiver, decoder and chase aid for the M5Stack CardputerZero
 (Raspberry Pi CM0, 320×170 LCD, 46-key keyboard) with an RTL-SDR v4 and GPS.
 
-Version 0.3.0. Runs on a real CardputerZero with an RTL-SDR Blog V4: scanning, decoding and the screens below
-were checked on the device with a live RS41 (Y0532351). GPS chasing in the field has not been tried yet; see
-"Test status".
+Version 0.3.0. Runs on a real CardputerZero with an RTL-SDR Blog V4: scanning and decoding were checked on the
+device with a live RS41 (Y0532351). GPS chasing in the field has not been tried yet; see "Test status".
 
 | | |
 |---|---|
-| ![Scan screen: the 403.000 MHz peak identified as RS41 Y0532351](screenshots/device/scan-rs41-identified.png) | ![Auto scan: trial decode of an unknown peak](screenshots/device/scan-auto-checking.png) |
-| **Scan**: peak identified as RS41 `Y0532351` | **Auto scan**: trial decode of a peak |
-| ![Live spectrum around the sonde while decoding](screenshots/device/scan-live-decoding.png) | ![Track screen: sonde telemetry before its GPS has a fix](screenshots/device/track-sonde-no-gps-fix.png) |
-| **Scan while decoding**: live spectrum around the sonde | **Track**: sonde still waiting for its GPS fix |
-| ![Map screen with OpenStreetMap tiles](screenshots/device/map-default-area.png) | ![SondeChase in the APPLaunch launcher](screenshots/device/launcher.png) |
-| **Map**: OpenStreetMap tiles, recolored | **APPLaunch** launcher entry |
+| ![Spectrum, tuned view: the signal under the cursor in the middle](screenshots/device/scan-tuned.png) | ![Spectrum, band overview with the strongest peak selected](screenshots/device/scan-band-overview.png) |
+| **Spectrum, tuned**: Left/Right ±10 kHz, Up/Down ±100 kHz | **Spectrum, band overview** (`S`) |
+| ![Track screen: sonde telemetry before its GPS has a fix](screenshots/device/track-sonde-no-gps-fix.png) | ![Map screen with OpenStreetMap tiles](screenshots/device/map-default-area.png) |
+| **Track**: sonde Y0532351 still waiting for its GPS fix | **Map**: OpenStreetMap tiles, recolored |
+| ![Holding Esc: quit countdown](screenshots/device/hold-esc-to-quit.png) | ![SondeChase in the APPLaunch launcher](screenshots/device/launcher.png) |
+| **Hold `Esc`** to quit | **APPLaunch** launcher entry |
 
-Screenshots are read from `/dev/fb0` of a running CardputerZero, shown at 2×.
+Screenshots are read from `/dev/fb0` of a running CardputerZero, shown at 2×. The two spectrum captures show the
+403.000 MHz test carrier of `tests/fake_rtlsdr.c` (no dongle was plugged in when they were taken).
 
 ## Architecture
 
@@ -44,7 +44,7 @@ Magnetometer ── IIO sysfs ────────┼─► heading         
                                   │                                     │
                     ┌─────────────▼─────────────────────────────────────▼────────────────┐
                     │ sondechase  ·  C, LVGL 9.5, /dev/fb0 + evdev                       │
-                    │ app.c   IDLE / SCAN / DECODE, trial decodes, known sondes          │
+                    │ app.c   IDLE / SCAN / DECODE, tuning, known sondes                 │
                     │ geo.c   distance, bearing, ISA, landing prediction                 │
                     │ track.c history, burst, beeper → pacat → PipeWire                  │
                     │ ui.c    7 screens + alerts                                         │
@@ -56,8 +56,9 @@ cross build needs no librtlsdr in the sysroot). One USB thread fills a lock-free
 main loop. `fsk_demod` and `rs41mod` from `radiosonde_auto_rx` are the only external decoders; `radiosonde_auto_rx`
 itself does not run.
 
-The dongle serves one job at a time: the scan sweep (2.048 MS/s) or the decoder (1.536 MS/s). If `librtlsdr0` cannot
-be loaded, or with `sdr_backend = cmd`, the app falls back to `rtl_power` and `rtl_fm` child processes.
+The dongle is opened once and kept for the session; the scan sweep (2.048 MS/s) and the decoder (1.536 MS/s) take
+turns on it, so switching job only restarts the USB stream at the other rate. `rtl_power` and `rtl_fm` are not used.
+If `librtlsdr0` is missing or the dongle is busy, the reason shows on the status line and the app retries.
 
 ## Screens and keys
 
@@ -66,7 +67,7 @@ be loaded, or with `sdr_backend = cmd`, the app falls back to `rtl_power` and `r
 | `4` Track | HUD compass, distance, bearing, elevation, predicted landing point; sonde serial, frame and battery while its GPS has no fix |
 | `5` Map | Tiles, device position, sonde, flight track, landing point. `Up/Down` zoom, `C` cycles follow mode (both / device / sonde). With no position yet: centred on `map_lat` / `map_lon` |
 | `6` Graph | `Left/Right` switch page: Skew-T log-P, altitude + vertical speed over time |
-| `7` Scan | 400–406 MHz spectrum. `S` scan, `A` auto on/off, `Left/Right` select peak, `Enter` decode it. While decoding: live spectrum around the sonde |
+| `7` Scan | Spectrum, like an SDR app: the tuned frequency in the middle, `Left/Right` ±10 kHz, `Up/Down` ±100 kHz. `S` band overview: `Left/Right` jump between peaks, `Enter` tune |
 | `8` Info | Sonde, reception, device, one pair of target coordinates |
 | `F` | Enter frequency (kHz) |
 | `M` | Mute / unmute beeper |
@@ -75,14 +76,15 @@ be loaded, or with `sdr_backend = cmd`, the app falls back to `rtl_power` and `r
 
 The burst alert overlays every screen: `Enter` opens Map, a short `Esc` dismisses.
 
-**Scan modes**
+**Spectrum**
 
-- **Manual** (default, `scan_auto = 0`): `S` sweeps for ~1 s (4 passes, enough to catch an RS41 between frames), then
-  the picture holds so a peak can be picked.
-- **Auto** (`A`): sweeps continuously. After each pass the strongest peak above `verify_snr_db` (15 dB) that nothing is
-  known about gets a trial decode of up to `verify_s` (8 s), then the sweep resumes.
-- Every decoded frame records its frequency with the sonde serial; peaks there are labelled with the serial
-  (`Y0532351`). A trial that decodes nothing marks the peak `x` (not RS41) for 5 minutes.
+- **Tuned view**: the decoder always runs at the frequency under the cursor, and the screen shows its own samples
+  ±384 kHz around it, refreshed 20 times a second. Tuning only moves the dongle; the decoder keeps running and
+  resynchronises within a few seconds.
+- **Band overview** (`S`, and at start-up when no `freq_hz` is set): ~1 s of sweeps over 400–406 MHz (4 passes, enough
+  to catch an RS41 between frames), then the picture holds with the strongest peak selected.
+- Every decoded frame records its frequency with the sonde serial; the spectrum labels that frequency with the serial
+  (`Y0532351`).
 
 **Missing hardware states**
 
@@ -98,6 +100,8 @@ The burst alert overlays every screen: `Enter` opens Map, a short `Esc` dismisse
 
 **Scan sweep** (`app.c`, `io.c`): 4 retune steps at 2.048 MS/s keep the central 80 % of a 1024-point FFT (2 kHz bins).
 After each retune the app drops 15 ms of settling plus one 16 KiB USB transfer, then averages 5 FFT frames.
+The tuner's DC offset and LO leakage make false peaks within ~50 kHz of each tuning centre, so each step ignores that
+zone and every other pass is shifted by half a step to measure it; the tuned view interpolates across it.
 Each 5 kHz cell holds its value against the previous pass decayed by 3 dB, so a sonde's peak stays put between frames
 and a signal that stops fades out within seconds. A peak is a contiguous run of cells above
 `median + scan_snr_db`; its frequency is the power-weighted centroid on a 10 kHz grid.
@@ -184,11 +188,11 @@ Package contents:
 | `/usr/share/APPLaunch/applications/sondechase.desktop` | launcher entry |
 | `/usr/share/APPLaunch/share/images/sondechase.png` | 100×100 icon |
 
-`Depends: libc6, curl`. Needed at run time and **not in the package**:
+`Depends: libc6, curl, librtlsdr0 (>= 2.0.2)` (Debian 13's librtlsdr0 drives the RTL-SDR Blog V4; it is loaded at
+run time, not linked). Needed at run time and **not in the package**:
 
-- `librtlsdr0` (≥ 2.0.2; Debian 13's drives the RTL-SDR Blog V4): `sudo apt install rtl-sdr`
-- `fsk_demod` and `rs41mod`, built from `radiosonde_auto_rx`: `./scripts/install_decoders.sh`
-- `gpsd` for this device's position, `pacat` (`pulseaudio-utils`) for the beeper
+- `fsk_demod` and `rs41mod`, built from `radiosonde_auto_rx` v1.9.0: `./scripts/install_decoders.sh`
+- `gpsd` for this device's position, `pacat` (`pulseaudio-utils`) for the beeper (both in `Recommends`)
 
 The package installs no systemd service: the app is opened from APPLaunch and runs as the launcher's user.
 That user needs read/write access to `/dev/fb0`, `/dev/input/event*`, the RTL-SDR and PipeWire (groups
@@ -226,7 +230,9 @@ distance from the dominant background color; it needs tuning if the tile style d
 
 ## Test status
 
-`tests/test_core.c`: 4220 checks pass on the CardputerZero (`-Wall -Wextra -Werror`): geodesy, ISA,
+`tests/test_core.c`: 4218 checks pass on the CardputerZero (`-Wall -Wextra -Werror`). A fake `librtlsdr`
+(`tests/fake_rtlsdr.c`, a 403.000 MHz carrier wherever it is tuned) runs scanning and decoding end to end without a
+dongle. Covered: geodesy, ISA,
 dew point, landing prediction, rs41mod JSON (including a real no-fix frame) and gpsd parsers, heading, spectrum
 cells and peak hold, IQ ring, FFT, decoder front end (sonde lands at +12 kHz, images ≥ 20 dB down, chunking
 bit-exact), stdin feeding, process-group reaping, flight history, tiles, child pipeline lifecycle.
@@ -239,8 +245,8 @@ On a CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 at 403.000 MHz):
 | CPU while decoding | 15.6 % of one core for the whole app (`rtl_fm` alone used 61.5 %) |
 | Scan | full 400–406 MHz pass every ~0.25 s, 12.8 % CPU, sonde at +55 dB |
 | Dropped samples | 0 in the IQ ring, 0 in the decoder pipe |
-| Manual scan / auto identification | 1.66 s / Y0532351 named 3.7 s into its trial |
-| Retune (R828D, I2C) | 32.7 ms; scan → decode switch 621 ms |
+| Band overview | 1.66 s |
+| Retune (R828D, I2C) | 32.7 ms; scan → decode switch 621 ms when the dongle was reopened (it now stays open; not re-measured on hardware) |
 | Display, keyboard, PipeWire audio, magnetometer node, OSM tile download | working |
 
 Not yet checked: GPS (no module fitted yet), the proximity beeper in the field, burst detection and landing
@@ -249,8 +255,8 @@ prediction on a real flight, the `cp0-cross` cross build, drawing speed with man
 ## Known limitations
 
 - RS41 only. Other sonde types need their own decoder and `fsk_demod` parameters.
-- The sweep shows some spurious peaks (e.g. 400.78, 402.88, 404.6 MHz next to a strong sonde) that the live view
-  around them does not show; auto mode rejects them, at ~8 s each.
+- Next to a very strong sonde the overview can show weaker spurs (402.88 and 404.6 MHz were seen with the sonde
+  a few cm from the antenna); tuning to them shows nothing to decode.
 - Compass not calibrated: the magnetometer has a large hard-iron offset on this board; `mag_off_x/y`,
   `mag_rot_deg`, `mag_flip_y` must be set by hand, and there is no tilt compensation yet.
 - Skew-T stops at 100 hPa; moist adiabats and mixing ratio lines are not drawn yet.

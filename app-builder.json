@@ -19,7 +19,7 @@
       "screenshots/07_burst.png"
     ],
     "icon": "assets/images/sondechase_256.png",
-    "license": "GPL-3.0-only",
+    "license": "GPL-3.0-or-later",
     "source_repo": "https://github.com/hieuha/CardputerZero-Sondechase",
     "author": {
       "github": "hieuha",

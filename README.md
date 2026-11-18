@@ -1,229 +1,230 @@
 # SondeChase
 
-Ứng dụng thu, giải mã radiosonde RS41 và hỗ trợ chase trên M5Stack CardputerZero
-(Raspberry Pi CM0, LCD 320×170, bàn phím 46 phím) với RTL-SDR v4 và GPS.
+**English** | [Tiếng Việt](README.vi.md)
 
-Phiên bản 0.3.0. Xem mục "Trạng thái kiểm thử" trước khi dùng: UI đã biên dịch và render với LVGL 9.5
-trên PC; các đường phần cứng chưa được chạy trên thiết bị thật.
+RS41 radiosonde receiver, decoder and chase aid for the M5Stack CardputerZero
+(Raspberry Pi CM0, 320×170 LCD, 46-key keyboard) with an RTL-SDR v4 and GPS.
 
-## Kiến trúc
+Version 0.3.0. Read "Test status" before use: the UI has been compiled and rendered with LVGL 9.5
+on a PC; the hardware paths have not yet run on a real device.
+
+## Architecture
 
 ```
-RTL-SDR v4 ── rtl_fm (IQ 48 kHz) ── fsk_demod (soft bit 4800 baud) ── rs41mod --json ─┐
-RTL-SDR v4 ── rtl_power (CSV 400–406 MHz, khi quét) ───────────────────────────────────┤ pipe
-GPS ── gpsd (JSON, TCP 2947) ──────────────────────────────────────────────────────────┤
-Magnetometer (IIO sysfs) ──────────────────────────────────────────────────────────────┤
-                                                                                       ▼
+RTL-SDR v4 ── rtl_fm (IQ 48 kHz) ── fsk_demod (soft bits 4800 baud) ── rs41mod --json ─┐
+RTL-SDR v4 ── rtl_power (CSV 400–406 MHz, while scanning) ──────────────────────────────┤ pipe
+GPS ── gpsd (JSON, TCP 2947) ───────────────────────────────────────────────────────────┤
+Magnetometer (IIO sysfs) ───────────────────────────────────────────────────────────────┤
+                                                                                        ▼
                                    sondechase (C, LVGL 9.5, /dev/fb0 + evdev)
-                                   ├─ app.c    máy trạng thái IDLE / DECODE / SCAN
-                                   ├─ geo.c    khoảng cách, bearing, elevation, ISA, dự đoán điểm rơi
-                                   ├─ track.c  lịch sử bay, phát hiện bóng nổ, beeper, audio, tile
-                                   ├─ io.c     gpsd, heading, phổ rtl_power
-                                   └─ ui.c     7 màn hình + cảnh báo, vẽ trực tiếp bằng line/rect/label
-                                              └─ aplay (PCM 16 kHz qua pipe)
+                                   ├─ app.c    state machine IDLE / DECODE / SCAN
+                                   ├─ geo.c    distance, bearing, elevation, ISA, landing prediction
+                                   ├─ track.c  flight history, burst detection, beeper, audio, tiles
+                                   ├─ io.c     gpsd, heading, rtl_power spectrum
+                                   └─ ui.c     7 screens + alert, drawn directly with line/rect/label
+                                              └─ aplay (16 kHz PCM over a pipe)
 ```
 
-`radiosonde_auto_rx` không chạy. App chỉ dùng hai binary `rs41mod` và `fsk_demod` build từ
-source tree của dự án đó, và tự làm phần điều khiển SDR, quét, tracking, dự đoán, UI.
+`radiosonde_auto_rx` does not run. The app only uses the `rs41mod` and `fsk_demod` binaries built
+from that project's source tree, and does SDR control, scanning, tracking, prediction and UI itself.
 
-RTL-SDR chỉ phục vụ một tiến trình tại một thời điểm: khi quét (`rtl_power`), pipeline giải mã
-dừng; sau khi chọn peak, pipeline giải mã khởi động lại ở tần số mới.
+The RTL-SDR serves one process at a time: while scanning (`rtl_power`) the decode pipeline is
+stopped; after a peak is chosen, the decode pipeline restarts on the new frequency.
 
-## Màn hình và phím
+## Screens and keys
 
-| Phím | Chức năng |
+| Key | Function |
 |---|---|
-| `1` Track | La bàn HUD, khoảng cách, bearing, elevation, điểm rơi dự đoán |
-| `2` Map | Tile nạp sẵn, vị trí máy, sonde, vệt bay, điểm rơi. `Up/Down` zoom, `C` đổi chế độ bám (both / device / sonde) |
-| `3` Graph | `Left/Right` đổi trang: Skew-T log-P, độ cao + tốc độ đứng theo thời gian |
-| `4` Scan | Phổ 400–406 MHz. `Left/Right` chọn peak, `Enter` tune, `S` quét lại |
-| `5` Info | Sonde, thu nhận, thiết bị, một cặp tọa độ đích |
-| `F` | Nhập tần số (kHz) |
-| `M` | Tắt / bật tiếng beeper |
-| `R` / `X` / `Q` | Khởi động lại decoder / dừng / thoát |
+| `1` Track | HUD compass, distance, bearing, elevation, predicted landing point |
+| `2` Map | Preloaded tiles, device position, sonde, flight track, landing point. `Up/Down` zoom, `C` cycles follow mode (both / device / sonde) |
+| `3` Graph | `Left/Right` switch page: Skew-T log-P, altitude + vertical speed over time |
+| `4` Scan | 400–406 MHz spectrum. `Left/Right` select peak, `Enter` tune, `S` rescan |
+| `5` Info | Sonde, reception, device, one pair of target coordinates |
+| `F` | Enter frequency (kHz) |
+| `M` | Mute / unmute beeper |
+| `R` / `X` / `Q` | Restart decoder / stop / quit |
 
-Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` mở Map, `Esc` đóng.
+The burst alert overlays every screen: `Enter` opens Map, `Esc` dismisses.
 
-**Trạng thái thiếu phần cứng**
+**Missing hardware states**
 
-- Không có SDR trên USB (VID:PID `0bda:2838` hoặc `0bda:2832`): màn hình chặn "No SDR device found".
-  App kiểm tra lại USB mỗi 2 s và tự tiếp tục giải mã khi thiết bị xuất hiện. Tắt kiểm tra: `sdr_check = 0`.
-- Không có GPS fix: việc giải mã sonde không bị ảnh hưởng. Thanh trên cùng hiện `GPS lost` (đã từng có fix)
-  hoặc `No GPS`. Màn hình Track thay khoảng cách, bearing, elevation bằng độ cao và tọa độ tuyệt đối của
-  sonde và của điểm rơi dự đoán. Map bám theo sonde. Beeper không kêu.
+- No SDR on USB (VID:PID `0bda:2838` or `0bda:2832`): a blocking "No SDR device found" screen.
+  The app rechecks USB every 2 s and resumes decoding when the device appears. Disable the check: `sdr_check = 0`.
+- No GPS fix: sonde decoding is unaffected. The top bar shows `GPS lost` (had a fix before)
+  or `No GPS`. The Track screen replaces distance, bearing and elevation with the absolute altitude and
+  coordinates of the sonde and of the predicted landing point. Map follows the sonde. The beeper stays silent.
 
-## Thuật toán
+## Algorithms
 
-**Dự đoán điểm rơi** (`geo.c`, `predict_landing`)
+**Landing prediction** (`geo.c`, `predict_landing`)
 
-- Tốc độ rơi dưới dù ở vận tốc cuối: `v(h) = v_sl · sqrt(ρ0 / ρ(h))`, `ρ(h)` theo ISA.
-- Khi sonde đang rơi, `v_sl` hiệu chỉnh từ tốc độ đứng đo được: `v_sl = |vv| / sqrt(ρ0 / ρ(h))`.
-- Khi sonde đang lên: giả định độ cao nổ `burst_alt` và `descent_v0` trong file cấu hình.
-- Trôi ngang tích phân theo lớp 100 m: `Δx = w(h) · Δh / v(h)`. `w(h)` lấy từ profile gió do chính
-  sonde đo ở pha bay lên (bin 250 m). Lớp chưa quan sát dùng vận tốc ngang hiện tại.
+- Descent rate under parachute at terminal velocity: `v(h) = v_sl · sqrt(ρ0 / ρ(h))`, `ρ(h)` from ISA.
+- While the sonde descends, `v_sl` is calibrated from the measured vertical speed: `v_sl = |vv| / sqrt(ρ0 / ρ(h))`.
+- While the sonde ascends: assumes burst altitude `burst_alt` and `descent_v0` from the config file.
+- Horizontal drift integrated in 100 m layers: `Δx = w(h) · Δh / v(h)`. `w(h)` comes from the wind profile
+  the sonde itself measured during ascent (250 m bins). Unobserved layers use the current horizontal velocity.
 
-**Phát hiện bóng nổ** (`track.c`, `flight_update`): tốc độ đứng < −3 m/s trong 3 frame liên tiếp,
-độ cao > 1000 m, sau khi đã quan sát pha bay lên. Trường hợp bật máy khi sonde đã rơi: chuyển pha,
-không phát cảnh báo.
+**Burst detection** (`track.c`, `flight_update`): vertical speed < −3 m/s for 3 consecutive frames,
+altitude > 1000 m, after an ascent phase has been observed. If the app starts while the sonde is already
+descending: the phase changes, no alert is raised.
 
-**Beeper theo khoảng cách** (`track.c`): khoảng cách ngang từ máy tới sonde (hoặc tới last fix khi
-mất tín hiệu).
+**Proximity beeper** (`track.c`): horizontal distance from the device to the sonde (or to the last fix
+after signal loss).
 
-- Bật khi d ≤ 10 km, tắt khi d > 10,5 km.
-- Chu kỳ `T = 0,12 + 1,88 · (d / 10 km)^0,6` giây; mỗi tiếng 60 ms.
-- Âm lượng `V = 1 − 0,35 · log10(d / 100 m)`, giới hạn 0,3–1,0.
-- 2200 Hz khi telemetry đang cập nhật, 1100 Hz khi mất tín hiệu.
+- On when d ≤ 10 km, off when d > 10.5 km.
+- Period `T = 0.12 + 1.88 · (d / 10 km)^0.6` s; each beep 60 ms.
+- Volume `V = 1 − 0.35 · log10(d / 100 m)`, clamped to 0.3–1.0.
+- 2200 Hz while telemetry is updating, 1100 Hz after signal loss.
 
-**Skew-T log-P** (`ui.c`): `y ∝ ln(1050 / p)` từ 1050 đến 100 hPa, isotherm nghiêng 45°,
-dry adiabat `T = θ · (p/1000)^0,2857`. Dew point theo Magnus (a = 17,62; b = 243,12 °C).
-Với RS41-SG (không có cảm biến áp suất), P tính từ độ cao theo ISA, hiển thị với tiền tố `~`.
+**Skew-T log-P** (`ui.c`): `y ∝ ln(1050 / p)` from 1050 to 100 hPa, isotherms skewed 45°,
+dry adiabats `T = θ · (p/1000)^0.2857`. Dew point by Magnus (a = 17.62; b = 243.12 °C).
+For RS41-SG (no pressure sensor), P is derived from altitude via ISA and shown with a `~` prefix.
 
-**Quét phổ** (`io.c`): peak là dải bin liên tục vượt `median + scan_snr_db`; tần số tâm là trọng tâm
-theo công suất, làm tròn về lưới 10 kHz.
+**Spectrum scan** (`io.c`): a peak is a contiguous run of bins above `median + scan_snr_db`; the center
+frequency is the power-weighted centroid, rounded to a 10 kHz grid.
 
-## Bản đồ
+## Map
 
-Màn hình Map tìm mỗi ô tile theo thứ tự:
+The Map screen looks up each tile in this order:
 
-1. Gói nạp sẵn trong `tile_dir` (PNG đã đổi sang màu của UI, tạo bằng `tools/prep_tiles.py`).
-2. Cache tải về trong `~/.cache/sondechase/tiles` (PNG nguyên bản của server; đổi màu khi nạp vào RAM).
-3. Nếu chưa có và `tile_online = 1`: tải ô đó qua mạng bằng `curl`, tối đa 2 kết nối đồng thời. Ô tải lỗi
-   không được thử lại trong 30 s.
+1. Preloaded pack in `tile_dir` (PNGs already recolored to the UI palette, made with `tools/prep_tiles.py`).
+2. Download cache in `~/.cache/sondechase/tiles` (original server PNGs; recolored when loaded into RAM).
+3. If missing and `tile_online = 1`: fetch that tile over the network with `curl`, at most 2 concurrent
+   connections. A failed tile is not retried for 30 s.
 
-- Chỉ các ô đang hiển thị mới được tải; app không tải trước theo vùng. Đây là kiểu sử dụng mà
-  `tile.openstreetmap.org` cho phép; tải hàng loạt để dùng offline thì bị cấm.
-- Mỗi request gửi User-Agent định danh ứng dụng (`tile_user_agent`). Màn hình Map hiện dòng
-  "© OpenStreetMap" khi có tile.
-- Cache giới hạn bởi `tile_cache_mb` (mặc định 200 MB); khi vượt, các ô cũ nhất bị xóa.
-- Ô chưa có hiện lưới trống, kèm trạng thái: `Loading map`, `No network: stored map only`,
-  hoặc `No map stored for this area` (khi `tile_online = 0`).
-- Đổi màu (`tile_recolor` trong `src/tiles.c`): màu xuất hiện nhiều nhất của ô được coi là nền đất; độ sáng
-  đầu ra tỉ lệ với khoảng cách màu so với nền, nên đường, nhãn và ranh giới thành nét sáng trên nền tối;
-  pixel thiên xanh dương thành màu nước.
-- `tools/prep_tiles.py` vẫn dùng được để nạp sẵn một vùng từ file MBTiles hoặc thư mục `z/x/y.png` có quyền
-  dùng offline. Công cụ này không tải tile.
+- Only visible tiles are fetched; the app never prefetches an area. This is the usage
+  `tile.openstreetmap.org` allows; bulk downloading for offline use is forbidden.
+- Every request sends a User-Agent identifying the app (`tile_user_agent`). The Map screen shows
+  "© OpenStreetMap" when tiles are present.
+- The cache is capped by `tile_cache_mb` (default 200 MB); when exceeded, the oldest tiles are deleted.
+- Missing tiles show an empty grid with a status: `Loading map`, `No network: stored map only`,
+  or `No map stored for this area` (when `tile_online = 0`).
+- Recoloring (`tile_recolor` in `src/tiles.c`): the most frequent color of a tile is treated as land background;
+  output brightness is proportional to color distance from that background, so roads, labels and borders become
+  bright strokes on a dark background; bluish pixels become water.
+- `tools/prep_tiles.py` can still preload an area from an MBTiles file or a `z/x/y.png` directory that you are
+  allowed to use offline. It does not download tiles.
 
-## Build và đóng gói
+## Build and packaging
 
-Bố cục cài đặt và gói `.deb` theo đúng hợp đồng của CardputerZero Template (`cmake/cm0-package.cmake`,
-`cmake/toolchains/cp0-aarch64-linux-gnu.cmake`, tên preset giống Template):
+Install layout and `.deb` packaging follow the CardputerZero Template contract (`cmake/cm0-package.cmake`,
+`cmake/toolchains/cp0-aarch64-linux-gnu.cmake`, same preset names as the Template):
 
 ```sh
-# Cross build trên PC Debian/Ubuntu (cần crossbuild-essential-arm64, ninja-build, cmake >= 3.25).
-# Lần đầu tự tải BSP sysroot của CardputerZero và LVGL v9.5.0.
+# Cross build on a Debian/Ubuntu PC (needs crossbuild-essential-arm64, ninja-build, cmake >= 3.25).
+# The first run downloads the CardputerZero BSP sysroot and LVGL v9.5.0.
 cmake --workflow --preset cp0-cross-package
 # -> dist/SondeChase_0.3.0_rev1_arm64.deb
 
-# Hoặc build ngay trên máy:
+# Or build on the device itself:
 cmake --workflow --preset cp0-native-package
 
-# Cài trên CardputerZero:
+# Install on the CardputerZero:
 sudo apt install --no-install-recommends ./SondeChase_0.3.0_rev1_arm64.deb
 ```
 
-Nội dung gói:
+Package contents:
 
-| Đường dẫn | Nội dung |
+| Path | Contents |
 |---|---|
-| `/usr/bin/sondechase` | binary (LVGL, bộ giải mã PNG và TTF liên kết tĩnh; chỉ phụ thuộc `libc6`) |
-| `/etc/sondechase.conf` | cấu hình (conffile) |
+| `/usr/bin/sondechase` | binary (LVGL, PNG and TTF decoders statically linked; depends only on `libc6`) |
+| `/etc/sondechase.conf` | configuration (conffile) |
 | `/usr/share/sondechase/fonts/` | Rajdhani SemiBold, Orbitron Bold |
-| `/usr/share/sondechase/tiles/` | thư mục cho gói bản đồ nạp sẵn (trống) |
-| `/usr/share/APPLaunch/applications/sondechase.desktop` | mục trong launcher |
-| `/usr/share/APPLaunch/share/images/sondechase.png` | icon 100×100 |
+| `/usr/share/sondechase/tiles/` | directory for a preloaded map pack (empty) |
+| `/usr/share/APPLaunch/applications/sondechase.desktop` | launcher entry |
+| `/usr/share/APPLaunch/share/images/sondechase.png` | 100×100 icon |
 
-`Depends: libc6, curl`. Các tiến trình con chạy lúc dùng và **không nằm trong gói**: `rtl_fm`, `rtl_power`
-(rtl-sdr bản RTL-SDR Blog cho v4), `fsk_demod`, `rs41mod`, `gpsd`, `aplay`. Cài bằng:
+`Depends: libc6, curl`. Child processes run at use time and are **not in the package**: `rtl_fm`, `rtl_power`
+(RTL-SDR Blog fork of rtl-sdr, for the v4), `fsk_demod`, `rs41mod`, `gpsd`, `aplay`. Install them with:
 
 ```sh
 ./scripts/install_decoders.sh
 ```
 
-Gói không cài systemd service: app được mở từ APPLaunch và chạy với user của launcher. User đó cần quyền
-đọc/ghi `/dev/fb0`, `/dev/input/event*`, thiết bị ALSA và RTL-SDR (các group `video`, `input`, `audio`,
-`plugdev`).
+The package installs no systemd service: the app is opened from APPLaunch and runs as the launcher's user.
+That user needs read/write access to `/dev/fb0`, `/dev/input/event*`, the ALSA device and the RTL-SDR (groups
+`video`, `input`, `audio`, `plugdev`).
 
-`app-builder.json` là manifest cho `czdev publish`; script kiểm tra của Template
-(`validate_app_builder.cmake`) chấp nhận file này.
+`app-builder.json` is the manifest for `czdev publish`; the Template's check script
+(`validate_app_builder.cmake`) accepts it.
 
-### Chế độ demo và ảnh chụp màn hình
+### Demo mode and screenshots
 
-- `demo = 1` trong file cấu hình: app phát một chuyến bay giả lập (bay lên 5 m/s tới 31,2 km, nổ, rơi dưới dù,
-  chạm đất, mất tín hiệu sau 90 s) qua đúng đường xử lý của frame thật. Không cần SDR, GPS hay decoder.
-  `demo_speed` là số giây mô phỏng trên một giây thực.
-- `tools/render.c` chạy mã UI thật trên một display trong bộ nhớ và ghi ảnh 320×170 của từng màn hình:
+- `demo = 1` in the config file: the app plays a simulated flight (ascent at 5 m/s to 31.2 km, burst, parachute
+  descent, landing, signal loss after 90 s) through the same processing path as real frames. No SDR, GPS or
+  decoder needed. `demo_speed` is simulated seconds per real second.
+- `tools/render.c` runs the real UI code on an in-memory display and writes a 320×170 image of each screen:
 
 ```sh
 cmake -S . -B build-render -DSC_RENDER=ON && cmake --build build-render -j
-./build-render/sc_render <thư mục ra> assets/fonts <thư mục tile>     # ghi các file .ppm
+./build-render/sc_render <output dir> assets/fonts <tile dir>     # writes .ppm files
 ```
 
-Ảnh trong `screenshots/` sinh từ công cụ này. Nền bản đồ trong các ảnh Map là tile tổng hợp để kiểm tra
-đường nạp PNG, không phải dữ liệu bản đồ thật.
+The images in `screenshots/` come from this tool. The map background in the Map images is synthetic tiles used
+to test the PNG loading path, not real map data.
 
-Build trên PC để thao tác với UI: `cmake -S . -B build-sim -DSC_SIM=ON` (cần `libsdl2-dev`; chưa thử).
-Chỉ build phần lõi và chạy test: `cmake -S . -B build -DSC_BUILD_UI=OFF && cmake --build build && ctest --test-dir build`.
+PC build for interacting with the UI: `cmake -S . -B build-sim -DSC_SIM=ON` (needs `libsdl2-dev`; untested).
+Core only, with tests: `cmake -S . -B build -DSC_BUILD_UI=OFF && cmake --build build && ctest --test-dir build`.
 
-### Nguồn tile
+### Tile sources
 
-`prep_tiles.py` không tải tile. Đầu vào là file MBTiles raster hoặc thư mục `z/x/y.png` đã có sẵn:
-tile tự render từ dữ liệu OSM, hoặc gói tile của nhà cung cấp cho phép dùng offline.
-Server `tile.openstreetmap.org` không cho phép tải hàng loạt để dùng offline.
-Bộ lọc `--recolor dark` chuyển tile nền sáng sang bảng màu tối của UI bằng heuristic theo khoảng cách
-màu so với màu nền chiếm đa số; cần chỉnh lại nếu style tile khác nhiều so với style OSM chuẩn.
+`prep_tiles.py` does not download tiles. Its input is an existing raster MBTiles file or `z/x/y.png` directory:
+tiles you rendered yourself from OSM data, or a provider's tile pack licensed for offline use.
+The `tile.openstreetmap.org` server does not allow bulk downloading for offline use.
+The `--recolor dark` filter converts light tiles to the UI's dark palette with a heuristic based on color
+distance from the dominant background color; it needs tuning if the tile style differs much from standard OSM.
 
-## Trạng thái kiểm thử
+## Test status
 
-Đã kiểm trên host x86-64 (gcc 13, `-Wall -Wextra -Werror`):
+Checked on an x86-64 host (gcc 13, `-Wall -Wextra -Werror`):
 
-- Phần lõi: 4165 phép kiểm trong `tests/test_core.c` đạt — geodesy, ISA, dew point, dự đoán điểm rơi,
-  parser JSON rs41mod và gpsd TPV, heading, quét phổ, phát hiện bóng nổ, beeper, sinh mẫu PCM,
-  lịch sử bay, toán tile, nhận diện SDR trên USB, vòng đời pipeline con (khởi động, đọc, dừng cả process group, tự khởi động lại)
-  với decoder giả lập.
-- `prep_tiles.py`: đọc MBTiles tổng hợp, đảo trục TMS, đổi màu.
-- `ui.c`: biên dịch và liên kết với LVGL v9.5.0 thật, render headless toàn bộ 17 trạng thái màn hình với
-  dữ liệu của chế độ demo; font TTF (tiny_ttf) và tile PNG (lodepng) nạp được. Bố cục đã chỉnh theo ảnh render.
-- Chế độ demo: sai số dự đoán điểm rơi tại 2976 m so với điểm chạm đất mô phỏng là 79 m.
-- `main.c` (nhánh framebuffer và nhánh SDL), `keys.c`: biên dịch được với header LVGL thật; chưa chạy.
-- Tile: hàng đợi tải, chống trùng, đổi tên nguyên tử, lùi thời gian khi lỗi, giới hạn cache và đổi màu có unit test
-  (lệnh tải được thay bằng script giả). Đường nạp tile trong UI chạy sạch dưới AddressSanitizer với cả tile
-  nạp sẵn lẫn tile kiểu "tải về".
-- Đóng gói: gói `.deb` thử nghiệm (kiến trúc amd64) build bằng CPack, nội dung và control đã kiểm bằng `dpkg-deb`.
+- Core: 4165 checks in `tests/test_core.c` pass — geodesy, ISA, dew point, landing prediction,
+  rs41mod JSON and gpsd TPV parsers, heading, spectrum scan, burst detection, beeper, PCM sample generation,
+  flight history, tile math, USB SDR detection, child pipeline lifecycle (start, read, stop the whole process
+  group, auto-restart) with a fake decoder.
+- `prep_tiles.py`: reads a synthetic MBTiles file, TMS axis flip, recoloring.
+- `ui.c`: compiles and links against real LVGL v9.5.0, renders all 17 screen states headless with demo-mode
+  data; TTF fonts (tiny_ttf) and PNG tiles (lodepng) load. Layout tuned from the rendered images.
+- Demo mode: landing prediction error at 2976 m versus the simulated touchdown point is 79 m.
+- `main.c` (framebuffer and SDL branches), `keys.c`: compile against real LVGL headers; not yet run.
+- Tiles: download queue, de-duplication, atomic rename, failure backoff, cache cap and recoloring have unit tests
+  (the download command is replaced by a fake script). The UI tile loading path runs clean under
+  AddressSanitizer with both preloaded and "downloaded" tiles.
+- Packaging: a trial `.deb` (amd64) built with CPack; contents and control checked with `dpkg-deb`.
 
-Chưa kiểm:
+Not yet checked:
 
-- Tốc độ vẽ trên CM0 (mỗi khung hình vẽ lại toàn màn hình; tile PNG giải mã lần đầu rồi nằm trong cache 4 MB).
-- Tải tile thật từ `tile.openstreetmap.org` (môi trường build không có mạng tới server này); bộ đổi màu mới
-  thử trên tile tổng hợp, chưa thử trên tile OSM thật.
-- Cross build `cp0-cross` (không có toolchain aarch64 trong môi trường build) và việc cài gói arm64 trên máy.
-- Pipeline `rtl_fm | fsk_demod | rs41mod` với RTL-SDR v4 và sonde thật; tham số lấy từ wiki auto_rx.
+- Drawing speed on the CM0 (each frame redraws the full screen; PNG tiles are decoded once, then held in a 4 MB cache).
+- Real tile downloads from `tile.openstreetmap.org` (the build environment had no network access to it); the
+  recolorer has only been tried on synthetic tiles, not real OSM tiles.
+- The `cp0-cross` cross build (no aarch64 toolchain in the build environment) and installing the arm64 package on a device.
+- The `rtl_fm | fsk_demod | rs41mod` pipeline with an RTL-SDR v4 and a real sonde; parameters taken from the auto_rx wiki.
 - `scripts/install_decoders.sh`.
-- Framebuffer, evdev của bàn phím TCA8418, đường audio (`aplay`), battery sysfs trên CardputerZero.
-- Magnetometer: BMM150 nối phía sau BMI270; app đọc `in_magn_*_raw` qua IIO sysfs. Chưa xác minh driver
-  Linux có xuất các node này. Hướng trục cần hiệu chuẩn bằng `mag_off_x/y`, `mag_rot_deg`, `mag_flip_y`.
-  Chưa có bù nghiêng.
+- Framebuffer, TCA8418 keyboard evdev, audio path (`aplay`), battery sysfs on the CardputerZero.
+- Magnetometer: BMM150 behind the BMI270; the app reads `in_magn_*_raw` via IIO sysfs. Not verified that the
+  Linux driver exposes these nodes. Axis orientation needs calibration via `mag_off_x/y`, `mag_rot_deg`,
+  `mag_flip_y`. No tilt compensation yet.
 
-## Giới hạn đã biết
+## Known limitations
 
-- Chỉ hỗ trợ RS41. Loại sonde khác cần decoder và tham số `fsk_demod` riêng.
-- Skew-T cắt ở 100 hPa; chưa vẽ moist adiabat và mixing ratio.
-- Dự đoán điểm rơi khi sonde còn đang lên phụ thuộc `burst_alt` giả định và không có gió phía trên
-  độ cao hiện tại.
-- Lịch sử bay giữ 2048 mẫu (5 s/mẫu, tự giảm độ phân giải khi đầy); không khôi phục sau khi khởi động lại app.
-  Log CSV đầy đủ ghi tại `~/sondechase.csv`.
+- RS41 only. Other sonde types need their own decoder and `fsk_demod` parameters.
+- Skew-T stops at 100 hPa; moist adiabats and mixing ratio lines are not drawn yet.
+- Landing prediction during ascent depends on the assumed `burst_alt` and has no wind above the current altitude.
+- Flight history keeps 2048 samples (5 s/sample, downsampled automatically when full); not restored after an app
+  restart. The full CSV log is written to `~/sondechase.csv`.
 
-## Giấy phép
+## License
 
-SondeChase phát hành theo GNU General Public License v3.0 (`GPL-3.0-only`), xem [`LICENSE`](LICENSE).
-Giấy phép này cho phép đưa kèm các decoder upstream vào repo hoặc gói cài đặt.
+SondeChase is released under the GNU General Public License, version 3 or (at your option) any later version (`GPL-3.0-or-later`), see [`LICENSE`](LICENSE).
+This license allows bundling the upstream decoders in the repository or install package.
 
-Thành phần bên thứ ba:
+Third-party components:
 
-| Thành phần | Giấy phép |
+| Component | License |
 |---|---|
-| `rs41mod` (zilog80, [rs1729/RS](https://github.com/rs1729/RS), qua [radiosonde_auto_rx](https://github.com/projecthorus/radiosonde_auto_rx)) | GPL-3.0 |
+| `rs41mod` (zilog80, [rs1729/RS](https://github.com/rs1729/RS), via [radiosonde_auto_rx](https://github.com/projecthorus/radiosonde_auto_rx)) | GPL-3.0 |
 | `fsk_demod` ([codec2](https://github.com/drowe67/codec2), David Rowe) | LGPL-2.1 |
 | [LVGL](https://github.com/lvgl/lvgl) v9.5 | MIT |
-| Các file trong `cmake/` lấy từ CardputerZero Template | MIT, xem `cmake/LICENSE-CardputerZero-Template.txt` |
-| Font Rajdhani, Orbitron | SIL OFL 1.1, xem `assets/fonts/OFL-*.txt` |
-| Dữ liệu bản đồ | © OpenStreetMap contributors, ODbL |
+| Files in `cmake/` taken from the CardputerZero Template | MIT, see `cmake/LICENSE-CardputerZero-Template.txt` |
+| Rajdhani, Orbitron fonts | SIL OFL 1.1, see `assets/fonts/OFL-*.txt` |
+| Map data | © OpenStreetMap contributors, ODbL |

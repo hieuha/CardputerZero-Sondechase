@@ -17,7 +17,8 @@ typedef struct {
     char gain[12];           /* "" = tuner AGC, else dB value e.g. "38.6" */
     int rtl_dev;             /* rtl-sdr device index */
     int bias_tee;            /* 1 = enable bias-T (-T) */
-    char decoder_cmd[640];   /* shell pipeline that prints rs41mod JSON on stdout */
+    char decoder_cmd[640];   /* shell pipeline that prints rs41mod JSON on stdout (cmd backend) */
+    char decoder_feed_cmd[400]; /* reads 48 kHz cs16 IQ on stdin, prints rs41mod JSON (in-process backend) */
     char scan_cmd[320];      /* shell command that prints rtl_power CSV on stdout */
     long scan_lo_hz, scan_hi_hz, scan_step_hz;
     int scan_int_s;          /* rtl_power integration time */
@@ -76,10 +77,15 @@ int lr_readline(lr_t *r, char *out, size_t n); /* 1 line, 0 nothing yet, -1 EOF/
 typedef struct {
     pid_t pid;
     lr_t lr;
+    int wfd;                 /* child's stdin (proc_start_feed), -1 otherwise */
+    unsigned long wdrop;     /* bytes proc_feed dropped because the child was not keeping up */
 } proc_t;
 void proc_init(proc_t *p);
-int proc_start(proc_t *p, const char *cmd);
+int proc_start(proc_t *p, const char *cmd);      /* stdin = /dev/null */
+int proc_start_feed(proc_t *p, const char *cmd); /* stdin = a pipe written with proc_feed */
+void proc_feed(proc_t *p, const void *buf, size_t n); /* n a multiple of the stream's frame size */
 void proc_stop(proc_t *p);
+void reap_group(pid_t pg); /* collect the remaining members of a killed child process group */
 
 /* Flat-JSON field extraction (rs41mod and gpsd TPV objects are flat). */
 int js_num(const char *s, const char *key, double *out);
@@ -336,6 +342,10 @@ typedef struct {
     long freq_hz;
     proc_t proc;
     sweep_t sw;
+    sdr_t *dsdr;             /* in-process decode: dongle at freq_hz - 12 kHz + DDC_RATE/4, NULL otherwise */
+    ddc_t ddc;
+    spectrum_t live;         /* spectrum of the decode window (+-DDC_RATE/2 around the dongle) */
+    double t_live;
     double t_restart;
     sonde_t sonde;
     int have_sonde;

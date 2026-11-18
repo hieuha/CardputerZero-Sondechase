@@ -188,6 +188,7 @@ void audio_close(audio_t *a)
     if (a->pid > 0) {
         kill(-a->pid, SIGTERM);
         waitpid(a->pid, NULL, 0);
+        reap_group(a->pid);
     }
     a->pid = 0;
 }

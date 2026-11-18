@@ -3,6 +3,7 @@
 #include "lvgl.h"
 #include "ui.h"
 #include <signal.h>
+#include <sys/prctl.h>
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
@@ -42,6 +43,9 @@ int main(int argc, char **argv)
     signal(SIGINT, on_sig);
     signal(SIGTERM, on_sig);
     signal(SIGPIPE, SIG_IGN);
+    /* Decoder, audio and tile pipelines run as "sh -c" process groups; members the shell leaves
+     * behind come to us instead of the launcher (which never reaps them), and reap_group collects them. */
+    prctl(PR_SET_CHILD_SUBREAPER, 1);
     app_init(&app, cfg);
 
     lv_init();

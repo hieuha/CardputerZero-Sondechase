@@ -3,6 +3,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,6 +25,9 @@ void cfg_defaults(cfg_t *c)
     snprintf(c->decoder_cmd, sizeof c->decoder_cmd,
              "rtl_fm -p {ppm} -d {dev} {bias} {gain} -M raw -F9 -s 48000 -f {f_tune} 2>/dev/null"
              " | fsk_demod --cs16 -b 1200 -u 22800 -s 2 48000 4800 - - 2>/dev/null"
+             " | stdbuf -oL rs41mod --ptu2 --json --softin -i --jsn_cfq {f_hz} 2>/dev/null");
+    snprintf(c->decoder_feed_cmd, sizeof c->decoder_feed_cmd,
+             "fsk_demod --cs16 -b 1200 -u 22800 -s 2 48000 4800 - - 2>/dev/null"
              " | stdbuf -oL rs41mod --ptu2 --json --softin -i --jsn_cfq {f_hz} 2>/dev/null");
     snprintf(c->scan_cmd, sizeof c->scan_cmd,
              "stdbuf -oL rtl_power -f {lo}:{hi}:{step} -i {int} -c 20%% -p {ppm} -d {dev} {gain} - 2>/dev/null");
@@ -83,7 +87,7 @@ static const cfg_ent ents[] = {
     E(audio_cmd, 's'),    E(tile_dir, 's'),     E(zoom_min, 'i'),     E(zoom_max, 'i'),
     E(map_lat, 'd'),      E(map_lon, 'd'),
     E(font_dir, 's'),     E(sdr_check, 'i'),    E(demo, 'i'),         E(demo_speed, 'd'),
-    E(sdr_backend, 's'),
+    E(sdr_backend, 's'),  E(decoder_feed_cmd, 's'),
     E(tile_online, 'i'),  E(tile_url, 's'),     E(tile_user_agent, 's'), E(tile_fetch_cmd, 's'),
     E(tile_cache_dir, 's'), E(tile_cache_mb, 'i'),
 };
@@ -196,16 +200,27 @@ void proc_init(proc_t *p)
     p->pid = 0;
     p->lr.fd = -1;
     p->lr.len = 0;
+    p->wfd = -1;
+    p->wdrop = 0;
 }
 
-int proc_start(proc_t *p, const char *cmd)
+static int proc_spawn(proc_t *p, const char *cmd, int feed)
 {
-    int pf[2];
+    int pf[2], in[2] = {-1, -1};
     if (pipe(pf) < 0) return -1;
+    if (feed && pipe(in) < 0) {
+        close(pf[0]);
+        close(pf[1]);
+        return -1;
+    }
     pid_t pid = fork();
     if (pid < 0) {
         close(pf[0]);
         close(pf[1]);
+        if (feed) {
+            close(in[0]);
+            close(in[1]);
+        }
         return -1;
     }
     if (pid == 0) {
@@ -213,8 +228,14 @@ int proc_start(proc_t *p, const char *cmd)
         dup2(pf[1], 1);
         close(pf[0]);
         close(pf[1]);
-        int nul = open("/dev/null", O_RDONLY);
-        if (nul >= 0) dup2(nul, 0);
+        if (feed) {
+            dup2(in[0], 0);
+            close(in[0]);
+            close(in[1]);
+        } else {
+            int nul = open("/dev/null", O_RDONLY);
+            if (nul >= 0) dup2(nul, 0);
+        }
         execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
         _exit(127);
     }
@@ -224,11 +245,56 @@ int proc_start(proc_t *p, const char *cmd)
     p->pid = pid;
     p->lr.fd = pf[0];
     p->lr.len = 0;
+    p->wdrop = 0;
+    if (feed) {
+        close(in[0]);
+        fcntl(in[1], F_SETFL, O_NONBLOCK);
+        fcntl(in[1], F_SETFD, FD_CLOEXEC);
+        p->wfd = in[1];
+    }
     return 0;
+}
+
+int proc_start(proc_t *p, const char *cmd)
+{
+    return proc_spawn(p, cmd, 0);
+}
+
+int proc_start_feed(proc_t *p, const char *cmd)
+{
+    return proc_spawn(p, cmd, 1);
+}
+
+/* Never blocks the UI loop. Pipe writes of up to PIPE_BUF bytes are atomic, so a chunk the child has
+ * no room for is dropped whole (and counted) and the stream keeps its sample alignment. */
+void proc_feed(proc_t *p, const void *buf, size_t n)
+{
+    const char *b = buf;
+    while (n > 0 && p->wfd >= 0) {
+        size_t k = n < PIPE_BUF ? n : PIPE_BUF;
+        if (write(p->wfd, b, k) != (ssize_t)k) p->wdrop += k; /* EAGAIN: full; EPIPE: child gone */
+        b += k;
+        n -= k;
+    }
+}
+
+/* Pipeline members outlive the shell that led their group; as a child subreaper (main.c) this app
+ * inherits them and must collect them, or they stay zombies under the launcher. */
+void reap_group(pid_t pg)
+{
+    int i;
+    for (i = 0; i < 50; i++) { /* up to 0.5 s for members still exiting */
+        pid_t r = waitpid(-pg, NULL, WNOHANG);
+        if (r < 0) return; /* none of our children left in the group */
+        if (r > 0) continue;
+        if (i == 25) kill(-pg, SIGKILL);
+        usleep(10000);
+    }
 }
 
 void proc_stop(proc_t *p)
 {
+    if (p->wfd >= 0) close(p->wfd); /* EOF first: a feed child can finish cleanly */
     if (p->pid > 0) {
         int i, done = 0;
         kill(-p->pid, SIGTERM);
@@ -242,6 +308,7 @@ void proc_stop(proc_t *p)
         } else {
             kill(-p->pid, SIGKILL); /* remaining pipeline members, if any */
         }
+        reap_group(p->pid);
     }
     if (p->lr.fd >= 0) close(p->lr.fd);
     proc_init(p);

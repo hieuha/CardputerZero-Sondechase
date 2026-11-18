@@ -2,6 +2,7 @@
 #include "../src/sc.h"
 #include <math.h>
 #include <signal.h>
+#include <sys/prctl.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -357,6 +358,58 @@ static void t_frames(void)
     unlink("/tmp/sondechase.csv");
 }
 
+/* Number of processes (zombies included) in process group pg. */
+static int procs_in_group(pid_t pg)
+{
+    char path[64], comm[64], st;
+    int pid, ppid, pgrp, n = 0, i;
+    for (i = (int)pg; i < (int)pg + 64; i++) {
+        FILE *f;
+        snprintf(path, sizeof path, "/proc/%d/stat", i);
+        if (!(f = fopen(path, "r"))) continue;
+        if (fscanf(f, "%d %63s %c %d %d", &pid, comm, &st, &ppid, &pgrp) == 5 && pgrp == (int)pg) n++;
+        fclose(f);
+    }
+    return n;
+}
+
+/* stdin-fed children get every byte; stopping a pipeline leaves no zombies behind (as a subreaper,
+ * like the app, the members the shell leaves behind are ours to collect). */
+static void t_feed(void)
+{
+    static unsigned char buf[3 * 4096 + 100];
+    proc_t p;
+    pid_t pg;
+    FILE *f;
+    long size = -1;
+    size_t i;
+    signal(SIGPIPE, SIG_IGN);
+    prctl(PR_SET_CHILD_SUBREAPER, 1);
+    for (i = 0; i < sizeof buf; i++) buf[i] = (unsigned char)i;
+    proc_init(&p);
+    unlink("/tmp/sc_feed_test");
+    CHECK(proc_start_feed(&p, "cat > /tmp/sc_feed_test") == 0 && p.wfd >= 0);
+    proc_feed(&p, buf, sizeof buf);
+    CHECK(p.wdrop == 0);
+    usleep(200000);
+    proc_stop(&p);
+    if ((f = fopen("/tmp/sc_feed_test", "rb"))) {
+        fseek(f, 0, SEEK_END);
+        size = ftell(f);
+        fclose(f);
+    }
+    CHECK(size == (long)sizeof buf);
+    unlink("/tmp/sc_feed_test");
+
+    CHECK(proc_start(&p, "sleep 30 | sleep 30 | cat") == 0);
+    pg = p.pid;
+    usleep(200000);
+    CHECK(procs_in_group(pg) >= 3);
+    proc_stop(&p);
+    CHECK(procs_in_group(pg) == 0); /* not even zombies */
+    prctl(PR_SET_CHILD_SUBREAPER, 0);
+}
+
 static void t_app(const char *fake)
 {
     static app_t a;
@@ -366,6 +419,7 @@ static void t_app(const char *fake)
     a.cfg.mag_enable = 0;
     a.cfg.audio_enable = 0;
     a.cfg.sdr_check = 0; /* no USB receiver in the test environment */
+    snprintf(a.cfg.sdr_backend, sizeof a.cfg.sdr_backend, "cmd"); /* the fake decoder stands in for rtl_fm */
     a.sdr_ok = 1;
     a.cfg.ground_alt = 10;
     snprintf(a.cfg.log_dir, sizeof a.cfg.log_dir, "/tmp");
@@ -627,6 +681,7 @@ int main(int argc, char **argv)
     t_ring();
     t_dsp();
     t_frames();
+    t_feed();
     t_track();
     t_tiles();
     t_app(argc > 1 ? argv[1] : "tests/fake_decoder.sh");

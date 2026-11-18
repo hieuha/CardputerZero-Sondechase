@@ -30,9 +30,37 @@ void app_init(app_t *a, const char *cfg_path)
     if (a->freq_hz > 0) app_tune(a, a->freq_hz);
 }
 
+static void decode_stop(app_t *a)
+{
+    sdr_close(a->dsdr);
+    a->dsdr = NULL;
+}
+
+/* In-process decode: the dongle feeds the DDC, whose 48 kHz output goes to decoder_feed_cmd.
+ * 0 on success; -1 to fall back to decoder_cmd (rtl_fm), with the reason in err. */
+static int decode_start(app_t *a, char *cmd, size_t ncmd, char *err, size_t n)
+{
+    long centre = a->freq_hz - RS41_TUNE_OFFSET_HZ + DDC_RATE / 4;
+    if (!strcmp(a->cfg.sdr_backend, "cmd")) {
+        snprintf(err, n, "sdr_backend = cmd");
+        return -1;
+    }
+    if (!a->dsdr && !(a->dsdr = sdr_open(&a->cfg, DDC_RATE, err, n))) return -1;
+    sdr_tune(a->dsdr, centre);
+    ddc_init(&a->ddc);
+    spec_reset(&a->live, centre - DDC_RATE / 2, centre + DDC_RATE / 2, DDC_RATE / SWEEP_FFT);
+    a->t_live = 0;
+    if (sc_subst(cmd, ncmd, a->cfg.decoder_feed_cmd, &a->cfg, a->freq_hz) < 0 || proc_start_feed(&a->proc, cmd) < 0) {
+        snprintf(err, n, "decoder start failed");
+        decode_stop(a);
+        return -1;
+    }
+    return 0;
+}
+
 static void start_decoder(app_t *a)
 {
-    char cmd[1024];
+    char cmd[1024], err[96];
     if (a->cfg.demo) { /* frames come from demo_poll */
         set_status(a, "decoding (demo)");
         return;
@@ -41,13 +69,41 @@ static void start_decoder(app_t *a)
         a->t_restart = sc_now() + 1.0;
         return;
     }
+    if (decode_start(a, cmd, sizeof cmd, err, sizeof err) == 0) {
+        set_status(a, "decoding");
+        return;
+    }
     if (sc_subst(cmd, sizeof cmd, a->cfg.decoder_cmd, &a->cfg, a->freq_hz) < 0 ||
         proc_start(&a->proc, cmd) < 0) {
         set_status(a, "decoder start failed");
         a->t_restart = sc_now() + 3.0;
         return;
     }
-    set_status(a, "decoding");
+    snprintf(a->status, sizeof a->status, "decoding with rtl_fm (%s)", err);
+}
+
+/* Feed the decoder from the dongle, and refresh the decode-window spectrum about 10 times a second. */
+static void decode_poll(app_t *a, double now)
+{
+    static unsigned char iq[65536];
+    static int16_t out[2 * (sizeof iq / (2 * DDC_DECIM) + DDC_BLOCK / DDC_DECIM)];
+    static float db[SWEEP_FFT];
+    size_t k;
+    while ((k = sdr_read(a->dsdr, iq, sizeof iq)) > 0) {
+        size_t n = ddc_process(&a->ddc, iq, k, out);
+        if (n) proc_feed(&a->proc, out, n * 2 * sizeof out[0]);
+        if (now - a->t_live >= 0.1 && k >= 2 * SWEEP_FFT * SWEEP_FRAMES) {
+            fft_spectrum(&a->sw.fft, iq, SWEEP_FRAMES, db);
+            spec_add_bins(&a->live, (double)a->live.f0, (double)a->live.step, db, SWEEP_FFT, SWEEP_DECAY_DB);
+            a->t_live = now;
+        }
+    }
+    if (!sdr_alive(a->dsdr)) { /* dongle unplugged: restart from scratch once it is back */
+        decode_stop(a);
+        proc_stop(&a->proc);
+        set_status(a, "receiver stream ended");
+        a->t_restart = now + 2.0;
+    }
 }
 
 /* ---------------- in-process sweep (librtlsdr) ---------------- */
@@ -89,6 +145,7 @@ static int sweep_start(app_t *a, char *err, size_t n)
 void app_stop(app_t *a)
 {
     sweep_stop(a);
+    decode_stop(a);
     proc_stop(&a->proc);
     a->state = ST_IDLE;
     set_status(a, "idle");
@@ -96,7 +153,7 @@ void app_stop(app_t *a)
 
 void app_tune(app_t *a, long f_hz)
 {
-    sweep_stop(a); /* the decoder needs the dongle */
+    sweep_stop(a); /* the decoder needs the dongle (an in-process decode keeps it and just retunes) */
     proc_stop(&a->proc);
     a->freq_hz = f_hz;
     a->state = ST_DECODE;
@@ -110,7 +167,8 @@ void app_scan(app_t *a)
         set_status(a, "no SDR device");
         return;
     }
-    proc_stop(&a->proc); /* one dongle: stop the decoder (or a previous rtl_power) first */
+    decode_stop(a); /* one dongle: stop the decoder (or a previous rtl_power) first */
+    proc_stop(&a->proc);
     spec_reset(&a->spec, a->cfg.scan_lo_hz, a->cfg.scan_hi_hz, a->cfg.scan_step_hz);
     a->npeaks = 0;
     a->sel = 0;
@@ -267,6 +325,7 @@ void app_poll(app_t *a)
     }
 
     if (a->state == ST_DECODE) {
+        if (a->dsdr && a->proc.pid > 0) decode_poll(a, now);
         if (a->proc.pid > 0) {
             while ((r = lr_readline(&a->proc.lr, line, sizeof line)) == 1)
                 if (line[0] == '{') app_on_frame(a, line, now);
@@ -323,6 +382,7 @@ derived:
 void app_free(app_t *a)
 {
     sweep_stop(a);
+    decode_stop(a);
     fft_free(&a->sw.fft);
     proc_stop(&a->proc);
     gps_close(&a->gps);

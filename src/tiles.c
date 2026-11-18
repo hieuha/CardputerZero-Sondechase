@@ -99,6 +99,7 @@ int tf_poll(tilefetch_t *t, const cfg_t *c, double now)
     for (i = 0; i < TF_JOBS; i++) {
         struct stat sb;
         if (t->job[i].pid <= 0 || waitpid(t->job[i].pid, &st, WNOHANG) != t->job[i].pid) continue;
+        reap_group(t->job[i].pid);
         if (WIFEXITED(st) && WEXITSTATUS(st) == 0 && stat(t->job[i].part, &sb) == 0 && sb.st_size > 64 &&
             rename(t->job[i].part, t->job[i].dst) == 0) { /* rename: a reader never sees a partial file */
             t->done++;
@@ -130,6 +131,7 @@ void tf_close(tilefetch_t *t)
         if (t->job[i].pid > 0) {
             kill(-t->job[i].pid, SIGTERM);
             waitpid(t->job[i].pid, NULL, 0);
+            reap_group(t->job[i].pid);
             unlink(t->job[i].part);
             t->job[i].pid = 0;
         }

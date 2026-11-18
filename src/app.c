@@ -25,43 +25,49 @@ void app_init(app_t *a, const char *cfg_path)
     audio_init(&a->audio);
     tf_init(&a->tf, &a->cfg);
     a->freq_hz = a->cfg.freq_hz;
-    a->scan_auto = a->cfg.scan_auto;
     a->sdr_ok = (a->cfg.sdr_check && !a->cfg.demo) ? sdr_present("/sys/bus/usb/devices") : 1;
     set_status(a, "idle");
     if (a->freq_hz > 0) app_tune(a, a->freq_hz);
 }
 
-static void decode_stop(app_t *a)
+/* ---------------- the dongle ---------------- */
+/* Opened once and kept for the session: the sweep and the decoder take turns on it, sw.sdr / dsdr pointing
+ * to a->rx while their job runs. Failures (librtlsdr0 missing, dongle busy) are shown on the status line. */
+static sdr_t *rx_get(app_t *a, long rate)
 {
-    sdr_close(a->dsdr);
+    char err[96];
+    if (!a->rx && !(a->rx = sdr_open(&a->cfg, rate, err, sizeof err))) {
+        set_status(a, err);
+        return NULL;
+    }
+    if (sdr_resume(a->rx, rate) < 0) {
+        set_status(a, "cannot restart the receiver stream");
+        return NULL;
+    }
+    return a->rx;
+}
+
+/* The stream ended (dongle unplugged): drop the device; the next job reopens it once it is back. */
+static void rx_lost(app_t *a)
+{
+    sdr_close(a->rx);
+    a->rx = NULL;
+    a->sw.sdr = NULL;
     a->dsdr = NULL;
 }
 
-/* In-process decode: the dongle feeds the DDC, whose 48 kHz output goes to decoder_feed_cmd.
- * 0 on success; -1 to fall back to decoder_cmd (rtl_fm), with the reason in err. */
-static int decode_start(app_t *a, char *cmd, size_t ncmd, char *err, size_t n)
+static void decode_stop(app_t *a)
 {
-    long centre = a->freq_hz - RS41_TUNE_OFFSET_HZ + DDC_RATE / 4;
-    if (!strcmp(a->cfg.sdr_backend, "cmd")) {
-        snprintf(err, n, "sdr_backend = cmd");
-        return -1;
-    }
-    if (!a->dsdr && !(a->dsdr = sdr_open(&a->cfg, DDC_RATE, err, n))) return -1;
-    sdr_tune(a->dsdr, centre);
-    ddc_init(&a->ddc);
-    spec_reset(&a->live, centre - DDC_RATE / 2, centre + DDC_RATE / 2, DDC_RATE / SWEEP_FFT);
-    a->t_live = 0;
-    if (sc_subst(cmd, ncmd, a->cfg.decoder_feed_cmd, &a->cfg, a->freq_hz) < 0 || proc_start_feed(&a->proc, cmd) < 0) {
-        snprintf(err, n, "decoder start failed");
-        decode_stop(a);
-        return -1;
-    }
-    return 0;
+    if (a->dsdr) sdr_pause(a->dsdr);
+    a->dsdr = NULL;
 }
 
+/* The dongle, tuned DDC_RATE/4 above the stream centre, feeds the DDC; its 48 kHz output goes to the stdin of
+ * decoder_feed_cmd (fsk_demod | rs41mod), whose JSON lines app_poll reads. */
 static void start_decoder(app_t *a)
 {
-    char cmd[1024], err[96];
+    char cmd[1024];
+    long centre = a->freq_hz - RS41_TUNE_OFFSET_HZ + DDC_RATE / 4;
     if (a->cfg.demo) { /* frames come from demo_poll */
         set_status(a, "decoding (demo)");
         return;
@@ -70,20 +76,24 @@ static void start_decoder(app_t *a)
         a->t_restart = sc_now() + 1.0;
         return;
     }
-    if (decode_start(a, cmd, sizeof cmd, err, sizeof err) == 0) {
-        set_status(a, "decoding");
+    if (!(a->dsdr = rx_get(a, DDC_RATE))) {
+        a->t_restart = sc_now() + 3.0;
         return;
     }
-    if (sc_subst(cmd, sizeof cmd, a->cfg.decoder_cmd, &a->cfg, a->freq_hz) < 0 ||
-        proc_start(&a->proc, cmd) < 0) {
+    sdr_tune(a->dsdr, centre);
+    ddc_init(&a->ddc);
+    spec_reset(&a->live, centre - DDC_RATE / 2, centre + DDC_RATE / 2, DDC_RATE / SWEEP_FFT);
+    a->t_live = 0;
+    if (sc_subst(cmd, sizeof cmd, a->cfg.decoder_feed_cmd, a->freq_hz) < 0 || proc_start_feed(&a->proc, cmd) < 0) {
+        decode_stop(a);
         set_status(a, "decoder start failed");
         a->t_restart = sc_now() + 3.0;
         return;
     }
-    snprintf(a->status, sizeof a->status, "decoding with rtl_fm (%s)", err);
+    set_status(a, "decoding");
 }
 
-/* Feed the decoder from the dongle, and refresh the decode-window spectrum about 10 times a second. */
+/* Feed the decoder from the dongle, and refresh the decode-window spectrum about 20 times a second. */
 static void decode_poll(app_t *a, double now)
 {
     static unsigned char iq[65536];
@@ -93,14 +103,16 @@ static void decode_poll(app_t *a, double now)
     while ((k = sdr_read(a->dsdr, iq, sizeof iq)) > 0) {
         size_t n = ddc_process(&a->ddc, iq, k, out);
         if (n) proc_feed(&a->proc, out, n * 2 * sizeof out[0]);
-        if (now - a->t_live >= 0.1 && k >= 2 * SWEEP_FFT * SWEEP_FRAMES) {
+        if (now - a->t_live >= 0.05 && k >= 2 * SWEEP_FFT * SWEEP_FRAMES) {
+            int i, b = (int)(DC_ZONE_HZ / ((double)DDC_RATE / SWEEP_FFT)), l = SWEEP_FFT / 2 - b - 1, r = SWEEP_FFT / 2 + b + 1;
             fft_spectrum(&a->sw.fft, iq, SWEEP_FRAMES, db);
+            for (i = l + 1; i < r; i++) db[i] = db[l] + (db[r] - db[l]) * (float)(i - l) / (float)(r - l); /* DC zone */
             spec_add_bins(&a->live, (double)a->live.f0, (double)a->live.step, db, SWEEP_FFT, SWEEP_DECAY_DB);
             a->t_live = now;
         }
     }
     if (!sdr_alive(a->dsdr)) { /* dongle unplugged: restart from scratch once it is back */
-        decode_stop(a);
+        rx_lost(a);
         proc_stop(&a->proc);
         set_status(a, "receiver stream ended");
         a->t_restart = now + 2.0;
@@ -110,30 +122,33 @@ static void decode_poll(app_t *a, double now)
 /* ---------------- in-process sweep (librtlsdr) ---------------- */
 #define SWEEP_SETTLE_BYTES ((size_t)(SWEEP_RATE * 2 * 15 / 1000)) /* 15 ms of IQ after each retune */
 
+/* Centre of the current step: odd passes are shifted half a step down (and take one step more), so each
+ * pass measures the DC zones the other one skips. */
+static double sweep_centre(const sweep_t *w)
+{
+    return w->f_first + w->step * w->f_step - ((w->passes & 1) ? w->f_step / 2.0 : 0.0);
+}
+
 static void sweep_tune(app_t *a)
 {
     sweep_t *w = &a->sw;
-    sdr_tune(w->sdr, (long)(w->f_first + w->step * w->f_step));
+    sdr_tune(w->sdr, (long)sweep_centre(w));
     w->skip = SWEEP_SETTLE_BYTES + SDR_USB_BUF_BYTES; /* settling time + a transfer begun before the retune */
     w->have = 0;
 }
 
 static void sweep_stop(app_t *a)
 {
-    sdr_close(a->sw.sdr);
+    if (a->sw.sdr) sdr_pause(a->sw.sdr);
     a->sw.sdr = NULL;
 }
 
-/* 0: the sweep runs in the app; -1: use the rtl_power command instead (reason in err). */
-static int sweep_start(app_t *a, char *err, size_t n)
+/* 0: sweeping; -1: the dongle could not be started (reason on the status line). */
+static int sweep_start(app_t *a)
 {
     sweep_t *w = &a->sw;
-    if (!strcmp(a->cfg.sdr_backend, "cmd")) {
-        snprintf(err, n, "sdr_backend = cmd");
-        return -1;
-    }
-    if (!w->sdr && !(w->sdr = sdr_open(&a->cfg, SWEEP_RATE, err, n))) return -1;
-    w->f_step = SWEEP_RATE * SWEEP_KEEP; /* central part of each FFT, like rtl_power -c */
+    if (!(w->sdr = rx_get(a, SWEEP_RATE))) return -1;
+    w->f_step = SWEEP_RATE * SWEEP_KEEP; /* central part of each FFT; the band edges roll off */
     w->nstep = (int)ceil((double)(a->cfg.scan_hi_hz - a->cfg.scan_lo_hz) / w->f_step);
     if (w->nstep < 1) w->nstep = 1;
     w->f_first = (double)a->cfg.scan_lo_hz + w->f_step / 2.0;
@@ -148,7 +163,6 @@ void app_stop(app_t *a)
     sweep_stop(a);
     decode_stop(a);
     proc_stop(&a->proc);
-    a->verify = 0;
     a->state = ST_IDLE;
     set_status(a, "idle");
 }
@@ -157,74 +171,64 @@ void app_tune(app_t *a, long f_hz)
 {
     sweep_stop(a); /* the decoder needs the dongle (an in-process decode keeps it and just retunes) */
     proc_stop(&a->proc);
-    a->verify = 0; /* a tune from the user (or auto_tune) is not a trial */
     a->freq_hz = f_hz;
     a->state = ST_DECODE;
     start_decoder(a);
 }
 
-/* keep_spectrum: resuming the auto sweep after a trial decode keeps the picture and peak selection. */
-static void scan_begin(app_t *a, int keep_spectrum)
+/* Band overview: SCAN_PASSES sweeps of scan_lo_hz..scan_hi_hz, then the picture holds for picking a peak. */
+void app_scan(app_t *a)
 {
-    char cmd[640], err[96];
     if (!a->sdr_ok) {
         set_status(a, "no SDR device");
         return;
     }
-    decode_stop(a); /* one dongle: stop the decoder (or a previous rtl_power) first */
+    decode_stop(a); /* one dongle: the decoder hands it over */
     proc_stop(&a->proc);
-    a->verify = 0;
-    if (!keep_spectrum) {
-        spec_reset(&a->spec, a->cfg.scan_lo_hz, a->cfg.scan_hi_hz, a->cfg.scan_step_hz);
-        a->npeaks = 0;
-        a->sel = 0;
-    }
+    spec_reset(&a->spec, a->cfg.scan_lo_hz, a->cfg.scan_hi_hz, a->cfg.scan_step_hz);
+    a->npeaks = 0;
+    a->sel = 0;
     if (a->cfg.demo) { /* demo_poll fills the spectrum after a simulated sweep time */
         a->state = ST_SCAN;
         a->t_restart = sc_now() + 1.5;
         set_status(a, "scanning");
         return;
     }
-    if (sweep_start(a, err, sizeof err) == 0) {
-        a->state = ST_SCAN;
-        set_status(a, "scanning");
-        return;
-    }
-    if (sc_subst(cmd, sizeof cmd, a->cfg.scan_cmd, &a->cfg, 0) < 0 || proc_start(&a->proc, cmd) < 0) {
+    if (sweep_start(a) < 0) {
         a->state = ST_IDLE;
-        set_status(a, "scan start failed");
         return;
     }
     a->state = ST_SCAN;
-    snprintf(a->status, sizeof a->status, "scanning with rtl_power (%s)", err);
+    set_status(a, "scanning");
 }
 
-void app_scan(app_t *a)
+/* Tuning on the spectrum like an SDR app: while decoding in the app, only the dongle moves; the decoder
+ * pipeline keeps running (it needs a few seconds to resynchronise, restarting it would add to that). */
+void app_retune(app_t *a, long f_hz)
 {
-    scan_begin(a, 0);
-}
-
-void app_set_scan_auto(app_t *a, int on)
-{
-    a->scan_auto = on;
-    if (on && a->state != ST_DECODE) scan_begin(a, 1); /* manual -> auto: keep sweeping from here */
+    long centre;
+    if (a->state != ST_DECODE || !a->dsdr || a->proc.pid <= 0) {
+        app_tune(a, f_hz);
+        return;
+    }
+    a->freq_hz = f_hz;
+    centre = f_hz - RS41_TUNE_OFFSET_HZ + DDC_RATE / 4;
+    sdr_tune(a->dsdr, centre);
+    spec_reset(&a->live, centre - DDC_RATE / 2, centre + DDC_RATE / 2, DDC_RATE / SWEEP_FFT);
+    set_status(a, "decoding");
 }
 
 /* ---------------- known frequencies ---------------- */
 const known_t *app_known(const app_t *a, long f_hz)
 {
     int i;
-    for (i = 0; i < MAX_KNOWN; i++) {
-        const known_t *k = &a->known[i];
-        if (!k->f_hz || labs(k->f_hz - f_hz) > (k->rs41 ? KNOWN_MATCH_HZ : REJECT_MATCH_HZ)) continue;
-        if (!k->rs41 && sc_now() - k->t > KNOWN_REJECT_S) continue;
-        return k;
-    }
+    for (i = 0; i < MAX_KNOWN; i++)
+        if (a->known[i].f_hz && labs(a->known[i].f_hz - f_hz) <= KNOWN_MATCH_HZ) return &a->known[i];
     return NULL;
 }
 
-/* Remember what is on f_hz; an RS41 serial replaces a rejection, the oldest slot is reused. */
-static void known_set(app_t *a, long f_hz, const char *id, int rs41)
+/* Remember the sonde decoded on f_hz; the oldest slot is reused. */
+static void known_set(app_t *a, long f_hz, const char *id)
 {
     int i, slot = 0;
     for (i = 0; i < MAX_KNOWN; i++) {
@@ -234,28 +238,9 @@ static void known_set(app_t *a, long f_hz, const char *id, int rs41)
         }
         if (a->known[i].t < a->known[slot].t) slot = i;
     }
-    if (!rs41 && a->known[slot].rs41 && a->known[slot].f_hz && labs(a->known[slot].f_hz - f_hz) <= KNOWN_MATCH_HZ)
-        return; /* a sonde seen here before is not forgotten because one trial missed it */
     a->known[slot].f_hz = f_hz;
     snprintf(a->known[slot].id, sizeof a->known[slot].id, "%s", id);
-    a->known[slot].rs41 = rs41;
     a->known[slot].t = sc_now();
-}
-
-/* Auto mode: start a trial decode of the strongest peak nothing is known about. */
-static int verify_next(app_t *a)
-{
-    int i;
-    for (i = 0; i < a->npeaks; i++)
-        if (a->peaks[i].snr_db >= a->cfg.verify_snr_db && !app_known(a, a->peaks[i].f_hz)) {
-            app_tune(a, a->peaks[i].f_hz);
-            a->verify = 1;
-            a->verify_hit = 0;
-            a->verify_until = sc_now() + a->cfg.verify_s;
-            snprintf(a->status, sizeof a->status, "checking %.3f MHz", a->peaks[i].f_hz / 1e6);
-            return 1;
-        }
-    return 0;
 }
 
 static void log_frame(app_t *a)
@@ -286,8 +271,7 @@ void app_on_frame(app_t *a, const char *line, double now)
     int r = sonde_parse(line, &s);
     if (!r) return;
     s.t_rx = now;
-    known_set(a, a->freq_hz, s.id, 1);
-    a->verify_hit = 1;
+    known_set(a, a->freq_hz, s.id);
     if (r == 2) { /* telemetry without a position: shown, but kept out of track, history and prediction */
         if (strcmp(s.id, a->have_sonde ? a->sonde.id : a->nofix.id)) a->frames = 0;
         a->nofix = s;
@@ -319,8 +303,8 @@ void app_on_frame(app_t *a, const char *line, double now)
     log_frame(a);
 }
 
-/* rtl_power sweeps continuously, so peaks follow the live spectrum. The selected peak stays
- * selected while it is still present (within 20 kHz), otherwise the strongest one is. */
+/* Peaks follow the spectrum after every sweep step. The selected peak stays selected while it is
+ * still present (within 20 kHz), otherwise the strongest one is. */
 static void scan_refresh(app_t *a)
 {
     long keep = a->npeaks ? a->peaks[a->sel].f_hz : 0;
@@ -340,6 +324,8 @@ static void sweep_poll(app_t *a)
     sweep_t *w = &a->sw;
     const int nbin = (int)(SWEEP_FFT * SWEEP_KEEP), lo_bin = (SWEEP_FFT - nbin) / 2;
     const double bin_hz = (double)SWEEP_RATE / SWEEP_FFT;
+    const int dc_bins = (int)(DC_ZONE_HZ / bin_hz);
+    int i;
     for (;;) {
         size_t k;
         if (w->skip) {
@@ -350,27 +336,28 @@ static void sweep_poll(app_t *a)
         if (!(k = sdr_read(w->sdr, w->buf + w->have, sizeof w->buf - w->have))) break;
         if ((w->have += k) < sizeof w->buf) continue;
         fft_spectrum(&w->fft, w->buf, SWEEP_FRAMES, w->db);
-        spec_add_bins(&a->spec, w->f_first + w->step * w->f_step - SWEEP_RATE / 2.0 + lo_bin * bin_hz, bin_hz,
-                      w->db + lo_bin, nbin, SWEEP_DECAY_DB);
+        for (i = SWEEP_FFT / 2 - dc_bins; i <= SWEEP_FFT / 2 + dc_bins; i++) w->db[i] = NAN; /* left alone */
+        spec_add_bins(&a->spec, sweep_centre(w) - SWEEP_RATE / 2.0 + lo_bin * bin_hz, bin_hz, w->db + lo_bin, nbin,
+                      SWEEP_DECAY_DB);
         scan_refresh(a);
-        if (++w->step == w->nstep) {
+        if (++w->step == w->nstep + (int)(w->passes & 1)) {
             w->step = 0;
             if (++w->passes == 1 && a->cfg.auto_tune && a->npeaks) {
                 app_tune(a, a->peaks[0].f_hz); /* first complete pass */
                 return;
             }
-            if (!a->scan_auto && w->passes >= SCAN_MANUAL_PASSES) { /* manual: one scan, then hold the picture */
+            if (w->passes >= SCAN_PASSES) { /* the overview holds the picture for picking a peak */
                 sweep_stop(a);
+                a->sel = 0; /* the strongest: early steps may have selected whatever they saw first */
                 a->state = ST_IDLE;
                 set_status(a, a->npeaks ? "scan done" : "scan done: no signal");
                 return;
             }
-            if (a->scan_auto && verify_next(a)) return;
         }
         sweep_tune(a);
     }
-    if (!sdr_alive(w->sdr)) {
-        sweep_stop(a);
+    if (!sdr_alive(w->sdr)) { /* dongle unplugged */
+        rx_lost(a);
         a->state = ST_IDLE;
         set_status(a, "receiver stream ended");
     }
@@ -392,8 +379,7 @@ void app_poll(app_t *a)
         a->t_sdr = now;
         a->sdr_ok = sdr_present("/sys/bus/usb/devices");
         if (!a->sdr_ok && a->state == ST_SCAN) { /* receiver unplugged during a sweep */
-            sweep_stop(a);
-            proc_stop(&a->proc);
+            rx_lost(a);
             a->state = ST_IDLE;
             set_status(a, "no SDR device");
         }
@@ -412,23 +398,8 @@ void app_poll(app_t *a)
         } else if (now >= a->t_restart) {
             start_decoder(a);
         }
-        if (a->verify && (a->verify_hit || now >= a->verify_until)) {
-            if (!a->verify_hit) known_set(a, a->freq_hz, "", 0);
-            scan_begin(a, 1); /* back to the auto sweep, with the verdict on the peak */
-        }
     } else if (a->state == ST_SCAN && a->sw.sdr) {
         sweep_poll(a);
-    } else if (a->state == ST_SCAN) {
-        int rows = 0;
-        while ((r = lr_readline(&a->proc.lr, line, sizeof line)) == 1) rows += spec_add_line(&a->spec, line) > 0;
-        if (rows) scan_refresh(a);
-        if (r < 0) {
-            proc_stop(&a->proc);
-            a->state = ST_IDLE;
-            set_status(a, a->npeaks ? "scan stopped" : "scan stopped: no signal");
-        } else if (rows && a->cfg.auto_tune && a->npeaks && a->spec.n > 0 && a->spec.ok[a->spec.n - 1]) {
-            app_tune(a, a->peaks[0].f_hz); /* first complete sweep reached the top of the band */
-        }
     }
 
 derived:
@@ -462,6 +433,7 @@ void app_free(app_t *a)
 {
     sweep_stop(a);
     decode_stop(a);
+    rx_lost(a); /* closes the dongle */
     fft_free(&a->sw.fft);
     proc_stop(&a->proc);
     gps_close(&a->gps);

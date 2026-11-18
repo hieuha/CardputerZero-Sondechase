@@ -166,7 +166,7 @@ int sdr_present(const char *usb_sysfs)
     return found;
 }
 
-/* ---------------- rtl_power spectrum ---------------- */
+/* ---------------- scan spectrum ---------------- */
 void spec_reset(spectrum_t *s, long lo, long hi, long step)
 {
     memset(s, 0, sizeof *s);
@@ -208,47 +208,6 @@ int spec_add_bins(spectrum_t *s, double f_lo, double bin_hz, const float *db, in
             seen[i] = 0;
             added++;
         }
-    return added;
-}
-
-/* Row format: date, time, Hz low, Hz high, Hz step, samples, dB, dB, ... */
-int spec_add_line(spectrum_t *s, const char *line)
-{
-    const char *p = line;
-    char *e;
-    double lo, st, v;
-    int i, added = 0;
-    for (i = 0; i < 2; i++) {
-        p = strchr(p, ',');
-        if (!p) return 0;
-        p++;
-    }
-    lo = strtod(p, &e);
-    if (e == p || *e != ',') return 0;
-    p = e + 1;
-    strtod(p, &e); /* Hz high, unused */
-    if (e == p || *e != ',') return 0;
-    p = e + 1;
-    st = strtod(p, &e);
-    if (e == p || *e != ',' || st <= 0) return 0;
-    p = e + 1;
-    strtod(p, &e); /* samples, unused */
-    if (e == p || *e != ',') return 0;
-    p = e + 1;
-    for (i = 0;; i++) {
-        v = strtod(p, &e);
-        if (e == p) break;
-        if (isfinite(v)) {
-            int idx = spec_cell(s, lo + i * st);
-            if (idx >= 0 && idx < s->n && (!s->ok[idx] || v > s->db[idx])) {
-                s->db[idx] = (float)v;
-                s->ok[idx] = 1;
-                added++;
-            }
-        }
-        if (*e != ',') break;
-        p = e + 1;
-    }
     return added;
 }
 

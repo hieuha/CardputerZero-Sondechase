@@ -1,25 +1,23 @@
 #!/bin/sh
-# Builds the pieces sondechase runs as child processes: rtl-sdr (RTL-SDR Blog fork, needed for
-# the v4 dongle), and rs41mod + fsk_demod from the radiosonde_auto_rx source tree.
-# auto_rx itself is not installed or run. NOT yet verified on a CardputerZero.
+# Builds the two decoders sondechase runs as a child pipeline, fsk_demod and rs41mod, from the
+# radiosonde_auto_rx source tree (auto_rx itself is not installed or run), and installs them in
+# /usr/local/bin. The RTL-SDR itself is driven in the app through librtlsdr0 (a package dependency).
+# Verified on a CardputerZero (Debian 13) with radiosonde_auto_rx v1.9.0.
 set -e
-sudo apt-get update
-sudo apt-get install -y build-essential cmake git libusb-1.0-0-dev pkg-config alsa-utils gpsd gpsd-clients
-
+AUTO_RX_TAG=${AUTO_RX_TAG:-v1.9.0}
 WORK=${WORK:-$HOME/sondechase-build}
+
+sudo apt-get update
+sudo apt-get install -y build-essential git
+
 mkdir -p "$WORK" && cd "$WORK"
+[ -d radiosonde_auto_rx ] || git clone --depth 1 --branch "$AUTO_RX_TAG" https://github.com/projecthorus/radiosonde_auto_rx.git
+cd radiosonde_auto_rx
+# auto_rx's top-level Makefile adds the version to the JSON output; the two programs need nothing else.
+# make hands CFLAGS to the shell again, so the C string quotes must arrive escaped.
+export CFLAGS="-O3 -w -DVER_JSN_STR=\\\"${AUTO_RX_TAG#v}\\\""
+make -s -C demod/mod rs41mod
+make -s -C utils fsk_demod
+sudo install -m 755 demod/mod/rs41mod utils/fsk_demod /usr/local/bin/
 
-if ! command -v rtl_fm >/dev/null 2>&1; then
-  [ -d rtl-sdr-blog ] || git clone --depth 1 https://github.com/rtlsdrblog/rtl-sdr-blog.git
-  cmake -S rtl-sdr-blog -B rtl-sdr-blog/build -DINSTALL_UDEV_RULES=ON -DDETACH_KERNEL_DRIVER=ON
-  cmake --build rtl-sdr-blog/build -j2
-  sudo cmake --install rtl-sdr-blog/build
-  sudo ldconfig
-  echo 'blacklist dvb_usb_rtl28xxu' | sudo tee /etc/modprobe.d/blacklist-rtl-sdr.conf
-fi
-
-[ -d radiosonde_auto_rx ] || git clone --depth 1 https://github.com/projecthorus/radiosonde_auto_rx.git
-(cd radiosonde_auto_rx/auto_rx && ./build.sh)
-sudo install -m 755 radiosonde_auto_rx/auto_rx/rs41mod radiosonde_auto_rx/auto_rx/fsk_demod /usr/local/bin/
-
-echo "Check: rtl_test -t ; rs41mod -h ; fsk_demod (prints usage)"
+echo "Installed: $(command -v rs41mod) $(command -v fsk_demod)"

@@ -74,9 +74,10 @@ set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "${APP_DEBIAN_ARCHITECTURE}")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${APP_MAINTAINER}")
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
-# curl: map tile download. Child processes started at run time and not shipped in this package:
-# rtl_fm / rtl_power (rtl-sdr), fsk_demod + rs41mod (scripts/install_decoders.sh), gpsd, pacat.
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, curl")
+# librtlsdr0 is loaded with dlopen at run time; 2.0.2 is the first Debian version that drives the
+# RTL-SDR Blog V4. curl: map tile download. Not shipped in this package: fsk_demod + rs41mod
+# (scripts/install_decoders.sh), gpsd, pacat (pulseaudio-utils).
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, curl, librtlsdr0 (>= 2.0.2)")
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "gpsd, pulseaudio-utils, coreutils")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION TRUE)

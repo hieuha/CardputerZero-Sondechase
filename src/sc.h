@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 
-#define RS41_TUNE_OFFSET_HZ 12000L /* rtl_fm tunes this far below the carrier */
+#define RS41_TUNE_OFFSET_HZ 12000L /* the decoder stream is centred this far below the carrier */
 
 /* ---------------- base ---------------- */
 double sc_now(void); /* CLOCK_MONOTONIC, seconds */
@@ -16,17 +16,12 @@ typedef struct {
     int ppm;                 /* RTL-SDR frequency correction */
     char gain[12];           /* "" = tuner AGC, else dB value e.g. "38.6" */
     int rtl_dev;             /* rtl-sdr device index */
-    int bias_tee;            /* 1 = enable bias-T (-T) */
-    char decoder_cmd[640];   /* shell pipeline that prints rs41mod JSON on stdout (cmd backend) */
-    char decoder_feed_cmd[400]; /* reads 48 kHz cs16 IQ on stdin, prints rs41mod JSON (in-process backend) */
-    char scan_cmd[320];      /* shell command that prints rtl_power CSV on stdout */
+    int bias_tee;            /* 1 = power an LNA through the bias-T */
+    char rtlsdr_lib[96];     /* librtlsdr to dlopen; "" = librtlsdr.so.0 (tests point it at a fake) */
+    char decoder_feed_cmd[400]; /* reads 48 kHz cs16 IQ on stdin, prints rs41mod JSON */
     long scan_lo_hz, scan_hi_hz, scan_step_hz;
-    int scan_int_s;          /* rtl_power integration time */
     double scan_snr_db;      /* peak threshold above median noise floor */
     int auto_tune;           /* tune to strongest peak after a scan */
-    int scan_auto;           /* start-up scan mode: 0 = one scan per S press, 1 = continuous + check peaks */
-    double verify_snr_db;    /* auto mode: peaks at least this strong get a trial decode */
-    double verify_s;         /* auto mode: seconds a trial decode may take to produce an RS41 frame */
     char gpsd_host[64];
     int gpsd_port;           /* 0 = gpsd disabled */
     double ground_alt;       /* landing altitude AMSL; < -900 = use own GPS altitude */
@@ -41,7 +36,6 @@ typedef struct {
     double stale_s;          /* telemetry older than this is marked stale */
     char log_dir[160];       /* "" = $HOME */
     char kbd_dev[64];        /* "" = auto-detect evdev keyboard */
-    char sdr_backend[8];     /* "auto": librtlsdr in the app when available; "cmd": rtl_power / rtl_fm */
     char fb_dev[64];
     double prox_radius_m;    /* proximity beeper starts inside this ground distance */
     double prox_hyst_m;      /* ...and stops beyond radius + hysteresis */
@@ -63,11 +57,11 @@ typedef struct {
 
 void cfg_defaults(cfg_t *c);
 int cfg_load(cfg_t *c, const char *path); /* 0 ok, -1 file not readable */
-/* Expand {ppm} {dev} {gain} {bias} {f_hz} {f_tune} {lo} {hi} {step} {int}. */
-int sc_subst(char *out, size_t n, const char *tpl, const cfg_t *c, long f_hz);
+/* Expand {f_hz} (the tuned sonde frequency) in a command template; -1 if out is too small. */
+int sc_subst(char *out, size_t n, const char *tpl, long f_hz);
 
-/* Non-blocking line reader on a file descriptor. One rtl_power CSV row is ~7 bytes per bin:
- * ~3 kB at the default 5 kHz step, ~14 kB at 1 kHz, so callers size their line buffer with LR_MAX. */
+/* Non-blocking line reader on a file descriptor (decoder JSON, gpsd reports). The longest lines are gpsd
+ * SKY reports listing every satellite, a few kB; callers size their line buffer with LR_MAX. */
 #define LR_MAX 16384
 typedef struct {
     int fd;
@@ -216,6 +210,8 @@ typedef struct sdr sdr_t; /* opaque */
 /* Open cfg->rtl_dev at `rate` S/s with cfg ppm/gain/bias_tee and start streaming.
  * NULL on failure, with the reason in err (librtlsdr0 missing, no device, busy...). */
 sdr_t *sdr_open(const cfg_t *c, long rate, char *err, size_t n);
+void sdr_pause(sdr_t *s);                                /* stop streaming, keep the device open */
+int sdr_resume(sdr_t *s, long rate);                     /* (re)start streaming at rate S/s */
 int sdr_tune(sdr_t *s, long f_hz);                       /* retune and flush buffered IQ */
 size_t sdr_read(sdr_t *s, unsigned char *iq, size_t n); /* non-blocking, u8 IQ pairs */
 void sdr_flush(sdr_t *s);
@@ -237,7 +233,6 @@ typedef struct {
     float snr_db;
 } peak_t;
 void spec_reset(spectrum_t *s, long lo, long hi, long step);
-int spec_add_line(spectrum_t *s, const char *line); /* one rtl_power CSV row */
 int spec_add_bins(spectrum_t *s, double f_lo, double bin_hz, const float *db, int n, double decay_db);
 int spec_peaks(spectrum_t *s, double snr_db, peak_t *out, int max);
 
@@ -319,18 +314,17 @@ void tile_recolor(unsigned char *rgb, int npix);
 /* ---------------- application state ---------------- */
 enum { ST_IDLE, ST_DECODE, ST_SCAN };
 
-/* Frequencies whose nature is known from decoding: an RS41 (with its serial) or, after a trial decode
- * that produced nothing, "not an RS41" (forgotten after KNOWN_REJECT_S, the sonde may start later). */
+/* Frequencies where an RS41 has been decoded this session, with its serial (labels on the spectrum). */
 #define MAX_KNOWN 16
-#define KNOWN_MATCH_HZ 10000L  /* an RS41: two sondes can sit 10 kHz apart */
-#define REJECT_MATCH_HZ 50000L /* not an RS41: interferers seen wandering by ~40 kHz between passes */
-#define KNOWN_REJECT_S 300.0
-#define SCAN_MANUAL_PASSES 4 /* one manual scan: ~1 s of passes, enough to catch an RS41 between frames */
+#define KNOWN_MATCH_HZ 10000L /* two sondes can sit 10 kHz apart */
+#define SCAN_PASSES 4         /* band overview: ~1 s of passes, enough to catch an RS41 between frames */
+#define TUNE_STEP_HZ 10000L   /* Left/Right on the spectrum: the RS41 channel raster */
+#define TUNE_BIG_STEP_HZ 100000L /* Up/Down */
+#define LIVE_HALF_SPAN_HZ 384000L /* the tuned spectrum shows the frequency +- this */
 typedef struct {
     long f_hz;               /* 0 = empty slot */
     char id[16];
-    int rs41;
-    double t;                /* last confirmation */
+    double t;                /* last frame */
 } known_t;
 
 /* In-process sweep of scan_lo_hz..scan_hi_hz: retune in steps of the central SWEEP_KEEP of the
@@ -342,10 +336,14 @@ typedef struct {
 #define SWEEP_FFT 1024
 #define SWEEP_FRAMES 5
 #define SWEEP_DECAY_DB 3.0 /* peak-hold decay per pass, ~12 dB/s at 4 passes/s */
+/* The tuner's DC offset and LO leakage show up as false peaks within ~50 kHz of every tuning centre (seen on
+ * the RTL-SDR Blog V4 at 40 kHz). The sweep ignores that zone and alternates passes shifted by half a step
+ * so the neighbouring step measures it; the tuned view interpolates across it. */
+#define DC_ZONE_HZ 50000.0
 typedef struct {
     sdr_t *sdr;              /* open while sweeping, NULL otherwise */
     fft_t fft;
-    int step, nstep;
+    int step, nstep;         /* nstep: steps of an even pass; odd passes, shifted half a step, take one more */
     double f_first, f_step;  /* centre of step 0, spacing between step centres */
     size_t skip, have;       /* bytes still to discard after a retune / bytes collected */
     unsigned passes;         /* completed full passes since the sweep started */
@@ -359,11 +357,8 @@ typedef struct {
     long freq_hz;
     proc_t proc;
     sweep_t sw;
-    int scan_auto;           /* current scan mode, toggled with A on the Scan screen */
-    int verify;              /* the current decode is a trial of an unknown peak (auto mode) */
-    int verify_hit;          /* ... and it produced an RS41 frame */
-    double verify_until;
     known_t known[MAX_KNOWN];
+    sdr_t *rx;               /* the dongle, open for the session once first used (NULL: not open) */
     sdr_t *dsdr;             /* in-process decode: dongle at freq_hz - 12 kHz + DDC_RATE/4, NULL otherwise */
     ddc_t ddc;
     spectrum_t live;         /* spectrum of the decode window (+-DDC_RATE/2 around the dongle) */
@@ -406,7 +401,7 @@ void app_poll(app_t *a);
 void app_tune(app_t *a, long f_hz);
 void app_scan(app_t *a);
 void app_stop(app_t *a);
-void app_set_scan_auto(app_t *a, int on);
+void app_retune(app_t *a, long f_hz); /* move the decoder; keeps it running when it decodes in the app */
 const known_t *app_known(const app_t *a, long f_hz); /* NULL: nothing known about this frequency */
 void app_free(app_t *a);
 void app_on_frame(app_t *a, const char *json_line, double now); /* one decoder output line */

@@ -777,16 +777,17 @@ static int peak_step(int dir) /* neighbour of the selected peak in frequency ord
     return best;
 }
 
-/* Spectrum trace between YT and YB: one column = max of the bins it covers; dB range lo..hi. */
-static void spec_trace(const spectrum_t *sp, int X0, int W, int YT, int YB, double lo, double hi)
+/* Spectrum trace between YT and YB over cells c0 .. c0 + nc - 1: one column = max of the cells it covers;
+ * dB range lo..hi. */
+static void spec_trace(const spectrum_t *sp, int c0, int nc, int X0, int W, int YT, int YB, double lo, double hi)
 {
     double prev_y = 0;
     int x, have = 0;
-    for (x = 0; x < W && sp->n > 0; x++) {
-        int b0 = x * sp->n / W, b1 = (x + 1) * sp->n / W, b, ok = 0;
+    for (x = 0; x < W && nc > 0; x++) {
+        int b0 = c0 + x * nc / W, b1 = c0 + (x + 1) * nc / W, b, ok = 0;
         double v = -1e9, y;
         for (b = b0; b < b1 || b == b0; b++)
-            if (b < sp->n && sp->ok[b]) { ok = 1; if (sp->db[b] > v) v = sp->db[b]; }
+            if (b >= 0 && b < sp->n && sp->ok[b]) { ok = 1; if (sp->db[b] > v) v = sp->db[b]; }
         if (!ok) { have = 0; continue; }
         y = YB - ((v < lo ? lo : v) - lo) / (hi - lo) * (YB - YT - 14);
         if (y < YT) y = YT;
@@ -796,38 +797,45 @@ static void spec_trace(const spectrum_t *sp, int X0, int W, int YT, int YB, doub
     }
 }
 
-/* While decoding in the app: the spectrum around the tuned sonde, computed from the decoder's own
- * samples (the dongle sits DDC_RATE/4 above it, so the sonde is left of centre). */
+/* Tuned view, like an SDR app: the decoder's own samples around the tuned frequency, which stays in the
+ * middle while Left/Right and Up/Down move it and the spectrum scrolls past. */
 static void p_scan_live(void)
 {
     spectrum_t *sp = &A->live;
-    const int X0 = 6, W = 308, YT = 22, YB = 122;
+    const int X0 = 6, W = 308, YT = 22, YB = 122, XC = X0 + W / 2;
+    const long lo_hz = A->freq_hz - LIVE_HALF_SPAN_HZ, span = 2 * LIVE_HALF_SPAN_HZ;
+    const known_t *kn = app_known(A, A->freq_hz);
     peak_t pk[MAX_PEAKS];
-    double fspan = (double)sp->n * sp->step, lo, hi, xs;
+    double lo, hi;
     char mid[64];
-    int i, px;
+    long f;
     spec_peaks(sp, A->cfg.scan_snr_db, pk, MAX_PEAKS); /* floor and max for the scale */
     lo = sp->floor_db - 4;
     hi = sp->max_db > sp->floor_db + 26 ? sp->max_db + 4 : sp->floor_db + 30;
-    if (A->verify)
-        snprintf(mid, sizeof mid, "Checking %.3f MHz for RS41   %.0f s", A->freq_hz / 1e6, ceil(A->verify_until - sc_now()));
+    if (kn && sc_now() - kn->t <= A->cfg.stale_s)
+        snprintf(mid, sizeof mid, "%.3f MHz   RS41 %s   receiving", A->freq_hz / 1e6, kn->id);
     else
-        snprintf(mid, sizeof mid, "Decoding %.3f MHz   live", A->freq_hz / 1e6);
+        snprintf(mid, sizeof mid, "%.3f MHz   %s", A->freq_hz / 1e6, kn ? "RS41 seen here" : "listening");
     top_bar("Scan", C_CY, mid);
     fill(X0, YT, W, YB - YT, C_P);
-    for (i = 1; i < 6; i++) ln(X0 + i * W / 6.0, YT, X0 + i * W / 6.0, YB, C_L, 1);
-    xs = X0 + (A->freq_hz - sp->f0) / fspan * W;
-    ln(xs, YT, xs, YB, C_PK, 1);
-    spec_trace(sp, X0, W, YT, YB, lo, hi);
-    px = (int)xs - 24 < X0 ? X0 : (int)xs - 24;
-    fill(px, YT + 2, 48, 13, C_PK);
-    txt(px, YT + 2, 48, F_S, C_G, AL_C, "%.3f", A->freq_hz / 1e6);
-    for (i = 0; i <= 6; i++)
-        txt(X0 + i * W / 6 - (i == 0 ? 0 : (i == 6 ? 40 : 20)), 124, 40, F_S, C_DIM,
-            i == 0 ? AL_L : (i == 6 ? AL_R : AL_C), "%.2f", (sp->f0 + i * fspan / 6) / 1e6);
-    txt(6, 140, 100, F_S, C_DIM, AL_L, "S  full scan");
-    txt(110, 140, 70, F_S, C_DIM, AL_L, "X  stop");
-    txt(254, 140, 60, F_S, C_DIM, AL_R, "F  type freq");
+    for (f = (lo_hz + 99999) / 100000 * 100000; f <= lo_hz + span; f += 100000) { /* 100 kHz grid */
+        int x = X0 + (int)((double)(f - lo_hz) / span * W);
+        ln(x, YT, x, YB, C_L, 1);
+        if (f % 200000 == 0 && x > X0 + 18 && x < X0 + W - 18)
+            txt(x - 20, 124, 40, F_S, C_DIM, AL_C, "%.1f", f / 1e6);
+    }
+    ln(XC, YT, XC, YB, C_PK, 1);
+    spec_trace(sp, (int)((lo_hz - sp->f0) / sp->step), (int)(span / sp->step), X0, W, YT, YB, lo, hi);
+    fill(XC - 24, YT + 2, 48, 13, C_PK);
+    txt(XC - 24, YT + 2, 48, F_S, C_G, AL_C, "%.3f", A->freq_hz / 1e6);
+    if (kn) {
+        fill(XC - 30, YT + 16, 60, 12, C_GN);
+        txt(XC - 30, YT + 15, 60, F_S, C_G, AL_C, "%s", kn->id);
+    }
+    txt(6, 140, 80, F_S, C_DIM, AL_L, "L/R  10 kHz");
+    txt(90, 140, 90, F_S, C_DIM, AL_L, "U/D  100 kHz");
+    txt(186, 140, 60, F_S, C_DIM, AL_L, "S  band");
+    txt(254, 140, 60, F_S, C_DIM, AL_R, "F  freq");
     nav_bar(PG_SCAN);
 }
 
@@ -846,8 +854,9 @@ static void p_scan(void)
     }
     if (A->npeaks) {
         const known_t *kn = app_known(A, A->peaks[A->sel].f_hz);
-        snprintf(mid, sizeof mid, "%.3f MHz   +%.0f dB   %s", A->peaks[A->sel].f_hz / 1e6, A->peaks[A->sel].snr_db,
-                 kn ? (kn->rs41 ? "RS41 sonde" : "not RS41") : "peak");
+        if (kn) snprintf(mid, sizeof mid, "%.3f MHz   +%.0f dB   RS41 %s", A->peaks[A->sel].f_hz / 1e6,
+                         A->peaks[A->sel].snr_db, kn->id);
+        else snprintf(mid, sizeof mid, "%.3f MHz   +%.0f dB   peak", A->peaks[A->sel].f_hz / 1e6, A->peaks[A->sel].snr_db);
     }
     else snprintf(mid, sizeof mid, "%s", A->state == ST_SCAN ? "Scanning 400 to 406 MHz" : A->status);
     top_bar("Scan", C_CY, mid);
@@ -861,11 +870,11 @@ static void p_scan(void)
         double xs = X0 + (A->peaks[A->sel].f_hz - A->cfg.scan_lo_hz) / fspan * W;
         ln(xs, YT, xs, YB, C_PK, 1);
     }
-    spec_trace(sp, X0, W, YT, YB, lo, hi);
+    spec_trace(sp, 0, sp->n, X0, W, YT, YB, lo, hi);
     for (i = 0; i < A->npeaks; i++) {
         double xp = X0 + (A->peaks[i].f_hz - A->cfg.scan_lo_hz) / fspan * W;
         const known_t *kn = app_known(A, A->peaks[i].f_hz);
-        if (kn && kn->rs41) { /* decoded here before: name the sonde under the peak's label */
+        if (kn) { /* decoded here before: name the sonde under the peak's label */
             int lx = (int)xp - 30 < X0 ? X0 : ((int)xp + 30 > X0 + W ? X0 + W - 60 : (int)xp - 30);
             fill(lx, YT + 16, 60, 12, C_GN);
             txt(lx, YT + 15, 60, F_S, C_G, AL_C, "%s", kn->id);
@@ -886,18 +895,16 @@ static void p_scan(void)
             ln(xp - 4, yp - 6, xp + 4, yp - 6, C_DIM, 2);
             ln(xp + 4, yp - 6, xp, yp, C_DIM, 2);
             ln(xp, yp, xp - 4, yp - 6, C_DIM, 2);
-            txt((int)xp - 22, (int)yp - 19, 44, F_S, C_DIM, AL_C, "%.3f%s", A->peaks[i].f_hz / 1e6,
-                kn && !kn->rs41 ? " x" : ""); /* x: a trial decode found no RS41 there */
+            txt((int)xp - 22, (int)yp - 19, 44, F_S, C_DIM, AL_C, "%.3f", A->peaks[i].f_hz / 1e6);
         }
     }
     for (i = 0; i <= 6; i++)
         txt(X0 + i * W / 6 - (i == 0 ? 0 : (i == 6 ? 40 : 20)), 124, 40, F_S, C_DIM,
             i == 0 ? AL_L : (i == 6 ? AL_R : AL_C), "%.0f", (A->cfg.scan_lo_hz + i * fspan / 6) / 1e6);
-    txt(6, 140, 60, F_S, C_DIM, AL_L, "L/R  peak");
-    txt(70, 140, 64, F_S, C_DIM, AL_L, "Enter  tune");
-    txt(138, 140, 44, F_S, C_DIM, AL_L, "S  scan");
-    txt(186, 140, 72, F_S, A->scan_auto ? C_CY : C_DIM, AL_L, "A  auto %s", A->scan_auto ? "on" : "off");
-    txt(258, 140, 56, F_S, C_DIM, AL_R, "F  freq");
+    txt(6, 140, 80, F_S, C_DIM, AL_L, "L/R  peak");
+    txt(90, 140, 90, F_S, C_DIM, AL_L, "Enter  tune");
+    txt(186, 140, 60, F_S, C_DIM, AL_L, "S  rescan");
+    txt(254, 140, 60, F_S, C_DIM, AL_R, "F  freq");
     nav_bar(PG_SCAN);
 }
 
@@ -1091,7 +1098,10 @@ void ui_init(app_t *a)
     lv_obj_set_size(root, 320, 170);
     lv_obj_add_event_cb(root, draw_cb, LV_EVENT_DRAW_MAIN, NULL);
     lv_timer_create(tick_cb, 200, NULL);
-    if (a->freq_hz <= 0) page = PG_SCAN;
+    if (a->freq_hz <= 0) { /* nothing to decode yet: open on a band overview */
+        page = PG_SCAN;
+        app_scan(a);
+    }
 }
 
 int ui_should_quit(void)
@@ -1112,20 +1122,24 @@ void ui_key(int k)
         else if (k == K_ESC) entry = 0;
         else if (k == K_ENTER) {
             long khz = strtol(entry_buf, NULL, 10);
-            if (khz >= 24000 && khz <= 1766000) { app_tune(A, khz * 1000L); page = PG_TRACK; }
+            if (khz >= 24000 && khz <= 1766000) { app_tune(A, khz * 1000L); page = PG_SCAN; }
             entry = 0;
         }
     } else if (k >= '4' && k <= '8') page = k - '4'; /* keys 4-8 sit right under the nav bar labels */
     else if (k == 'q') quit = 1;
     else if (k == 'm') A->prox.muted = !A->prox.muted;
     else if (k == 's') { app_scan(A); page = PG_SCAN; }
-    else if (k == 'a' && page == PG_SCAN) app_set_scan_auto(A, !A->scan_auto);
     else if (k == 'f') { entry = 1; entry_len = 0; entry_buf[0] = 0; }
     else if (k == 'r' && A->freq_hz > 0) app_tune(A, A->freq_hz);
     else if (k == 'x') app_stop(A);
-    /* peak keys act on the sweep's peak list, not on the live view shown while decoding */
+    else if (page == PG_SCAN && A->dsdr && (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN)) { /* tune */
+        long d = (k == K_LEFT || k == K_RIGHT) ? TUNE_STEP_HZ : TUNE_BIG_STEP_HZ, f;
+        f = A->freq_hz + ((k == K_RIGHT || k == K_UP) ? d : -d);
+        if (f >= 24000000L && f <= 1766000000L) app_retune(A, f);
+    }
+    /* the band overview: peak keys act on its peak list */
     else if (page == PG_SCAN && A->npeaks && !A->dsdr && (k == K_LEFT || k == K_RIGHT)) A->sel = peak_step(k == K_RIGHT ? 1 : -1);
-    else if (page == PG_SCAN && A->npeaks && !A->dsdr && k == K_ENTER) { app_tune(A, A->peaks[A->sel].f_hz); page = PG_TRACK; }
+    else if (page == PG_SCAN && A->npeaks && !A->dsdr && k == K_ENTER) app_tune(A, A->peaks[A->sel].f_hz); /* -> tuned view */
     else if (page == PG_GRAPH && (k == K_LEFT || k == K_RIGHT)) gpage ^= 1;
     else if (page == PG_MAP && (k == K_UP || k == '+' || k == '=')) {
         if (map_zoom < 0) map_zoom = m_z;

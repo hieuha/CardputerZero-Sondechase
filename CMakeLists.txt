@@ -18,7 +18,10 @@ target_link_libraries(sc_core PUBLIC m Threads::Threads ${CMAKE_DL_LIBS}) # sdr.
 enable_testing()
 add_executable(test_core tests/test_core.c)
 target_link_libraries(test_core PRIVATE sc_core)
-add_test(NAME core COMMAND test_core ${CMAKE_SOURCE_DIR}/tests/fake_decoder.sh)
+# librtlsdr stand-in loaded by the tests through cfg rtlsdr_lib (never installed)
+add_library(fake_rtlsdr SHARED tests/fake_rtlsdr.c)
+target_link_libraries(fake_rtlsdr PRIVATE m)
+add_test(NAME core COMMAND test_core ${CMAKE_SOURCE_DIR}/tests/fake_decoder.sh $<TARGET_FILE:fake_rtlsdr>)
 
 option(SC_RENDER "Build tools/render: headless screenshots of every screen (demo data)" OFF)
 

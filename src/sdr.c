@@ -93,6 +93,7 @@ struct sdr {
     void *lib;
     rtl_api_t api;
     rtlsdr_dev_t *dev;
+    long rate;
     pthread_t thread;
     int have_thread;
     _Atomic int alive;
@@ -118,11 +119,11 @@ static void *reader(void *arg)
     return NULL;
 }
 
-static int load_api(sdr_t *s, char *err, size_t n)
+static int load_api(sdr_t *s, const char *path, char *err, size_t n)
 {
     void **fn = (void **)&s->api;
     size_t i;
-    s->lib = dlopen("librtlsdr.so.0", RTLD_NOW | RTLD_LOCAL);
+    s->lib = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     if (!s->lib) {
         snprintf(err, n, "librtlsdr0 not installed");
         return -1;
@@ -144,7 +145,7 @@ sdr_t *sdr_open(const cfg_t *c, long rate, char *err, size_t n)
         snprintf(err, n, "out of memory");
         return NULL;
     }
-    if (load_api(s, err, n) < 0) goto fail;
+    if (load_api(s, c->rtlsdr_lib[0] ? c->rtlsdr_lib : "librtlsdr.so.0", err, n) < 0) goto fail;
     if (s->api.get_device_count() == 0) {
         snprintf(err, n, "no RTL-SDR device");
         goto fail;
@@ -158,6 +159,7 @@ sdr_t *sdr_open(const cfg_t *c, long rate, char *err, size_t n)
         snprintf(err, n, "sample rate %ld rejected", rate);
         goto fail;
     }
+    s->rate = rate;
     if (c->ppm) s->api.set_freq_correction(s->dev, c->ppm);
     if (c->gain[0]) {
         s->api.set_tuner_gain_mode(s->dev, 1);
@@ -171,16 +173,41 @@ sdr_t *sdr_open(const cfg_t *c, long rate, char *err, size_t n)
         snprintf(err, n, "out of memory");
         goto fail;
     }
-    atomic_store(&s->alive, 1);
-    if (pthread_create(&s->thread, NULL, reader, s) != 0) {
+    if (sdr_resume(s, rate) < 0) {
         snprintf(err, n, "cannot start the USB thread");
         goto fail;
     }
-    s->have_thread = 1;
     return s;
 fail:
     sdr_close(s);
     return NULL;
+}
+
+void sdr_pause(sdr_t *s)
+{
+    if (!s->have_thread) return;
+    s->api.cancel_async(s->dev);
+    pthread_join(s->thread, NULL);
+    s->have_thread = 0;
+    iqring_flush(&s->ring);
+}
+
+/* Switching jobs keeps the device open: stopping the stream and changing the rate takes a fraction of
+ * the ~600 ms that closing and reopening the dongle (USB and tuner initialisation) took. */
+int sdr_resume(sdr_t *s, long rate)
+{
+    if (s->have_thread && rate == s->rate) return 0;
+    sdr_pause(s);
+    if (rate != s->rate) {
+        if (s->api.set_sample_rate(s->dev, (uint32_t)rate) < 0) return -1;
+        s->rate = rate;
+    }
+    s->api.reset_buffer(s->dev);
+    iqring_flush(&s->ring);
+    atomic_store(&s->alive, 1);
+    if (pthread_create(&s->thread, NULL, reader, s) != 0) return -1;
+    s->have_thread = 1;
+    return 0;
 }
 
 int sdr_tune(sdr_t *s, long f_hz)
@@ -213,10 +240,7 @@ unsigned long sdr_dropped(const sdr_t *s)
 void sdr_close(sdr_t *s)
 {
     if (!s) return;
-    if (s->have_thread) {
-        s->api.cancel_async(s->dev);
-        pthread_join(s->thread, NULL);
-    }
+    if (s->dev) sdr_pause(s);
     if (s->dev) s->api.close(s->dev);
     if (s->lib) dlclose(s->lib);
     iqring_free(&s->ring);

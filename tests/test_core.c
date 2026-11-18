@@ -147,17 +147,11 @@ static void t_subst(void)
     cfg_t c;
     char out[1024];
     cfg_defaults(&c);
-    c.ppm = 2;
-    CHECK(sc_subst(out, sizeof out, "a {ppm} {gain}|{bias}| {f_hz} {f_tune} {nope}", &c, 403500000) == 0);
-    CHECK(!strcmp(out, "a 2 || 403500000 403488000 {nope}"));
-    strcpy(c.gain, "38.6");
-    c.bias_tee = 1;
-    CHECK(sc_subst(out, sizeof out, c.decoder_cmd, &c, 403500000) == 0);
-    CHECK(strstr(out, "-g 38.6") && strstr(out, " -T ") && strstr(out, "-f 403488000") &&
-          strstr(out, "--jsn_cfq 403500000"));
-    CHECK(sc_subst(out, sizeof out, c.scan_cmd, &c, 0) == 0);
-    CHECK(strstr(out, "-f 400000000:406000000:5000") && strstr(out, "-c 20% "));
-    CHECK(sc_subst(out, 8, "0123456789", &c, 0) == -1);
+    CHECK(sc_subst(out, sizeof out, "a {f_hz} {nope}", 403500000) == 0);
+    CHECK(!strcmp(out, "a 403500000 {nope}"));
+    CHECK(sc_subst(out, sizeof out, c.decoder_feed_cmd, 403500000) == 0);
+    CHECK(strstr(out, "fsk_demod --cs16") && strstr(out, "--jsn_cfq 403500000"));
+    CHECK(sc_subst(out, 8, "0123456789", 0) == -1);
 }
 
 static void t_cfg(void)
@@ -177,40 +171,40 @@ static void t_spec(void)
 {
     static spectrum_t s;
     static lr_t lr;
+    static char line[LR_MAX], got[LR_MAX];
+    float bins[410];
     peak_t pk[MAX_PEAKS];
-    char line[LR_MAX], got[LR_MAX];
     int hop, i, n, fd[2];
     spec_reset(&s, 400000000, 406000000, 5000);
-    CHECK(pipe(fd) == 0);
-    lr.fd = fd[0];
-    lr.len = 0;
     CHECK(s.n == 1200);
-    /* Three 2 MHz hops, bin 4882.8125 Hz (not equal to the requested 5 kHz), noise -42 dB
-     * with ripple, carriers at 403.500 MHz (+20 dB) and 401.100 MHz (+11 dB). */
+    /* Three 2 MHz steps of 4882.8125 Hz bins (not the 5 kHz grid), noise -42 dB with ripple,
+     * carriers at 403.500 MHz (+20 dB) and 401.100 MHz (+11 dB). */
     for (hop = 0; hop < 3; hop++) {
         double lo = 400e6 + hop * 2e6, st = 4882.8125;
-        int o = snprintf(line, sizeof line, "2026-11-18, 07:00:00, %.0f, %.0f, %.2f, 16", lo, lo + 2e6, st);
         for (i = 0; i < 410; i++) {
-            double f = lo + i * st, db = -42.0 + 0.8 * sin(i * 0.7);
-            if (fabs(f - 403.5e6) < 6000) db = -22.0;
-            if (fabs(f - 401.1e6) < 6000) db = -31.0;
-            o += snprintf(line + o, sizeof line - (size_t)o, ", %.2f", db);
+            double f = lo + i * st;
+            bins[i] = (float)(-42.0 + 0.8 * sin(i * 0.7));
+            if (fabs(f - 403.5e6) < 6000) bins[i] = -22.0f;
+            if (fabs(f - 401.1e6) < 6000) bins[i] = -31.0f;
         }
-        /* Each row (~2.9 kB) goes through the same pipe + line reader path as rtl_power output. */
-        line[o++] = '\n';
-        CHECK(write(fd[1], line, (size_t)o) == o);
-        CHECK(lr_readline(&lr, got, sizeof got) == 1);
-        CHECK(strlen(got) == (size_t)o - 1);
-        CHECK(spec_add_line(&s, got) > 300);
+        CHECK(spec_add_bins(&s, lo, st, bins, 410, 0.0) > 300);
     }
-    close(fd[0]);
-    close(fd[1]);
-    CHECK(spec_add_line(&s, "garbage") == 0);
     n = spec_peaks(&s, 8.0, pk, MAX_PEAKS);
     CHECK(n == 2);
     CHECK(pk[0].f_hz == 403500000 && pk[1].f_hz == 401100000);
     NEAR(pk[0].snr_db, 20.0, 1.5);
     NEAR(s.floor_db, -42.0, 1.0);
+
+    /* a line of a few kB (a gpsd SKY report listing every satellite) passes the line reader intact */
+    CHECK(pipe(fd) == 0);
+    lr.fd = fd[0];
+    lr.len = 0;
+    memset(line, 'x', 6000);
+    line[6000] = '\n';
+    CHECK(write(fd[1], line, 6001) == 6001);
+    CHECK(lr_readline(&lr, got, sizeof got) == 1 && strlen(got) == 6000);
+    close(fd[0]);
+    close(fd[1]);
 
     { /* in-process sweep steps: 2 kHz FFT bins onto the 5 kHz grid, peak hold with decay */
         static float bins[800];
@@ -353,8 +347,7 @@ static void t_frames(void)
     app_on_frame(&a, nofix, 2.0);
     CHECK(!a.have_sonde && a.frames == 2 && a.nofix.frame == 10 && a.nofix.t_rx == 2.0);
     /* any decoded frame marks its frequency as an RS41 with that serial, within +-10 kHz */
-    CHECK(app_known(&a, 403010000L) && app_known(&a, 403010000L)->rs41 &&
-          !strcmp(app_known(&a, 403010000L)->id, "Y0532351"));
+    CHECK(app_known(&a, 403010000L) && !strcmp(app_known(&a, 403010000L)->id, "Y0532351"));
     CHECK(app_known(&a, 403020000L) == NULL);
     app_on_frame(&a, fix, 3.0);
     CHECK(a.have_sonde && a.frames == 3 && a.sonde.frame == 12);
@@ -416,20 +409,21 @@ static void t_feed(void)
     prctl(PR_SET_CHILD_SUBREAPER, 0);
 }
 
-static void t_app(const char *fake)
+static void t_app(const char *fake, const char *fakelib)
 {
     static app_t a;
+    double t0;
     int i;
     app_init(&a, NULL);
     a.cfg.gpsd_port = 0; /* no gpsd in the test: inject a fix instead */
     a.cfg.mag_enable = 0;
     a.cfg.audio_enable = 0;
     a.cfg.sdr_check = 0; /* no USB receiver in the test environment */
-    snprintf(a.cfg.sdr_backend, sizeof a.cfg.sdr_backend, "cmd"); /* the fake decoder stands in for rtl_fm */
+    snprintf(a.cfg.rtlsdr_lib, sizeof a.cfg.rtlsdr_lib, "%s", fakelib); /* librtlsdr stand-in, 403.000 MHz carrier */
     a.sdr_ok = 1;
     a.cfg.ground_alt = 10;
     snprintf(a.cfg.log_dir, sizeof a.cfg.log_dir, "/tmp");
-    snprintf(a.cfg.decoder_cmd, sizeof a.cfg.decoder_cmd, "sh %s {f_hz}", fake);
+    snprintf(a.cfg.decoder_feed_cmd, sizeof a.cfg.decoder_feed_cmd, "sh %s {f_hz}", fake);
     unlink("/tmp/sondechase.csv");
     a.gps.mode = 3; a.gps.lat = 21.03; a.gps.lon = 105.85; a.gps.alt = 10;
     app_tune(&a, 403500000);
@@ -471,7 +465,7 @@ static void t_app(const char *fake)
         CHECK(rows == 4); /* header + 3 frames */
     }
     /* Decoder that exits immediately: the app schedules a restart instead of going idle. */
-    snprintf(a.cfg.decoder_cmd, sizeof a.cfg.decoder_cmd, "true");
+    snprintf(a.cfg.decoder_feed_cmd, sizeof a.cfg.decoder_feed_cmd, "true");
     app_tune(&a, 403500000);
     for (i = 0; i < 50 && a.proc.pid > 0; i++) {
         app_poll(&a);
@@ -486,12 +480,48 @@ static void t_app(const char *fake)
     app_scan(&a);
     CHECK(a.state == ST_DECODE && a.proc.pid == 0 && !strcmp(a.status, "no SDR device"));
     a.sdr_ok = 1;
-    snprintf(a.cfg.decoder_cmd, sizeof a.cfg.decoder_cmd, "sleep 5");
+    snprintf(a.cfg.decoder_feed_cmd, sizeof a.cfg.decoder_feed_cmd, "sleep 5");
     for (i = 0; i < 150 && a.proc.pid == 0; i++) {
         app_poll(&a);
         usleep(10000);
     }
     CHECK(a.proc.pid > 0); /* started by itself once the receiver is back */
+
+    /* Manual scan through the fake dongle: ~1 s of passes finds its 403.000 MHz carrier, then holds. */
+    app_stop(&a);
+    app_scan(&a);
+    CHECK(a.state == ST_SCAN && a.sw.sdr == a.rx && a.rx != NULL);
+    for (i = 0; i < 500 && a.state == ST_SCAN; i++) {
+        app_poll(&a);
+        usleep(10000);
+    }
+    CHECK(a.state == ST_IDLE && !strcmp(a.status, "scan done") && a.sw.passes >= SCAN_PASSES);
+    /* the fake's IQ has a DC offset (like a real tuner): no false peaks at the step centres */
+    CHECK(a.npeaks == 1 && a.peaks[0].f_hz == 403000000 && a.sel == 0);
+    /* Enter on that peak: the open dongle switches job and rate, it is not reopened */
+    t0 = sc_now();
+    app_tune(&a, a.peaks[0].f_hz);
+    CHECK(a.dsdr == a.rx && a.proc.pid > 0 && sc_now() - t0 < 0.3);
+    { /* tuning on the spectrum moves the dongle and the view, the decoder keeps running */
+        pid_t pid = a.proc.pid;
+        app_retune(&a, 403010000L);
+        CHECK(a.proc.pid == pid && a.dsdr == a.rx && a.freq_hz == 403010000L);
+        CHECK(a.live.f0 == 403010000L - RS41_TUNE_OFFSET_HZ + DDC_RATE / 4 - DDC_RATE / 2);
+    }
+    app_free(&a);
+
+    /* librtlsdr0 missing: the reason is shown, nothing is spawned, scanning is refused the same way */
+    app_init(&a, NULL);
+    a.cfg.gpsd_port = 0;
+    a.cfg.mag_enable = 0;
+    a.cfg.audio_enable = 0;
+    a.cfg.sdr_check = 0;
+    a.sdr_ok = 1;
+    snprintf(a.cfg.rtlsdr_lib, sizeof a.cfg.rtlsdr_lib, "/nonexistent/librtlsdr.so.0");
+    app_tune(&a, 403000000);
+    CHECK(a.proc.pid == 0 && a.rx == NULL && !strcmp(a.status, "librtlsdr0 not installed"));
+    app_scan(&a);
+    CHECK(a.state == ST_IDLE && !strcmp(a.status, "librtlsdr0 not installed"));
     app_free(&a);
 }
 
@@ -690,7 +720,7 @@ int main(int argc, char **argv)
     t_feed();
     t_track();
     t_tiles();
-    t_app(argc > 1 ? argv[1] : "tests/fake_decoder.sh");
+    t_app(argc > 1 ? argv[1] : "tests/fake_decoder.sh", argc > 2 ? argv[2] : "./libfake_rtlsdr.so");
     printf("%d checks, %d failed\n", checks, fails);
     return fails ? 1 : 0;
 }

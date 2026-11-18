@@ -22,23 +22,14 @@ double sc_now(void)
 void cfg_defaults(cfg_t *c)
 {
     memset(c, 0, sizeof *c);
-    snprintf(c->decoder_cmd, sizeof c->decoder_cmd,
-             "rtl_fm -p {ppm} -d {dev} {bias} {gain} -M raw -F9 -s 48000 -f {f_tune} 2>/dev/null"
-             " | fsk_demod --cs16 -b 1200 -u 22800 -s 2 48000 4800 - - 2>/dev/null"
-             " | stdbuf -oL rs41mod --ptu2 --json --softin -i --jsn_cfq {f_hz} 2>/dev/null");
     snprintf(c->decoder_feed_cmd, sizeof c->decoder_feed_cmd,
              "fsk_demod --cs16 -b 1200 -u 22800 -s 2 48000 4800 - - 2>/dev/null"
              " | stdbuf -oL rs41mod --ptu2 --json --softin -i --jsn_cfq {f_hz} 2>/dev/null");
-    snprintf(c->scan_cmd, sizeof c->scan_cmd,
-             "stdbuf -oL rtl_power -f {lo}:{hi}:{step} -i {int} -c 20%% -p {ppm} -d {dev} {gain} - 2>/dev/null");
     c->scan_lo_hz = 400000000L;
     c->scan_hi_hz = 406000000L;
     c->scan_step_hz = 5000;
-    c->scan_int_s = 1; /* one full 400-406 MHz pass per second on the CM0 */
     c->scan_snr_db = 8.0;
     c->auto_tune = 0;
-    c->verify_snr_db = 15.0;
-    c->verify_s = 8.0;
     snprintf(c->gpsd_host, sizeof c->gpsd_host, "127.0.0.1");
     c->gpsd_port = 2947;
     c->ground_alt = -1000.0;
@@ -48,7 +39,6 @@ void cfg_defaults(cfg_t *c)
     c->mag_enable = 1;
     c->stale_s = 5.0;
     snprintf(c->fb_dev, sizeof c->fb_dev, "/dev/fb0");
-    snprintf(c->sdr_backend, sizeof c->sdr_backend, "auto");
     c->prox_radius_m = 10000.0;
     c->prox_hyst_m = 500.0;
     c->audio_enable = 1;
@@ -79,9 +69,8 @@ typedef struct {
 #define E(n, t) {#n, t, offsetof(cfg_t, n), sizeof(((cfg_t *)0)->n)}
 static const cfg_ent ents[] = {
     E(freq_hz, 'l'),      E(ppm, 'i'),          E(gain, 's'),         E(rtl_dev, 'i'),
-    E(bias_tee, 'i'),     E(decoder_cmd, 's'),  E(scan_cmd, 's'),     E(scan_lo_hz, 'l'),
-    E(scan_hi_hz, 'l'),   E(scan_step_hz, 'l'), E(scan_int_s, 'i'),   E(scan_snr_db, 'd'),
-    E(scan_auto, 'i'),    E(verify_snr_db, 'd'), E(verify_s, 'd'),
+    E(bias_tee, 'i'),     E(rtlsdr_lib, 's'),   E(scan_lo_hz, 'l'),   E(scan_hi_hz, 'l'),
+    E(scan_step_hz, 'l'), E(scan_snr_db, 'd'),
     E(auto_tune, 'i'),    E(gpsd_host, 's'),    E(gpsd_port, 'i'),    E(ground_alt, 'd'),
     E(burst_alt, 'd'),    E(descent_v0, 'd'),   E(cog_min_speed, 'd'), E(mag_enable, 'i'),
     E(mag_off_x, 'd'),    E(mag_off_y, 'd'),    E(mag_rot_deg, 'd'),  E(mag_flip_y, 'i'),
@@ -90,7 +79,7 @@ static const cfg_ent ents[] = {
     E(audio_cmd, 's'),    E(tile_dir, 's'),     E(zoom_min, 'i'),     E(zoom_max, 'i'),
     E(map_lat, 'd'),      E(map_lon, 'd'),
     E(font_dir, 's'),     E(sdr_check, 'i'),    E(demo, 'i'),         E(demo_speed, 'd'),
-    E(sdr_backend, 's'),  E(decoder_feed_cmd, 's'),
+    E(decoder_feed_cmd, 's'),
     E(tile_online, 'i'),  E(tile_url, 's'),     E(tile_user_agent, 's'), E(tile_fetch_cmd, 's'),
     E(tile_cache_dir, 's'), E(tile_cache_mb, 'i'),
 };
@@ -133,7 +122,7 @@ int cfg_load(cfg_t *c, const char *path)
     return 0;
 }
 
-int sc_subst(char *out, size_t n, const char *tpl, const cfg_t *c, long f_hz)
+int sc_subst(char *out, size_t n, const char *tpl, long f_hz)
 {
     size_t o = 0;
     while (*tpl) {
@@ -144,16 +133,7 @@ int sc_subst(char *out, size_t n, const char *tpl, const cfg_t *c, long f_hz)
             size_t kl = (size_t)(end - tpl - 1);
             const char *k = tpl + 1;
 #define IS(name) (kl == strlen(name) && !strncmp(k, name, kl))
-            if (IS("ppm")) w = snprintf(val, sizeof val, "%d", c->ppm);
-            else if (IS("dev")) w = snprintf(val, sizeof val, "%d", c->rtl_dev);
-            else if (IS("gain")) w = c->gain[0] ? snprintf(val, sizeof val, "-g %s", c->gain) : (val[0] = 0, 0);
-            else if (IS("bias")) w = snprintf(val, sizeof val, "%s", c->bias_tee ? "-T" : "");
-            else if (IS("f_hz")) w = snprintf(val, sizeof val, "%ld", f_hz);
-            else if (IS("f_tune")) w = snprintf(val, sizeof val, "%ld", f_hz - RS41_TUNE_OFFSET_HZ);
-            else if (IS("lo")) w = snprintf(val, sizeof val, "%ld", c->scan_lo_hz);
-            else if (IS("hi")) w = snprintf(val, sizeof val, "%ld", c->scan_hi_hz);
-            else if (IS("step")) w = snprintf(val, sizeof val, "%ld", c->scan_step_hz);
-            else if (IS("int")) w = snprintf(val, sizeof val, "%d", c->scan_int_s);
+            if (IS("f_hz")) w = snprintf(val, sizeof val, "%ld", f_hz);
 #undef IS
         }
         if (w >= 0) {

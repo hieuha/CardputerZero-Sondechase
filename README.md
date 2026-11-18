@@ -11,18 +11,31 @@ on a PC; the hardware paths have not yet run on a real device.
 ## Architecture
 
 ```
-RTL-SDR v4 ── rtl_fm (IQ 48 kHz) ── fsk_demod (soft bits 4800 baud) ── rs41mod --json ─┐
-RTL-SDR v4 ── rtl_power (CSV 400–406 MHz, while scanning) ──────────────────────────────┤ pipe
-GPS ── gpsd (JSON, TCP 2947) ───────────────────────────────────────────────────────────┤
-Magnetometer (IIO sysfs) ───────────────────────────────────────────────────────────────┤
-                                                                                        ▼
-                                   sondechase (C, LVGL 9.5, /dev/fb0 + evdev)
-                                   ├─ app.c    state machine IDLE / DECODE / SCAN
-                                   ├─ geo.c    distance, bearing, elevation, ISA, landing prediction
-                                   ├─ track.c  flight history, burst detection, beeper, audio, tiles
-                                   ├─ io.c     gpsd, heading, rtl_power spectrum
-                                   └─ ui.c     7 screens + alert, drawn directly with line/rect/label
-                                              └─ aplay (16 kHz PCM over a pipe)
+┌────────────┐    ┌────────┐ IQ 48 kHz ┌───────────┐ bits 4800 Bd ┌─────────┐
+│ RTL-SDR v4 ├─┬─►│ rtl_fm ├──────────►│ fsk_demod ├─────────────►│ rs41mod ├───┐ JSON frames
+└────────────┘ │  └────────┘           └───────────┘              └─────────┘   │
+               │  ┌───────────┐                                                 │
+               └─►│ rtl_power ├── CSV 400–406 MHz, scan only ───────────────────┤ spectrum
+                  └───────────┘                                                 │
+┌────────────┐    ┌──────┐                                                      │
+│ GPS        ├───►│ gpsd ├── JSON, TCP 2947 ────────────────────────────────────┤ position
+└────────────┘    └──────┘                                                      │
+┌────────────┐                                                                  │
+│ Magnet.    ├── IIO sysfs ─────────────────────────────────────────────────────┤ heading
+└────────────┘                                                                  │
+    ┌───────────────────────────────────────────────────────────────────────────▼──────┐
+    │  sondechase  ·  C, LVGL 9.5, /dev/fb0 + evdev                                    │
+    │                                                                                  │
+    │  app.c    state machine IDLE / DECODE / SCAN                                     │
+    │  geo.c    distance, bearing, elevation, ISA, landing prediction                  │
+    │  track.c  flight history, burst detection, beeper, audio, tiles                  │
+    │  io.c     gpsd, heading, rtl_power spectrum                                      │
+    │  ui.c     7 screens + alert, drawn with line / rect / label                      │
+    └───────────────────────────────────────────────────────────────────────────┬──────┘
+                                                                                │ PCM 16 kHz over a pipe
+                                                                            ┌───▼───┐
+                                                                            │ aplay │
+                                                                            └───────┘
 ```
 
 `radiosonde_auto_rx` does not run. The app only uses the `rs41mod` and `fsk_demod` binaries built

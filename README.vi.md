@@ -11,18 +11,31 @@ trên PC; các đường phần cứng chưa được chạy trên thiết bị 
 ## Kiến trúc
 
 ```
-RTL-SDR v4 ── rtl_fm (IQ 48 kHz) ── fsk_demod (soft bit 4800 baud) ── rs41mod --json ─┐
-RTL-SDR v4 ── rtl_power (CSV 400–406 MHz, khi quét) ───────────────────────────────────┤ pipe
-GPS ── gpsd (JSON, TCP 2947) ──────────────────────────────────────────────────────────┤
-Magnetometer (IIO sysfs) ──────────────────────────────────────────────────────────────┤
-                                                                                       ▼
-                                   sondechase (C, LVGL 9.5, /dev/fb0 + evdev)
-                                   ├─ app.c    máy trạng thái IDLE / DECODE / SCAN
-                                   ├─ geo.c    khoảng cách, bearing, elevation, ISA, dự đoán điểm rơi
-                                   ├─ track.c  lịch sử bay, phát hiện bóng nổ, beeper, audio, tile
-                                   ├─ io.c     gpsd, heading, phổ rtl_power
-                                   └─ ui.c     7 màn hình + cảnh báo, vẽ trực tiếp bằng line/rect/label
-                                              └─ aplay (PCM 16 kHz qua pipe)
+┌────────────┐    ┌────────┐ IQ 48 kHz ┌───────────┐ bits 4800 Bd ┌─────────┐
+│ RTL-SDR v4 ├─┬─►│ rtl_fm ├──────────►│ fsk_demod ├─────────────►│ rs41mod ├───┐ frame JSON
+└────────────┘ │  └────────┘           └───────────┘              └─────────┘   │
+               │  ┌───────────┐                                                 │
+               └─►│ rtl_power ├── CSV 400–406 MHz, chỉ khi quét ────────────────┤ phổ
+                  └───────────┘                                                 │
+┌────────────┐    ┌──────┐                                                      │
+│ GPS        ├───►│ gpsd ├── JSON, TCP 2947 ────────────────────────────────────┤ vị trí
+└────────────┘    └──────┘                                                      │
+┌────────────┐                                                                  │
+│ Từ kế      ├── IIO sysfs ─────────────────────────────────────────────────────┤ hướng
+└────────────┘                                                                  │
+    ┌───────────────────────────────────────────────────────────────────────────▼──────┐
+    │  sondechase  ·  C, LVGL 9.5, /dev/fb0 + evdev                                    │
+    │                                                                                  │
+    │  app.c    máy trạng thái IDLE / DECODE / SCAN                                    │
+    │  geo.c    khoảng cách, bearing, elevation, ISA, dự đoán điểm rơi                 │
+    │  track.c  lịch sử bay, phát hiện bóng nổ, beeper, audio, tile                    │
+    │  io.c     gpsd, heading, phổ rtl_power                                           │
+    │  ui.c     7 màn hình + cảnh báo, vẽ bằng line / rect / label                     │
+    └───────────────────────────────────────────────────────────────────────────┬──────┘
+                                                                                │ PCM 16 kHz qua pipe
+                                                                            ┌───▼───┐
+                                                                            │ aplay │
+                                                                            └───────┘
 ```
 
 `radiosonde_auto_rx` không chạy. App chỉ dùng hai binary `rs41mod` và `fsk_demod` build từ

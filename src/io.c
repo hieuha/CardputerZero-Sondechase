@@ -183,9 +183,11 @@ static int spec_cell(const spectrum_t *s, double f_hz)
     return (int)floor((f_hz - (double)s->f0) / (double)s->step + 0.5);
 }
 
-/* One in-process sweep step: the cells it covers get this step's values (max of the FFT bins
- * falling in each cell), replacing the previous pass so faded signals disappear. */
-int spec_add_bins(spectrum_t *s, double f_lo, double bin_hz, const float *db, int n)
+/* One in-process sweep step: each cell it covers gets the max of the FFT bins falling in it, held
+ * against the previous pass decayed by decay_db. A step sees only milliseconds of signal and an RS41
+ * pauses between frames, so without the hold its peak would come and go; with it, a signal that
+ * stops still fades out at decay_db per pass. */
+int spec_add_bins(spectrum_t *s, double f_lo, double bin_hz, const float *db, int n, double decay_db)
 {
     static float best[SPEC_MAX];
     static unsigned char seen[SPEC_MAX];
@@ -200,7 +202,8 @@ int spec_add_bins(spectrum_t *s, double f_lo, double bin_hz, const float *db, in
     }
     for (i = lo; i <= hi; i++)
         if (seen[i]) {
-            s->db[i] = best[i];
+            float held = (float)(s->db[i] - decay_db);
+            s->db[i] = s->ok[i] && held > best[i] ? held : best[i];
             s->ok[i] = 1;
             seen[i] = 0;
             added++;

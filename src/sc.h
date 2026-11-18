@@ -229,7 +229,7 @@ typedef struct {
 } peak_t;
 void spec_reset(spectrum_t *s, long lo, long hi, long step);
 int spec_add_line(spectrum_t *s, const char *line); /* one rtl_power CSV row */
-int spec_add_bins(spectrum_t *s, double f_lo, double bin_hz, const float *db, int n); /* one sweep step */
+int spec_add_bins(spectrum_t *s, double f_lo, double bin_hz, const float *db, int n, double decay_db);
 int spec_peaks(spectrum_t *s, double snr_db, peak_t *out, int max);
 
 /* ---------------- flight history, burst detection, proximity beeper, audio, map tiles ---------------- */
@@ -318,6 +318,7 @@ enum { ST_IDLE, ST_DECODE, ST_SCAN };
 #define SWEEP_KEEP 0.80
 #define SWEEP_FFT 1024
 #define SWEEP_FRAMES 5
+#define SWEEP_DECAY_DB 3.0 /* peak-hold decay per pass, ~12 dB/s at 4 passes/s */
 typedef struct {
     sdr_t *sdr;              /* open while sweeping, NULL otherwise */
     fft_t fft;

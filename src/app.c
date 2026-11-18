@@ -223,7 +223,7 @@ static void sweep_poll(app_t *a)
         if ((w->have += k) < sizeof w->buf) continue;
         fft_spectrum(&w->fft, w->buf, SWEEP_FRAMES, w->db);
         spec_add_bins(&a->spec, w->f_first + w->step * w->f_step - SWEEP_RATE / 2.0 + lo_bin * bin_hz, bin_hz,
-                      w->db + lo_bin, nbin);
+                      w->db + lo_bin, nbin, SWEEP_DECAY_DB);
         scan_refresh(a);
         if (++w->step == w->nstep) {
             w->step = 0;

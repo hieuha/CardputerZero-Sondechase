@@ -487,15 +487,15 @@ static void t_app(const char *fake, const char *fakelib)
     }
     CHECK(a.proc.pid > 0); /* started by itself once the receiver is back */
 
-    /* Manual scan through the fake dongle: ~1 s of passes finds its 403.000 MHz carrier, then holds. */
+    /* Scan through the fake dongle: ~1 s of passes finds its 403.000 MHz carrier; the sweep keeps running. */
     app_stop(&a);
     app_scan(&a);
     CHECK(a.state == ST_SCAN && a.sw.sdr == a.rx && a.rx != NULL);
-    for (i = 0; i < 500 && a.state == ST_SCAN; i++) {
+    for (i = 0; i < 500 && a.sw.passes < SCAN_PASSES + 2; i++) {
         app_poll(&a);
         usleep(10000);
     }
-    CHECK(a.state == ST_IDLE && !strcmp(a.status, "scan done") && a.sw.passes >= SCAN_PASSES);
+    CHECK(a.state == ST_SCAN && a.sw.sdr == a.rx && a.sw.passes >= SCAN_PASSES + 2);
     /* the fake's IQ has a DC offset (like a real tuner): no false peaks at the step centres */
     CHECK(a.npeaks == 1 && a.peaks[0].f_hz == 403000000 && a.sel == 0);
     /* Enter on that peak: the open dongle switches job and rate, it is not reopened */

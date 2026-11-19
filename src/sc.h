@@ -317,7 +317,7 @@ enum { ST_IDLE, ST_DECODE, ST_SCAN };
 /* Frequencies where an RS41 has been decoded this session, with its serial (labels on the spectrum). */
 #define MAX_KNOWN 16
 #define KNOWN_MATCH_HZ 10000L /* two sondes can sit 10 kHz apart */
-#define SCAN_PASSES 4         /* band overview: ~1 s of passes, enough to catch an RS41 between frames */
+#define SCAN_PASSES 4         /* band overview: after ~1 s of passes the cursor goes to the strongest peak */
 #define TUNE_STEP_HZ 10000L   /* Left/Right on the spectrum: the RS41 channel raster */
 #define TUNE_BIG_STEP_HZ 100000L /* Up/Down */
 #define LIVE_HALF_SPAN_HZ 384000L /* the tuned spectrum shows the frequency +- this */

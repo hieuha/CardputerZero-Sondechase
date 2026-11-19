@@ -81,8 +81,8 @@ The burst alert overlays every screen: `Enter` opens Map, a short `Esc` dismisse
 - **Tuned view**: the decoder always runs at the frequency under the cursor, and the screen shows its own samples
   ±384 kHz around it, refreshed 20 times a second. Tuning only moves the dongle; the decoder keeps running and
   resynchronises within a few seconds.
-- **Band overview** (`S`, and at start-up when no `freq_hz` is set): ~1 s of sweeps over 400–406 MHz (4 passes, enough
-  to catch an RS41 between frames), then the picture holds with the strongest peak selected.
+- **Band overview** (`S`, and at start-up when no `freq_hz` is set): 400–406 MHz swept continuously, about 4 passes a
+  second with peak hold. After the first second the cursor moves to the strongest peak; Enter tunes it, `X` stops.
 - Every decoded frame records its frequency with the sonde serial; the spectrum labels that frequency with the serial
   (`Y0532351`).
 

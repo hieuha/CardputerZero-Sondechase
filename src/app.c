@@ -176,7 +176,7 @@ void app_tune(app_t *a, long f_hz)
     start_decoder(a);
 }
 
-/* Band overview: SCAN_PASSES sweeps of scan_lo_hz..scan_hi_hz, then the picture holds for picking a peak. */
+/* Band overview: continuous sweeps of scan_lo_hz..scan_hi_hz until a peak is tuned or the scan is stopped. */
 void app_scan(app_t *a)
 {
     if (!a->sdr_ok) {
@@ -346,13 +346,9 @@ static void sweep_poll(app_t *a)
                 app_tune(a, a->peaks[0].f_hz); /* first complete pass */
                 return;
             }
-            if (w->passes >= SCAN_PASSES) { /* the overview holds the picture for picking a peak */
-                sweep_stop(a);
-                a->sel = 0; /* the strongest: early steps may have selected whatever they saw first */
-                a->state = ST_IDLE;
-                set_status(a, a->npeaks ? "scan done" : "scan done: no signal");
-                return;
-            }
+            /* the sweep runs on like an SDR app's spectrum; once the first passes have covered the band, the
+             * cursor goes to the strongest peak (early steps selected whatever they saw first) */
+            if (w->passes == SCAN_PASSES) a->sel = 0;
         }
         sweep_tune(a);
     }

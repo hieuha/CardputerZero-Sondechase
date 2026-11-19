@@ -80,8 +80,8 @@ Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` mở Map, bấ
 
 - **Đang thu**: decoder luôn chạy ở tần số dưới con trỏ, màn hình hiện chính mẫu của nó ±384 kHz quanh con trỏ, cập
   nhật 20 lần/s. Dò tần chỉ đổi tần dongle; decoder vẫn chạy và tự đồng bộ lại sau vài giây.
-- **Tổng quan dải** (`S`, và lúc mở app khi chưa đặt `freq_hz`): quét 400–406 MHz khoảng 1 s (4 lượt, đủ để bắt RS41
-  giữa hai frame), rồi phổ đứng yên với peak mạnh nhất được chọn sẵn.
+- **Tổng quan dải** (`S`, và lúc mở app khi chưa đặt `freq_hz`): quét 400–406 MHz liên tục, khoảng 4 lượt mỗi giây,
+  có giữ đỉnh. Sau giây đầu con trỏ chuyển tới peak mạnh nhất; Enter để thu peak đó, `X` để dừng.
 - Mọi frame giải mã được đều ghi lại tần số kèm số hiệu sonde; phổ gắn số hiệu (`Y0532351`) tại tần số đó.
 
 **Trạng thái thiếu phần cứng**

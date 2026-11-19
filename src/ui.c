@@ -23,7 +23,7 @@
 #define C_DIM 0xA79BD1
 #define C_AD 0x27407F /* dry adiabats */
 
-enum { PG_TRACK, PG_MAP, PG_GRAPH, PG_SCAN, PG_INFO };
+enum { PG_TRACK, PG_MAP, PG_GRAPH, PG_RADIO, PG_INFO };
 enum { AL_L = LV_TEXT_ALIGN_LEFT, AL_C = LV_TEXT_ALIGN_CENTER, AL_R = LV_TEXT_ALIGN_RIGHT };
 
 static app_t *A;
@@ -229,7 +229,7 @@ static void top_bar(const char *name, uint32_t chip, const char *mid)
 
 static void nav_bar(int active)
 {
-    static const char *nm[] = {"4 Track", "5 Map", "6 Graph", "7 Scan", "8 Info"};
+    static const char *nm[] = {"4 Track", "5 Map", "6 Graph", "7 Radio", "8 Info"};
     int i;
     fill(0, 156, 320, 14, C_P);
     for (i = 0; i < 5; i++) {
@@ -381,7 +381,7 @@ static void p_track(void)
     }
     if (!A->have_sonde) {
         txt(140, 60, 174, F_M, C_DIM, AL_L, A->state == ST_DECODE ? "Waiting for the first frame" : "No frequency tuned");
-        txt(140, 76, 174, F_S, C_DIM, AL_L, "7 scan     F type a frequency");
+        txt(140, 76, 174, F_S, C_DIM, AL_L, "7 radio     F type a frequency");
         nav_bar(PG_TRACK);
         return;
     }
@@ -767,7 +767,7 @@ static void p_flight(void)
     nav_bar(PG_GRAPH);
 }
 
-/* ---------------- 7 Scan ---------------- */
+/* ---------------- 7 Radio: spectrum, listening, decoding ---------------- */
 /* Arrow key glyph centred on (x, y), the fonts have none: dir 0 left, 1 right, 2 up, 3 down. */
 static void key_arrow(int x, int y, int dir, uint32_t col)
 {
@@ -832,7 +832,7 @@ static void p_scan_live(void)
         snprintf(mid, sizeof mid, "%.3f MHz   RS41 %s   receiving", A->freq_hz / 1e6, kn->id);
     else
         snprintf(mid, sizeof mid, "%.3f MHz   decoding", A->freq_hz / 1e6);
-    top_bar("Scan", C_CY, mid);
+    top_bar("Radio", C_CY, mid);
     fill(X0, YT, W, YB - YT, C_P);
     for (f = (lo_hz + 99999) / 100000 * 100000; f <= lo_hz + span; f += 100000) { /* 100 kHz grid */
         int x = X0 + (int)((double)(f - lo_hz) / span * W);
@@ -848,8 +848,15 @@ static void p_scan_live(void)
         fill(XC - 30, YT + 16, 60, 12, C_GN);
         txt(XC - 30, YT + 15, 60, F_S, C_G, AL_C, "%s", kn->id);
     }
+    { /* the channel being heard: a bar under the spectrum, one-sided for USB / LSB */
+        const radio_t *r = &A->radio;
+        int bw = (int)ceil((double)r->bw_hz / span * W), x0 = r->mode == DEMOD_USB ? XC : (r->mode == DEMOD_LSB ? XC - bw : XC - bw / 2);
+        fill(x0, YB - 3, bw > 1 ? bw : 2, 3, C_YL);
+        txt(X0 + 4, YT + 2, 90, F_S, C_YL, AL_L, "%s %.1f kHz", radio_mode_name(r->mode), r->bw_hz / 1000.0);
+        txt(X0 + W - 104, YT + 2, 100, F_S, C_DIM, AL_R, "B  width   D  mode");
+    }
     scan_hints(A->state == ST_LISTEN ? "Enter  decode" : "S  band", A->state == ST_LISTEN ? "S  band" : "F  freq");
-    nav_bar(PG_SCAN);
+    nav_bar(PG_RADIO);
 }
 
 /* Band overview: the whole scan band swept continuously, a free cursor to pick where to listen. */
@@ -875,7 +882,7 @@ static void p_scan(void)
         snprintf(mid, sizeof mid, "%.3f MHz   %s", A->cursor_hz / 1e6, kn ? kn->id : "scanning");
     else
         snprintf(mid, sizeof mid, "%s", A->status);
-    top_bar("Scan", C_CY, mid);
+    top_bar("Radio", C_CY, mid);
     fill(X0, YT, W, YB - YT, C_P);
     for (i = 1; i < 6; i++) ln(X0 + i * W / 6.0, YT, X0 + i * W / 6.0, YB, C_L, 1);
     spec_trace(sp, 0, sp->n, X0, W, YT, YB, lo, hi);
@@ -899,7 +906,7 @@ static void p_scan(void)
             i == 0 ? AL_L : (i == 6 ? AL_R : AL_C), "%.0f", (A->cfg.scan_lo_hz + i * fspan / 6) / 1e6);
     if (A->state == ST_SCAN) scan_hints("Enter  listen", "F  freq");
     else txt(6, 140, 308, F_S, C_DIM, AL_L, "S  scan the band      F  enter a frequency");
-    nav_bar(PG_SCAN);
+    nav_bar(PG_RADIO);
 }
 
 /* ---------------- 8 Info ---------------- */
@@ -960,7 +967,7 @@ static void p_freq(void)
     txt(100, 130, 54, F_S, C_DIM, AL_L, "Bksp  del");
     txt(156, 130, 56, F_S, C_DIM, AL_L, "Enter  tune");
     txt(222, 130, 54, F_S, C_DIM, AL_R, "Esc  cancel");
-    nav_bar(PG_SCAN);
+    nav_bar(PG_RADIO);
 }
 
 static void stripes(int y)
@@ -1049,7 +1056,7 @@ static void draw_cb(lv_event_t *e)
     else if (page == PG_TRACK) p_track();
     else if (page == PG_MAP) p_map();
     else if (page == PG_GRAPH) { if (gpage == 0) p_skewt(); else p_flight(); }
-    else if (page == PG_SCAN) p_scan();
+    else if (page == PG_RADIO) p_scan();
     else p_info();
     { /* hold-Esc-to-quit countdown over every screen; a short Esc press never shows it */
         double h = keys_esc_held_s();
@@ -1094,10 +1101,10 @@ void ui_init(app_t *a)
     lv_obj_add_event_cb(root, draw_cb, LV_EVENT_DRAW_MAIN, NULL);
     lv_timer_create(tick_cb, 200, NULL);
     if (a->freq_hz <= 0) { /* nothing to decode yet: open on a band overview */
-        page = PG_SCAN;
+        page = PG_RADIO;
         app_scan(a);
     }
-    a->radio_audio = page == PG_SCAN;
+    a->radio_audio = page == PG_RADIO;
 }
 
 int ui_should_quit(void)
@@ -1115,7 +1122,7 @@ static long tune_step(int k)
 void ui_key(int k)
 {
     if (k & K_REPEAT) { /* a held arrow keeps tuning on the spectrum; elsewhere it acts once */
-        if (page != PG_SCAN || entry || A->burst_alert) return;
+        if (page != PG_RADIO || entry || A->burst_alert) return;
         k &= ~K_REPEAT;
     }
     if (!A->sdr_ok) { /* blocking error screen */
@@ -1129,24 +1136,29 @@ void ui_key(int k)
         else if (k == K_ESC) entry = 0;
         else if (k == K_ENTER) {
             long khz = strtol(entry_buf, NULL, 10);
-            if (khz >= 24000 && khz <= 1766000) { app_tune(A, khz * 1000L); page = PG_SCAN; }
+            if (khz >= 24000 && khz <= 1766000) { app_tune(A, khz * 1000L); page = PG_RADIO; }
             entry = 0;
         }
     } else if (k >= '4' && k <= '8') page = k - '4'; /* keys 4-8 sit right under the nav bar labels */
     else if (k == 'q') quit = 1;
     else if (k == 'm') A->prox.muted = !A->prox.muted;
-    else if (k == 's') { app_scan(A); page = PG_SCAN; }
+    else if (k == 's') { app_scan(A); page = PG_RADIO; }
     else if (k == 'f') { entry = 1; entry_len = 0; entry_buf[0] = 0; }
     else if (k == 'r' && A->freq_hz > 0) app_tune(A, A->freq_hz);
     else if (k == 'x') app_stop(A);
-    else if (page == PG_SCAN && A->dsdr && (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN)) { /* tune */
+    else if (page == PG_RADIO && k == 'b') radio_init(&A->radio, A->radio.mode, radio_next_bw(A->radio.mode, A->radio.bw_hz));
+    else if (page == PG_RADIO && k == 'd') { /* NFM -> AM -> USB -> LSB, each with its usual width */
+        int m = (A->radio.mode + 1) % DEMOD_N;
+        radio_init(&A->radio, m, radio_default_bw(m));
+    }
+    else if (page == PG_RADIO && A->dsdr && (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN)) { /* tune */
         long f = A->freq_hz + tune_step(k);
         if (f >= 24000000L && f <= 1766000000L) app_listen(A, f);
-    } else if (page == PG_SCAN && A->dsdr && A->state == ST_LISTEN && k == K_ENTER) app_tune(A, A->freq_hz);
-    else if (page == PG_SCAN && A->state == ST_SCAN && (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN)) {
+    } else if (page == PG_RADIO && A->dsdr && A->state == ST_LISTEN && k == K_ENTER) app_tune(A, A->freq_hz);
+    else if (page == PG_RADIO && A->state == ST_SCAN && (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN)) {
         long f = A->cursor_hz + tune_step(k); /* the overview's cursor, kept inside the band */
         A->cursor_hz = f < A->cfg.scan_lo_hz ? A->cfg.scan_lo_hz : (f > A->cfg.scan_hi_hz ? A->cfg.scan_hi_hz : f);
-    } else if (page == PG_SCAN && A->state == ST_SCAN && k == K_ENTER) { /* -> tuned view */
+    } else if (page == PG_RADIO && A->state == ST_SCAN && k == K_ENTER) { /* -> tuned view */
         if (A->cfg.demo) app_tune(A, A->cursor_hz); /* no receiver to listen with */
         else app_listen(A, A->cursor_hz);
     }
@@ -1158,6 +1170,6 @@ void ui_key(int k)
         if (map_zoom < 0) map_zoom = m_z;
         if (map_zoom > A->cfg.zoom_min) map_zoom--;
     } else if (page == PG_MAP && k == 'c') { map_follow = (map_follow + 1) % 3; map_zoom = -1; }
-    A->radio_audio = page == PG_SCAN; /* the tuned frequency is heard while its spectrum is on screen */
+    A->radio_audio = page == PG_RADIO; /* the tuned frequency is heard while its spectrum is on screen */
     if (root) lv_obj_invalidate(root);
 }

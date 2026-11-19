@@ -187,24 +187,32 @@ void ddc_init(ddc_t *d);
  * nbytes / (2 * DDC_DECIM) + DDC_BLOCK / DDC_DECIM pairs. Returns pairs written. */
 size_t ddc_process(ddc_t *d, const unsigned char *iq, size_t nbytes, int16_t *out);
 
-/* Listening on the tuned frequency: FM demodulator over the DDC's 48 kHz output, where the tuned
- * frequency sits at +RS41_TUNE_OFFSET_HZ. Shift it to 0 Hz, low-pass the channel, discriminate, and
- * average down to AUDIO_RATE. A noise squelch drops the hiss of an empty channel to a murmur. */
-#define FM_TAPS 31
+/* Listening on the tuned frequency: demodulator over the DDC's 48 kHz output, where the tuned frequency sits at
+ * +RS41_TUNE_OFFSET_HZ. Shift it to 0 Hz, filter the channel (bw_hz wide; one sideband for USB/LSB),
+ * demodulate, and average down to AUDIO_RATE. NFM has a noise squelch that drops an empty channel to a murmur;
+ * AM follows its carrier level and SSB has an AGC. */
+enum { DEMOD_NFM, DEMOD_AM, DEMOD_USB, DEMOD_LSB, DEMOD_N };
+#define RADIO_TAPS 63
 typedef struct {
-    float taps[FM_TAPS];
-    float hi[2 * FM_TAPS], hq[2 * FM_TAPS]; /* channel filter history, doubled to read it without wrapping */
+    int mode;
+    long bw_hz;
+    float tr[RADIO_TAPS], ti[RADIO_TAPS];            /* channel filter, complex for one sideband */
+    float hi[2 * RADIO_TAPS], hq[2 * RADIO_TAPS];    /* its history, doubled to read it without wrapping */
     int pos;
     unsigned phase;            /* frequency shift step (0..3) */
-    float pi, pq;              /* previous filtered sample, for the discriminator */
+    float pi, pq;              /* previous filtered sample, for the FM discriminator */
     float acc;                 /* decimation by 3 */
     int nacc;
-    float sq_sum, gain;        /* squelch: mean square of the discriminator over a window, current gain */
+    float sq_sum, sq_thr, gain; /* NFM squelch: discriminator mean square over a window, threshold, gain */
     int sq_n, open;
-} fm_t;
-void fm_init(fm_t *f);
+    float level;               /* AM carrier / SSB envelope */
+} radio_t;
+void radio_init(radio_t *r, int mode, long bw_hz);
 /* npairs 48 kHz cs16 pairs in; at most npairs / 3 + 1 audio samples out (16 kHz). Returns samples written. */
-int fm_process(fm_t *f, const int16_t *iq, size_t npairs, int16_t *out);
+int radio_process(radio_t *r, const int16_t *iq, size_t npairs, int16_t *out);
+const char *radio_mode_name(int mode);
+long radio_default_bw(int mode);
+long radio_next_bw(int mode, long bw_hz); /* the mode's next channel width, wrapping */
 
 /* ---------------- in-process RTL-SDR (librtlsdr loaded at run time) ---------------- */
 /* Lock-free single-producer (USB thread) / single-consumer (main loop) ring of u8 IQ bytes.
@@ -384,7 +392,7 @@ typedef struct {
     sdr_t *rx;               /* the dongle, open for the session once first used (NULL: not open) */
     sdr_t *dsdr;             /* tuned receiver (listen / decode): dongle at freq_hz - 12 kHz + DDC_RATE/4, else NULL */
     ddc_t ddc;
-    fm_t fm;                 /* radio audio of the tuned frequency */
+    radio_t radio;           /* audio of the tuned frequency: mode and channel width */
     int radio_audio;         /* set by the UI while the spectrum is on screen */
     spectrum_t live;         /* spectrum of the decode window (+-DDC_RATE/2 around the dongle) */
     double t_live;

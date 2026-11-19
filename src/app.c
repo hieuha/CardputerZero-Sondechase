@@ -23,6 +23,7 @@ void app_init(app_t *a, const char *cfg_path)
     hist_reset(&a->hist);
     flight_reset(&a->flight);
     audio_init(&a->audio);
+    radio_init(&a->radio, DEMOD_NFM, radio_default_bw(DEMOD_NFM));
     tf_init(&a->tf, &a->cfg);
     a->freq_hz = a->cfg.freq_hz;
     a->sdr_ok = (a->cfg.sdr_check && !a->cfg.demo) ? sdr_present("/sys/bus/usb/devices") : 1;
@@ -86,7 +87,7 @@ static int rx_start(app_t *a)
         return -1;
     }
     ddc_init(&a->ddc);
-    fm_init(&a->fm);
+    radio_init(&a->radio, a->radio.mode, a->radio.bw_hz); /* fresh filter state, same settings */
     rx_tune(a);
     return 0;
 }
@@ -121,7 +122,7 @@ static void rx_poll(app_t *a, double now)
     while ((k = sdr_read(a->dsdr, iq, sizeof iq)) > 0) {
         size_t n = ddc_process(&a->ddc, iq, k, out);
         if (n && a->proc.pid > 0) proc_feed(&a->proc, out, n * 2 * sizeof out[0]);
-        if (n && listen) audio_radio_push(&a->audio, pcm, fm_process(&a->fm, out, n, pcm));
+        if (n && listen) audio_radio_push(&a->audio, pcm, radio_process(&a->radio, out, n, pcm));
         if (now - a->t_live >= 0.05 && k >= 2 * SWEEP_FFT * SWEEP_FRAMES) {
             int i, b = (int)(DC_ZONE_HZ / ((double)DDC_RATE / SWEEP_FFT)), l = SWEEP_FFT / 2 - b - 1, r = SWEEP_FFT / 2 + b + 1;
             fft_spectrum(&a->sw.fft, iq, SWEEP_FRAMES, db);

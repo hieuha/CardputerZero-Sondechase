@@ -356,35 +356,80 @@ static void t_keys(void)
     close(p[1]);
 }
 
-/* Radio audio: FM at the DDC's +12 kHz comes out as its modulating tone; an empty channel is squelched. */
-static void t_fm(void)
+/* Zero crossings of pcm[from..n): twice the dominant frequency times the duration. */
+static int zero_crossings(const int16_t *pcm, int from, int n)
+{
+    int i, zc = 0;
+    for (i = from + 1; i < n; i++)
+        if ((pcm[i - 1] < 0) != (pcm[i] < 0)) zc++;
+    return zc;
+}
+
+/* cs16 at 48 kHz: a carrier at +12 kHz (the tuned frequency in the DDC stream) plus offset_hz, amplitude amp,
+ * phase-modulated by pm(t) and amplitude-modulated by (1 + am * sin(1 kHz)). */
+static void carrier_cs16(int16_t *iq, int np, double offset_hz, double amp, double fm_dev_hz, double am)
+{
+    int i;
+    for (i = 0; i < np; i++) {
+        double t = i / 48000.0, ph = 2.0 * M_PI * (12000.0 + offset_hz) * t, a = amp * (1.0 + am * sin(2.0 * M_PI * 1000.0 * t));
+        ph += fm_dev_hz / 1000.0 * sin(2.0 * M_PI * 1000.0 * t);
+        iq[2 * i] = (int16_t)lround(a * cos(ph));
+        iq[2 * i + 1] = (int16_t)lround(a * sin(ph));
+    }
+}
+
+/* Radio audio: each mode recovers its 1 kHz test tone (~1875 zero crossings in the 0.94 s after settling);
+ * NFM squelches an empty channel; one sideband is kept for USB / LSB. */
+static void t_radio(void)
 {
     enum { NP = 48000 };
     static int16_t iq[2 * NP], pcm[NP / 3 + 1];
-    static fm_t f;
-    double ph, rs = 0, rn = 0;
-    int i, n, zc = 0, pk = 0;
-    for (i = 0; i < NP; i++) { /* RS41-like deviation (2.4 kHz) with a 1 kHz tone */
-        ph = 2.0 * M_PI * 12000.0 * i / 48000.0 + 2.4 * sin(2.0 * M_PI * 1000.0 * i / 48000.0);
-        iq[2 * i] = (int16_t)lround(1000.0 * cos(ph));
-        iq[2 * i + 1] = (int16_t)lround(1000.0 * sin(ph));
-    }
-    fm_init(&f);
-    n = fm_process(&f, iq, NP, pcm);
+    static radio_t r;
+    double rs = 0, rn = 0;
+    int i, n, pk = 0;
+    CHECK(radio_default_bw(DEMOD_NFM) == 16000 && radio_next_bw(DEMOD_NFM, 16000) == 25000);
+    CHECK(radio_next_bw(DEMOD_USB, 3000) == 2400 && !strcmp(radio_mode_name(DEMOD_LSB), "LSB"));
+
+    carrier_cs16(iq, NP, 0, 1000, 2400, 0); /* RS41-like deviation */
+    radio_init(&r, DEMOD_NFM, 16000);
+    n = radio_process(&r, iq, NP, pcm);
     CHECK(n == NP / 3);
-    for (i = 1000; i < n; i++) { /* after the squelch has opened */
-        if ((pcm[i - 1] < 0) != (pcm[i] < 0)) zc++;
+    for (i = 1000; i < n; i++) {
         if (abs(pcm[i]) > pk) pk = abs(pcm[i]);
         rs += (double)pcm[i] * pcm[i];
     }
-    CHECK(zc > 1800 && zc < 1950); /* 1 kHz over 0.94 s: ~1875 zero crossings */
+    i = zero_crossings(pcm, 1000, n);
+    CHECK(i > 1800 && i < 1950);
     CHECK(pk > 7000 && pk < 11000);
     srand(7);
     for (i = 0; i < 2 * NP; i++) iq[i] = (int16_t)(rand() % 2001 - 1000);
-    fm_init(&f);
-    n = fm_process(&f, iq, NP, pcm);
+    radio_init(&r, DEMOD_NFM, 16000);
+    n = radio_process(&r, iq, NP, pcm);
     for (i = 1000; i < n; i++) rn += (double)pcm[i] * pcm[i];
     CHECK(sqrt(rn / (n - 1000)) < 2500 && sqrt(rs / (n - 1000)) > 5000);
+
+    carrier_cs16(iq, NP, 0, 1000, 0, 0.5); /* AM, 50 % */
+    radio_init(&r, DEMOD_AM, 6000);
+    n = radio_process(&r, iq, NP, pcm);
+    i = zero_crossings(pcm, 4000, n); /* after the carrier level has settled */
+    CHECK(i > 1450 && i < 1550);      /* 0.75 s: ~1500 */
+    for (pk = 0, i = 4000; i < n; i++) if (abs(pcm[i]) > pk) pk = abs(pcm[i]);
+    CHECK(pk > 6000 && pk < 14000);   /* 50 % depth -> ~10000 */
+
+    { /* a 1 kHz tone above the tuned frequency and a 2 kHz tone below: USB hears 1 kHz, LSB 2 kHz */
+        static int16_t a[2 * NP];
+        carrier_cs16(iq, NP, 1000, 1000, 0, 0);
+        carrier_cs16(a, NP, -2000, 1000, 0, 0);
+        for (i = 0; i < 2 * NP; i++) iq[i] = (int16_t)(iq[i] + a[i]);
+        radio_init(&r, DEMOD_USB, 3000);
+        n = radio_process(&r, iq, NP, pcm);
+        i = zero_crossings(pcm, 1000, n);
+        CHECK(i > 1800 && i < 1950);
+        radio_init(&r, DEMOD_LSB, 3000);
+        n = radio_process(&r, iq, NP, pcm);
+        i = zero_crossings(pcm, 1000, n);
+        CHECK(i > 3650 && i < 3850);
+    }
 }
 
 /* Number of non-zombie processes in process group pg (zombies await reaping by init). */
@@ -801,7 +846,7 @@ int main(int argc, char **argv)
     t_spec();
     t_ring();
     t_dsp();
-    t_fm();
+    t_radio();
     t_keys();
     t_frames();
     t_feed();

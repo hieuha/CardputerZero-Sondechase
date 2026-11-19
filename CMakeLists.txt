@@ -17,7 +17,7 @@ option(SC_BUILD_UI "Build the LVGL application (fetches LVGL v9.5.0)" ON)
 option(SC_SIM "Desktop build: SDL2 window instead of /dev/fb0 + evdev" OFF)
 
 # Core: no LVGL dependency, unit-tested on any Linux host.
-add_library(sc_core STATIC src/base.c src/geo.c src/io.c src/track.c src/app.c src/demo.c src/tiles.c src/sdr.c src/dsp.c src/fm.c)
+add_library(sc_core STATIC src/base.c src/geo.c src/io.c src/track.c src/app.c src/demo.c src/tiles.c src/sdr.c src/dsp.c src/radio.c)
 target_include_directories(sc_core PUBLIC src)
 target_compile_definitions(sc_core PUBLIC SC_VERSION="${PROJECT_VERSION}"
   SC_DECODER_DIR="/usr/lib/${PROJECT_NAME}") # where the package installs fsk_demod and rs41mod

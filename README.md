@@ -67,7 +67,7 @@ If `librtlsdr0` is missing or the dongle is busy, the reason shows on the status
 | `4` Track | HUD compass, distance, bearing, elevation, predicted landing point; sonde serial, frame and battery while its GPS has no fix |
 | `5` Map | Tiles, device position, sonde, flight track, landing point. `Up/Down` zoom, `C` cycles follow mode (both / device / sonde). With no position yet: centred on `map_lat` / `map_lon` |
 | `6` Graph | `Left/Right` switch page: Skew-T log-P, altitude + vertical speed over time |
-| `7` Scan | Spectrum, like an SDR app, with the tuned frequency's audio: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` decode here. `S` band overview: the same keys move a cursor, `Enter` listens there. Holding an arrow key keeps tuning (after 0.4 s, 12 steps a second) |
+| `7` Radio | Spectrum, like an SDR app, with the tuned frequency's audio: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` decode here. `S` band overview: the same keys move a cursor, `Enter` listens there. Holding an arrow key keeps tuning (after 0.4 s, 12 steps a second). `D` mode (NFM / AM / USB / LSB), `B` channel width |
 | `8` Info | Sonde, reception, device, one pair of target coordinates |
 | `F` | Enter frequency (kHz) |
 | `M` | Mute / unmute beeper and radio audio |
@@ -79,8 +79,11 @@ The burst alert overlays every screen: `Enter` opens Map, a short `Esc` dismisse
 **Spectrum**
 
 - **Tuned view**: the tuned frequency stays in the middle and the screen shows the receiver's own samples ±384 kHz
-  around it, refreshed 20 times a second. Its audio plays while the Scan screen is shown (FM demodulator, 16 kHz, with
-  a noise squelch that turns an empty channel down to a murmur). Tuning only listens; `Enter` starts the decoder on
+  around it, refreshed 20 times a second. Its audio plays while the Radio screen is shown: NFM 16 kHz by default
+  (the RS41's channel), with a noise squelch that turns an empty channel down to a murmur. `D` cycles NFM / AM / USB /
+  LSB, `B` the mode's widths (NFM 16 / 25 / 6 / 12 kHz, AM 6 / 10 kHz, SSB 2.4 / 3 kHz); the mode and width show
+  at the top left of the spectrum and a yellow bar under it marks the channel. The decoder always gets the full
+  48 kHz stream, whatever is being listened to. Tuning only listens; `Enter` starts the decoder on
   that frequency (top bar: `listening` → `decoding`), and tuning away stops it until `Enter` again.
 - **Band overview** (`S`, and at start-up when no `freq_hz` is set): 400–406 MHz swept continuously, about 4 passes a
   second with peak hold. Arrow keys move a cursor (same steps), `Enter` listens there, `X` stops.
@@ -112,10 +115,12 @@ and a signal that stops fades out within seconds.
 The 48 kHz cs16 stream goes to `fsk_demod | rs41mod` on stdin in `PIPE_BUF`-sized writes, which pipes deliver whole,
 so a lagging decoder loses whole chunks (counted) and never sample alignment.
 
-**Radio audio** (`fm.c`): the same 48 kHz stream, shifted by −12 kHz so the tuned frequency sits at 0 Hz, a 31-tap
-±8 kHz channel filter (an RS41 is 4800 Bd GFSK with ±2.4 kHz deviation), a phase-difference discriminator and an
-average of 3 down to 16 kHz. The squelch compares the discriminator's mean square over 20 ms with 0.3 rad² (about
-0.05 for a clean RS41, 0.7 for noise). The result is mixed under the beeper in the one `pacat` stream.
+**Radio audio** (`radio.c`): the same 48 kHz stream, shifted by −12 kHz so the tuned frequency sits at 0 Hz, a 63-tap
+channel filter (complex for USB / LSB, which keeps one side), the demodulator, and an average of 3 down to 16 kHz.
+NFM: phase-difference discriminator; its squelch compares the discriminator's mean square over 20 ms with a threshold
+per width, between ~0.05 rad² for a carrier with RS41 deviation and the noise level through that filter (0.13 to
+1.39). AM: envelope around the carrier level, which also sets the gain. SSB: the real part, with an AGC. Broadcast
+WFM (~200 kHz) does not fit in the 48 kHz stream. The audio is mixed under the beeper in the one `pacat` stream.
 
 **Landing prediction** (`geo.c`, `predict_landing`)
 
@@ -241,7 +246,7 @@ distance from the dominant background color; it needs tuning if the tile style d
 dongle. Covered: geodesy, ISA,
 dew point, landing prediction, rs41mod JSON (including a real no-fix frame) and gpsd parsers, heading, spectrum
 cells and peak hold, IQ ring, FFT, decoder front end (sonde lands at +12 kHz, images ≥ 20 dB down, chunking
-bit-exact), FM audio (tone recovered, empty channel squelched), listen → decode switching, held-key repeat, stdin feeding, process-group reaping, flight history, tiles, child pipeline lifecycle.
+bit-exact), radio audio (NFM / AM / USB / LSB recover their test tone, NFM squelches noise), listen → decode switching, held-key repeat, stdin feeding, process-group reaping, flight history, tiles, child pipeline lifecycle.
 
 On a CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 at 403.000 MHz):
 

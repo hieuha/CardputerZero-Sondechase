@@ -67,7 +67,7 @@ hoặc dongle đang bị chương trình khác giữ, lý do hiện trên dòng 
 | `4` Track | La bàn HUD, khoảng cách, bearing, elevation, điểm rơi dự đoán; số hiệu, frame và pin của sonde khi GPS của nó chưa fix |
 | `5` Map | Tile, vị trí máy, sonde, vệt bay, điểm rơi. `Up/Down` zoom, `C` đổi chế độ bám (both / device / sonde). Khi chưa có vị trí nào: căn giữa theo `map_lat` / `map_lon` |
 | `6` Graph | `Left/Right` đổi trang: Skew-T log-P, độ cao + tốc độ đứng theo thời gian |
-| `7` Scan | Phổ kiểu app SDR, kèm audio của tần số đang thu: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` để giải mã tại đó. `S` tổng quan dải: cùng các phím di chuyển con trỏ, `Enter` để nghe tại đó. Giữ phím mũi tên thì tần số tự chạy (sau 0,4 s, 12 bước mỗi giây) |
+| `7` Radio | Phổ kiểu app SDR, kèm audio của tần số đang thu: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` để giải mã tại đó. `S` tổng quan dải: cùng các phím di chuyển con trỏ, `Enter` để nghe tại đó. Giữ phím mũi tên thì tần số tự chạy (sau 0,4 s, 12 bước mỗi giây). `D` đổi kiểu điều chế (NFM / AM / USB / LSB), `B` đổi độ rộng kênh |
 | `8` Info | Sonde, thu nhận, thiết bị, một cặp tọa độ đích |
 | `F` | Nhập tần số (kHz) |
 | `M` | Tắt / bật tiếng beeper và audio radio |
@@ -79,8 +79,10 @@ Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` mở Map, bấ
 **Phổ**
 
 - **Đang thu**: tần số đang thu nằm giữa màn, màn hình hiện chính mẫu của bộ thu ±384 kHz quanh nó, cập nhật 20 lần/s.
-  Audio của tần số đó phát khi đang ở màn Scan (giải điều tần FM, 16 kHz, có squelch theo mức nhiễu nên kênh trống chỉ
-  còn tiếng rì nhỏ). Dò tần chỉ để nghe; `Enter` bắt đầu giải mã ở tần số đó (thanh trên: `listening` → `decoding`),
+  Audio của tần số đó phát khi đang ở màn Radio: mặc định NFM 16 kHz (đúng kênh của RS41), có squelch theo mức nhiễu nên
+  kênh trống chỉ còn tiếng rì nhỏ. `D` đổi NFM / AM / USB / LSB, `B` đổi độ rộng của chế độ đó (NFM 16 / 25 / 6 / 12 kHz,
+  AM 6 / 10 kHz, SSB 2,4 / 3 kHz); chế độ và độ rộng hiện ở góc trên bên trái phổ, vạch vàng dưới phổ đánh dấu kênh.
+  Decoder luôn nhận đủ dòng 48 kHz, bất kể đang nghe chế độ nào. Dò tần chỉ để nghe; `Enter` bắt đầu giải mã ở tần số đó (thanh trên: `listening` → `decoding`),
   dịch đi thì decoder dừng cho tới khi bấm `Enter` lại.
 - **Tổng quan dải** (`S`, và lúc mở app khi chưa đặt `freq_hz`): quét 400–406 MHz liên tục, khoảng 4 lượt mỗi giây,
   có giữ đỉnh. Phím mũi tên di chuyển con trỏ (cùng bước), `Enter` để nghe tại đó, `X` để dừng.
@@ -111,10 +113,12 @@ năm tầng half-band nhị thức giảm mẫu ÷32 và một FIR 9 tap bù đ�
 `fsk_demod | rs41mod` theo từng khối `PIPE_BUF`; pipe luôn ghi trọn các khối này, nên decoder chạy chậm chỉ mất
 nguyên khối (có đếm) chứ không bao giờ lệch biên mẫu.
 
-**Audio radio** (`fm.c`): cùng dòng 48 kHz, dịch −12 kHz để tần số đang thu về 0 Hz, lọc kênh ±8 kHz bằng FIR 31 tap
-(RS41 là GFSK 4800 Bd, độ di tần ±2,4 kHz), bộ phân biệt theo hiệu pha, rồi lấy trung bình 3 mẫu xuống 16 kHz.
-Squelch so trung bình bình phương đầu ra bộ phân biệt trong 20 ms với 0,3 rad² (khoảng 0,05 với RS41 sạch, 0,7 với
-nhiễu). Kết quả được trộn dưới tiếng beeper trong cùng một luồng `pacat`.
+**Audio radio** (`radio.c`): cùng dòng 48 kHz, dịch −12 kHz để tần số đang thu về 0 Hz, lọc kênh bằng FIR 63 tap (hệ
+số phức với USB / LSB để chỉ giữ một biên), giải điều chế, rồi lấy trung bình 3 mẫu xuống 16 kHz. NFM: bộ phân biệt
+theo hiệu pha; squelch so trung bình bình phương đầu ra trong 20 ms với ngưỡng riêng cho từng độ rộng, nằm giữa
+~0,05 rad² (sóng mang với độ di tần như RS41) và mức nhiễu qua bộ lọc đó (0,13 tới 1,39). AM: đường bao quanh mức sóng
+mang, mức này cũng làm hệ số khuếch đại. SSB: phần thực, có AGC. WFM phát thanh (~200 kHz) không vừa dòng 48 kHz. Audio
+được trộn dưới tiếng beeper trong cùng một luồng `pacat`.
 
 **Dự đoán điểm rơi** (`geo.c`, `predict_landing`)
 
@@ -239,7 +243,7 @@ màu so với màu nền chiếm đa số; cần chỉnh lại nếu style tile 
 (`tests/fake_rtlsdr.c`, phát sóng mang 403,000 MHz ở bất kỳ tần số nào đang đặt) cho phép chạy trọn quét và giải mã
 mà không cần dongle. Phạm vi: geodesy, ISA, dew point, dự đoán
 điểm rơi, parser JSON rs41mod (kể cả một frame thật chưa có fix) và gpsd, heading, ô phổ và giữ đỉnh, ring IQ, FFT,
-bộ hạ tần (sonde rơi đúng +12 kHz, tần số ảnh yếu hơn ≥ 20 dB, chia mẩu cho kết quả giống từng bit), audio FM (khôi phục đúng tone, kênh trống bị squelch), chuyển nghe → giải mã, lặp phím khi giữ, ghi stdin, thu
+bộ hạ tần (sonde rơi đúng +12 kHz, tần số ảnh yếu hơn ≥ 20 dB, chia mẩu cho kết quả giống từng bit), audio radio (NFM / AM / USB / LSB khôi phục đúng tone thử, NFM squelch nhiễu), chuyển nghe → giải mã, lặp phím khi giữ, ghi stdin, thu
 dọn process group, lịch sử bay, tile, vòng đời pipeline con.
 
 Trên CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 ở 403,000 MHz):

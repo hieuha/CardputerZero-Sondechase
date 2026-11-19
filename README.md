@@ -162,7 +162,12 @@ The Map screen looks up each tile in this order:
   "© OpenStreetMap" when tiles are present.
 - The cache is capped by `tile_cache_mb` (default 200 MB); when exceeded, the oldest tiles are deleted.
 - Missing tiles show an empty grid with a status: `Loading map`, `No network: stored map only`,
-  or `No map stored for this area` (when `tile_online = 0`).
+  or `No map stored for this area` (when `tile_online = 0`). When the network is up but the tile server's name
+  does not work, the map says so and names the domain:
+  - `Map server blocked by DNS`: the name resolves only to `127.0.0.1` / `::1` / `0.0.0.0`, which is how DNS
+    filters (router, Pi-hole, AdGuard, NextDNS, a Tailscale DNS setting) block a domain. Allow
+    `tile.openstreetmap.org` there.
+  - `Map server name not found (DNS)`: the name does not resolve at all.
 - Recoloring (`tile_recolor` in `src/tiles.c`), two styles from the same OpenStreetMap tiles (`V` on the Map
   switches, `map_simple` sets the start-up one):
   - **simple** (default): only water and roads. Main roads (drawn in light red, orange and yellow by the OSM style)

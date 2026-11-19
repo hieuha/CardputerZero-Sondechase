@@ -160,7 +160,12 @@ Màn hình Map tìm mỗi ô tile theo thứ tự:
   "© OpenStreetMap" khi có tile.
 - Cache giới hạn bởi `tile_cache_mb` (mặc định 200 MB); khi vượt, các ô cũ nhất bị xóa.
 - Ô chưa có hiện lưới trống, kèm trạng thái: `Loading map`, `No network: stored map only`,
-  hoặc `No map stored for this area` (khi `tile_online = 0`).
+  hoặc `No map stored for this area` (khi `tile_online = 0`). Khi có mạng nhưng tên miền của server tile không
+  dùng được, màn Map nói rõ và ghi tên miền:
+  - `Map server blocked by DNS`: tên miền chỉ trả về `127.0.0.1` / `::1` / `0.0.0.0`, đây là cách các bộ lọc DNS
+    (router, Pi-hole, AdGuard, NextDNS, cài đặt DNS của Tailscale) chặn một tên miền. Hãy cho phép
+    `tile.openstreetmap.org` ở đó.
+  - `Map server name not found (DNS)`: tên miền hoàn toàn không phân giải được.
 - Đổi màu (`tile_recolor` trong `src/tiles.c`), hai kiểu từ cùng tile OpenStreetMap (`V` trên màn Map để đổi,
   `map_simple` chọn kiểu lúc mở app):
   - **simple** (mặc định): chỉ còn nước và đường. Đường chính (kiểu OSM tô đỏ nhạt, cam, vàng) thành nét sáng, đường

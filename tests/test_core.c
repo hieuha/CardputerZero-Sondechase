@@ -808,6 +808,7 @@ static void t_tiles(void)
     CHECK(tf_request(&t, &c, 11, 1628, 901, now) == 1);
     for (i = 0; i < 200 && t.failed == 0; i++) { tf_poll(&t, &c, now); usleep(10000); }
     CHECK(t.failed == 1 && tf_find(&t, &c, 11, 1628, 901, p, sizeof p) == 0);
+    CHECK(t.why == TF_WHY_HTTP && !strcmp(t.host, "tiles.invalid")); /* the stand-in exits like curl -f on 404 */
     CHECK(tf_request(&t, &c, 11, 1628, 901, now + 5) == 0);
     CHECK(tf_request(&t, &c, 11, 1628, 901, now + TF_RETRY_S + 1) == 1);
     for (i = 0; i < 200 && t.failed < 2; i++) { tf_poll(&t, &c, now + 40); usleep(10000); }
@@ -818,6 +819,28 @@ static void t_tiles(void)
     CHECK(tf_sweep(&t, 400) == 300);
     CHECK(access("/tmp/sc_tc/11/1626/901.png", F_OK) != 0 && access("/tmp/sc_tc/11/1627/901.png", F_OK) == 0);
     tf_close(&t);
+
+    /* why downloads fail, from curl's exit status; a name answered with loopback only is a DNS block */
+    CHECK(tf_host_blocked("localhost") == 1 && tf_host_blocked("127.0.0.1") == 1 && tf_host_blocked("192.0.2.1") == 0);
+    {
+        static const struct { int code; const char *url; int why; } cases[] = {
+            {6, "https://tiles.invalid/{z}/{x}/{y}.png", TF_WHY_DNS_FAIL},
+            {7, "https://localhost/{z}/{x}/{y}.png", TF_WHY_DNS_BLOCKED},
+            {7, "https://192.0.2.1:8443/{z}/{x}/{y}.png", TF_WHY_NET},
+        };
+        int k;
+        c.tile_online = 1;
+        for (k = 0; k < 3; k++) {
+            snprintf(c.tile_url, sizeof c.tile_url, "%s", cases[k].url);
+            snprintf(c.tile_fetch_cmd, sizeof c.tile_fetch_cmd, "exit %d", cases[k].code);
+            tf_init(&t, &c);
+            CHECK(tf_request(&t, &c, 11, 1630 + k, 901, now) == 1);
+            for (i = 0; i < 200 && t.failed == 0; i++) { tf_poll(&t, &c, now); usleep(10000); }
+            CHECK(t.failed == 1 && t.why == cases[k].why);
+            tf_close(&t);
+        }
+        CHECK(!strcmp(t.host, "192.0.2.1"));
+    }
 
     /* recolour: land -> ground, white road -> light, water -> blue tint, dark label -> lightest */
     {

@@ -2,7 +2,9 @@
  * fetch command, cache size limit, and the light-to-dark recolouring of downloaded tiles. */
 #define _GNU_SOURCE
 #include "sc.h"
+#include <arpa/inet.h>
 #include <dirent.h>
+#include <netdb.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -93,6 +95,41 @@ int tf_request(tilefetch_t *t, const cfg_t *c, int z, int x, int y, double now)
     return 1;
 }
 
+int tf_host_blocked(const char *host)
+{
+    struct addrinfo hints, *res, *p;
+    int real = 0, any = 0;
+    memset(&hints, 0, sizeof hints);
+    hints.ai_socktype = SOCK_STREAM;
+    if (getaddrinfo(host, NULL, &hints, &res) != 0) return 0;
+    for (p = res; p; p = p->ai_next) {
+        any = 1;
+        if (p->ai_family == AF_INET) {
+            uint32_t a = ntohl(((struct sockaddr_in *)p->ai_addr)->sin_addr.s_addr);
+            if ((a >> 24) != 127 && a != 0) real = 1;
+        } else if (p->ai_family == AF_INET6) {
+            const struct in6_addr *a = &((struct sockaddr_in6 *)p->ai_addr)->sin6_addr;
+            if (!IN6_IS_ADDR_LOOPBACK(a) && !IN6_IS_ADDR_UNSPECIFIED(a)) real = 1;
+        }
+    }
+    freeaddrinfo(res);
+    return any && !real;
+}
+
+/* Name the reason of a failed download from curl's exit status (default tile_fetch_cmd): 6 = the name did not
+ * resolve; 7 = no connection, which is also what a name blocked to 127.0.0.1 gives, so only then is the name
+ * looked up again (DNS has just answered, so this does not block); 22 = HTTP error. */
+static void fail_reason(tilefetch_t *t, const cfg_t *c, int code)
+{
+    const char *p = strstr(c->tile_url, "://");
+    size_t n;
+    p = p ? p + 3 : c->tile_url;
+    n = strcspn(p, "/:");
+    snprintf(t->host, sizeof t->host, "%.*s", (int)(n < sizeof t->host ? n : sizeof t->host - 1), p);
+    t->why = code == 6 ? TF_WHY_DNS_FAIL : code == 22 ? TF_WHY_HTTP
+           : (code == 7 && tf_host_blocked(t->host)) ? TF_WHY_DNS_BLOCKED : TF_WHY_NET;
+}
+
 int tf_poll(tilefetch_t *t, const cfg_t *c, double now)
 {
     int i, st, n = 0;
@@ -116,6 +153,8 @@ int tf_poll(tilefetch_t *t, const cfg_t *c, double now)
             t->fail[t->nfail_slot].y = t->job[i].y;
             t->fail[t->nfail_slot].t_retry = now + TF_RETRY_S;
             t->nfail_slot = (t->nfail_slot + 1) % TF_FAILS;
+            if (now - t->t_last_fail > 5.0 || t->failed == 0) /* look again at most every 5 s */
+                fail_reason(t, c, WIFEXITED(st) ? WEXITSTATUS(st) : -1);
             t->failed++;
             t->t_last_fail = now;
         }

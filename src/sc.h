@@ -330,8 +330,14 @@ typedef struct {
     int nfail_slot;
     unsigned done, failed, since_sweep;
     double t_last_ok, t_last_fail;
+    int why;                 /* TF_WHY_*: reason of the last failed download */
+    char host[96];           /* the tile server, for the message */
     char cache_dir[240];
 } tilefetch_t;
+/* Why downloads fail. DNS_BLOCKED: the server's name resolves only to 127.0.0.1 / ::1 / 0.0.0.0, the answer a
+ * DNS filter (Pi-hole, AdGuard, NextDNS, router) gives for a blocked domain. */
+enum { TF_WHY_NET, TF_WHY_DNS_FAIL, TF_WHY_DNS_BLOCKED, TF_WHY_HTTP };
+int tf_host_blocked(const char *host); /* 1: resolves, but only to loopback / unspecified addresses */
 void tf_init(tilefetch_t *t, const cfg_t *c);
 /* Find a tile on disk: 1 = preloaded (tile_dir, already in UI colours), 2 = downloaded cache
  * (original colours), 0 = not present. */

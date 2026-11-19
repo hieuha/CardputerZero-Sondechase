@@ -121,20 +121,24 @@ static int text_w(const lv_font_t *f, const char *s)
 }
 
 /* Panel with chamfered top-right and bottom-left corners. */
+/* Panel with the top-right and bottom-left corners cut at 45 degrees (h >= 10). Drawn pixel by pixel: 1-px anti-aliased
+ * diagonals come out as faint half-tone dots on this screen, so the cut edges are solid pixel steps. */
 static void box(int x, int y, int w, int h, uint32_t col, uint32_t bg)
 {
     int i, c = 5, r = x + w - 1, b = y + h - 1;
-    fill(x, y, w, h, bg);
-    for (i = 0; i < c; i++) {
-        ln(r - c + 1 + i, y + i, r + 1, y + i, C_G, 1);
-        ln(x, b - i, x + c - i, b - i, C_G, 1);
+    fill(x, y + c, w, h - 2 * c, bg);
+    for (i = 0; i < c; i++) { /* rows beside the cut corners: what is underneath (map, grid) stays visible */
+        fill(x, y + i, w - c + i, 1, bg);
+        fill(x + c - i, b - i, w - c + i, 1, bg);
     }
-    ln(x, y, r - c, y, col, 1);
-    ln(r - c, y, r, y + c, col, 1);
-    ln(r, y + c, r, b, col, 1);
-    ln(r, b, x + c, b, col, 1);
-    ln(x + c, b, x, b - c, col, 1);
-    ln(x, b - c, x, y, col, 1);
+    for (i = 0; i <= c; i++) { /* the cut edges */
+        fill(r - c + i, y + i, 1, 1, col);
+        fill(x + c - i, b - i, 1, 1, col);
+    }
+    fill(x, y, r - c - x, 1, col);         /* top */
+    fill(r, y + c, 1, b - y - c + 1, col); /* right */
+    fill(x + c, b, r - x - c + 1, 1, col); /* bottom */
+    fill(x, y, 1, b - c - y + 1, col);     /* left */
 }
 
 static void kv(int x, int y, int w, const char *k, uint32_t vc, const char *fmt, ...)
@@ -602,10 +606,21 @@ static void p_map(void)
     box(120, 20, 56, 16, C_L, C_P);
     txt(124, 21, 48, F_S, C_DIM, AL_C, "%s", A->cfg.map_simple ? "simple" : "detailed");
     if (missing) { /* say why part of the map is empty */
+        int failing = !loading && A->cfg.tile_online && A->tf.failed && A->tf.t_last_fail >= A->tf.t_last_ok;
         const char *why = loading ? "Loading map" : !A->cfg.tile_online ? "No map stored for this area"
-                        : (A->tf.failed && A->tf.t_last_fail >= A->tf.t_last_ok) ? "No network: stored map only" : "Loading map";
-        fill(4, 39, 150, 14, C_G);
-        txt(9, 39, 144, F_S, loading ? C_CY : C_RD, AL_L, "%s", why);
+                        : !failing ? "Loading map"
+                        : A->tf.why == TF_WHY_DNS_BLOCKED ? "Map server blocked by DNS"
+                        : A->tf.why == TF_WHY_DNS_FAIL ? "Map server name not found (DNS)"
+                        : A->tf.why == TF_WHY_HTTP ? "Map server refused the download"
+                                                   : "No network: stored map only";
+        fill(4, 39, 200, 14, C_G);
+        txt(9, 39, 194, F_S, loading ? C_CY : C_RD, AL_L, "%s", why);
+        if (failing && (A->tf.why == TF_WHY_DNS_BLOCKED || A->tf.why == TF_WHY_DNS_FAIL)) {
+            fill(4, 53, 312, 26, C_G); /* what to do: the domain to allow, e.g. in Pi-hole / AdGuard / the router */
+            txt(9, 53, 304, F_S, C_TX, AL_L, "%s %s", A->tf.why == TF_WHY_DNS_BLOCKED ? "Allow" : "Check DNS for", A->tf.host);
+            txt(9, 66, 304, F_S, C_DIM, AL_L, "%s", A->tf.why == TF_WHY_DNS_BLOCKED ? "in the DNS filter (router, Pi-hole, AdGuard, NextDNS)"
+                                                                                  : "Wi-Fi is up, but this name does not resolve");
+        }
     }
     if (any) { /* attribution required for OpenStreetMap-derived tiles */
         fill(112, 141, 98, 12, C_G);

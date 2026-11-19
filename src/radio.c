@@ -12,9 +12,13 @@
 #define SQ_WINDOW 960      /* NFM squelch: 20 ms of input */
 #define SQ_FLOOR 0.05f     /* closed squelch: a murmur, so the channel is still heard to be live */
 
-static const char *const mode_names[DEMOD_N] = {"NFM", "AM", "USB", "LSB"};
+#define WFM_GAIN 8000.0f   /* radians at 192 kHz -> PCM: 75 kHz deviation (2.45 rad/sample) to ~20000 */
+#define WFM_DECIM 12       /* 192 kHz -> 16 kHz */
+
+static const char *const mode_names[DEMOD_N] = {"NFM", "AM", "USB", "LSB", "WFM"};
 /* Channel widths per mode, first = default. NFM: 16 kHz fits an RS41 (4800 Bd GFSK, +-2.4 kHz deviation). */
 static const long bw_nfm[] = {16000, 25000, 6000, 12000}, bw_am[] = {6000, 10000}, bw_ssb[] = {2400, 3000};
+static const long bw_wfm[] = {180000}; /* shown only: the 192 kHz stream is the channel */
 /* NFM squelch threshold per width, between the discriminator's mean square for a carrier with RS41-like
  * deviation (~0.05 rad^2 at every width) and for noise alone through that filter (0.13, 0.44, 0.73, 1.39). */
 static const struct { long bw; float thr; } sq_thr[] = {{6000, 0.08f}, {12000, 0.20f}, {16000, 0.30f}, {25000, 0.60f}};
@@ -23,6 +27,7 @@ static const long *bw_list(int mode, int *n)
 {
     if (mode == DEMOD_NFM) { *n = 4; return bw_nfm; }
     if (mode == DEMOD_AM) { *n = 2; return bw_am; }
+    if (mode == DEMOD_WFM) { *n = 1; return bw_wfm; }
     *n = 2;
     return bw_ssb;
 }
@@ -72,7 +77,7 @@ void radio_init(radio_t *r, int mode, long bw_hz)
     r->sq_thr = sq_thr[2].thr;
     for (k = 0; k < (int)(sizeof sq_thr / sizeof sq_thr[0]); k++)
         if (sq_thr[k].bw == bw_hz) r->sq_thr = sq_thr[k].thr;
-    r->gain = mode == DEMOD_NFM ? SQ_FLOOR : 1.0f;
+    r->gain = mode == DEMOD_NFM ? SQ_FLOOR : 1.0f; /* WFM: no squelch, a station is either there or hiss */
     r->open = mode != DEMOD_NFM;
 }
 
@@ -131,6 +136,35 @@ int radio_process(radio_t *r, const int16_t *iq, size_t npairs, int16_t *out)
         if (++r->nacc == 3) { /* 48 kHz -> 16 kHz; the average is the anti-alias filter */
             r->gain += ((r->open ? 1.0f : SQ_FLOOR) - r->gain) * 0.01f; /* squelch ramps in ~6 ms, no clicks */
             v = r->acc / 3.0f * r->gain;
+            out[n++] = (int16_t)(v > 32767.0f ? 32767.0f : (v < -32767.0f ? -32767.0f : v));
+            r->acc = 0;
+            r->nacc = 0;
+        }
+    }
+    return n;
+}
+
+int radio_process_wfm(radio_t *r, const int16_t *iq, size_t npairs, int16_t *out)
+{
+    /* the tuned frequency, at +12 kHz = +fs/16, to 0 Hz */
+    static const float c16[16] = {1, 0.92388f, 0.70711f, 0.38268f, 0, -0.38268f, -0.70711f, -0.92388f,
+                                  -1, -0.92388f, -0.70711f, -0.38268f, 0, 0.38268f, 0.70711f, 0.92388f};
+    const float a_de = 0.0989f; /* 1 - exp(-1 / (192 kHz * 50 us)): de-emphasis, 3.2 kHz */
+    const float a_lp = 0.2788f; /* 1 - exp(-2 pi 10 kHz / 192 kHz): with the average below, keeps the 19 kHz pilot out */
+    size_t p;
+    int n = 0;
+    for (p = 0; p < npairs; p++) {
+        float i = iq[2 * p], q = iq[2 * p + 1], c = c16[r->phase], s = -c16[(r->phase + 4) & 15];
+        float si = i * c + q * s, sq = q * c - i * s; /* times exp(-j 2 pi n / 16) */
+        float re = si * r->pi + sq * r->pq, im = sq * r->pi - si * r->pq, v;
+        r->phase = (r->phase + 1) & 15;
+        r->pi = si;
+        r->pq = sq;
+        r->deemph += (((re == 0 && im == 0) ? 0 : atan2f(im, re)) - r->deemph) * a_de;
+        r->lp += (r->deemph - r->lp) * a_lp;
+        r->acc += r->lp;
+        if (++r->nacc == WFM_DECIM) {
+            v = r->acc / WFM_DECIM * WFM_GAIN;
             out[n++] = (int16_t)(v > 32767.0f ? 32767.0f : (v < -32767.0f ? -32767.0f : v));
             r->acc = 0;
             r->nacc = 0;

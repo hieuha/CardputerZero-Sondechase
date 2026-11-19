@@ -73,7 +73,7 @@ static const char *const rtl_names[] = {
     "rtlsdr_get_device_count", "rtlsdr_open",          "rtlsdr_close",
     "rtlsdr_set_sample_rate",  "rtlsdr_set_center_freq", "rtlsdr_set_freq_correction",
     "rtlsdr_set_tuner_gain_mode", "rtlsdr_set_tuner_gain", "rtlsdr_set_bias_tee",
-    "rtlsdr_reset_buffer",     "rtlsdr_read_async",    "rtlsdr_cancel_async",
+    "rtlsdr_reset_buffer",     "rtlsdr_read_async",    "rtlsdr_cancel_async",  "rtlsdr_get_tuner_type",
 };
 typedef struct {
     uint32_t (*get_device_count)(void);
@@ -88,6 +88,7 @@ typedef struct {
     int (*reset_buffer)(rtlsdr_dev_t *dev);
     int (*read_async)(rtlsdr_dev_t *dev, rtl_cb_t cb, void *ctx, uint32_t buf_num, uint32_t buf_len);
     int (*cancel_async)(rtlsdr_dev_t *dev);
+    int (*get_tuner_type)(rtlsdr_dev_t *dev);
 } rtl_api_t;
 
 struct sdr {
@@ -95,6 +96,7 @@ struct sdr {
     rtl_api_t api;
     rtlsdr_dev_t *dev;
     long rate;
+    int tuner;                  /* rtlsdr_tuner: 0 unknown, 1 E4000, 2 FC0012, 3 FC0013, 4 FC2580, 5 R820T, 6 R828D */
     pthread_t thread;
     int have_thread;
     _Atomic int alive;
@@ -161,6 +163,7 @@ sdr_t *sdr_open(const cfg_t *c, long rate, char *err, size_t n)
         goto fail;
     }
     s->rate = rate;
+    s->tuner = s->api.get_tuner_type(s->dev);
     if (c->ppm) s->api.set_freq_correction(s->dev, c->ppm);
     if (c->gain[0]) {
         s->api.set_tuner_gain_mode(s->dev, 1);
@@ -241,6 +244,22 @@ int sdr_alive(const sdr_t *s)
 unsigned long sdr_dropped(const sdr_t *s)
 {
     return atomic_load(&((sdr_t *)s)->ring.dropped);
+}
+
+/* The tuner's frequency range, from the manufacturers' data sheets as librtlsdr uses them (E4000: with its
+ * 1100-1250 MHz gap; FC2580: up to its upper band); unknown tuners get the R820T's. */
+const char *sdr_range(const sdr_t *s, long *lo_hz, long *hi_hz)
+{
+    static const struct { const char *name; long lo, hi; } t[] = {
+        {"RTL-SDR", 24000000L, 1766000000L},  {"E4000", 52000000L, 2200000000L},
+        {"FC0012", 22000000L, 948600000L},    {"FC0013", 22000000L, 1100000000L},
+        {"FC2580", 146000000L, 924000000L},   {"R820T", 24000000L, 1766000000L},
+        {"R828D", 24000000L, 1766000000L},
+    };
+    int i = s && s->tuner > 0 && s->tuner < (int)(sizeof t / sizeof t[0]) ? s->tuner : 0;
+    *lo_hz = t[i].lo;
+    *hi_hz = t[i].hi;
+    return t[i].name;
 }
 
 void sdr_close(sdr_t *s)

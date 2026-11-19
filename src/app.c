@@ -114,15 +114,17 @@ static void rx_poll(app_t *a, double now)
 {
     static unsigned char iq[65536];
     static int16_t out[2 * (sizeof iq / (2 * DDC_DECIM) + DDC_BLOCK / DDC_DECIM)];
-    static int16_t pcm[sizeof out / sizeof out[0] / 6 + 2];
+    static int16_t wide[4 * sizeof out / sizeof out[0]];
+    static int16_t pcm[sizeof wide / sizeof wide[0] / 24 + 2];
     static float db[SWEEP_FFT];
-    size_t k;
-    int listen = a->radio_audio && !a->prox.muted;
+    size_t k, nw;
+    int listen = a->radio_audio && !a->prox.muted, wfm = listen && a->radio.mode == DEMOD_WFM;
     if (!listen) audio_radio_clear(&a->audio);
     while ((k = sdr_read(a->dsdr, iq, sizeof iq)) > 0) {
-        size_t n = ddc_process(&a->ddc, iq, k, out);
+        size_t n = ddc_process_wide(&a->ddc, iq, k, out, wfm ? wide : NULL, &nw);
         if (n && a->proc.pid > 0) proc_feed(&a->proc, out, n * 2 * sizeof out[0]);
-        if (n && listen) audio_radio_push(&a->audio, pcm, radio_process(&a->radio, out, n, pcm));
+        if (nw && wfm) audio_radio_push(&a->audio, pcm, radio_process_wfm(&a->radio, wide, nw, pcm));
+        else if (n && listen && !wfm) audio_radio_push(&a->audio, pcm, radio_process(&a->radio, out, n, pcm));
         if (now - a->t_live >= 0.05 && k >= 2 * SWEEP_FFT * SWEEP_FRAMES) {
             int i, b = (int)(DC_ZONE_HZ / ((double)DDC_RATE / SWEEP_FFT)), l = SWEEP_FFT / 2 - b - 1, r = SWEEP_FFT / 2 + b + 1;
             fft_spectrum(&a->sw.fft, iq, SWEEP_FRAMES, db);
@@ -180,6 +182,7 @@ static int sweep_start(app_t *a)
 
 void app_stop(app_t *a)
 {
+    a->hunt = 0;
     sweep_stop(a);
     rx_stop(a);
     proc_stop(&a->proc);
@@ -190,6 +193,7 @@ void app_stop(app_t *a)
 /* Set the decode: the tuned receiver (kept, retuned, when already listening) and the decoder on f_hz. */
 void app_tune(app_t *a, long f_hz)
 {
+    a->hunt = 0;
     sweep_stop(a);
     proc_stop(&a->proc);
     a->freq_hz = f_hz;
@@ -202,6 +206,7 @@ void app_tune(app_t *a, long f_hz)
  * with app_tune. Only the dongle moves when it is already receiving. */
 void app_listen(app_t *a, long f_hz)
 {
+    a->hunt = 0;
     sweep_stop(a);
     proc_stop(&a->proc);
     a->freq_hz = f_hz;
@@ -238,6 +243,69 @@ void app_scan(app_t *a)
     }
     a->state = ST_SCAN;
     set_status(a, "scanning");
+}
+
+/* Scan: the overview's sweep, then each peak in turn on the decoder. The demo has no sweep to look at. */
+void app_hunt(app_t *a)
+{
+    app_scan(a);
+    if (a->state != ST_SCAN || a->cfg.demo) return;
+    a->hunt = 1;
+    a->hunt_pass = 0;
+    set_status(a, "scanning for sondes");
+}
+
+int app_skipped(const app_t *a, long f_hz, double now)
+{
+    int i;
+    for (i = 0; i < HUNT_SKIP_N; i++)
+        if (a->skip[i].f_hz && labs(a->skip[i].f_hz - f_hz) <= KNOWN_MATCH_HZ && now - a->skip[i].t < HUNT_SKIP_S)
+            return 1;
+    return 0;
+}
+
+static void skip_add(app_t *a, long f_hz, double now)
+{
+    int i, slot = 0;
+    for (i = 1; i < HUNT_SKIP_N; i++)
+        if (a->skip[i].t < a->skip[slot].t) slot = i;
+    a->skip[slot].f_hz = f_hz;
+    a->skip[slot].t = now;
+}
+
+/* After each full sweep pass (two, so both half-step offsets are measured): the strongest peak not tried
+ * lately goes to the decoder. A frame from it ends the scan there; none within HUNT_TRY_S sends it back. */
+static void hunt_poll(app_t *a, double now)
+{
+    char msg[80];
+    if (a->state == ST_SCAN && a->sw.passes >= 2 && a->sw.passes != a->hunt_pass) {
+        peak_t pk[MAX_PEAKS];
+        int n = spec_peaks(&a->spec, HUNT_SNR_DB, pk, MAX_PEAKS), i, best = -1;
+        a->hunt_pass = a->sw.passes;
+        for (i = 0; i < n; i++)
+            if (!app_skipped(a, pk[i].f_hz, now) && (best < 0 || pk[i].snr_db > pk[best].snr_db)) best = i;
+        if (best < 0) return; /* nothing new: keep sweeping */
+        app_tune(a, pk[best].f_hz);
+        a->hunt = 1;
+        a->t_try = now;
+        snprintf(msg, sizeof msg, "trying %.3f MHz", pk[best].f_hz / 1e6);
+        set_status(a, msg);
+    } else if (a->state == ST_DECODE) {
+        const known_t *k = app_known(a, a->freq_hz);
+        if (k && k->t >= a->t_try) { /* an RS41 on this peak: stay */
+            a->hunt = 0;
+            snprintf(msg, sizeof msg, "found RS41 %s", k->id);
+            set_status(a, msg);
+            audio_tone(&a->audio, 1320, 0.10, 1.0);
+            audio_tone(&a->audio, 1760, 0.16, 1.0);
+        } else if (now - a->t_try > HUNT_TRY_S) {
+            skip_add(a, a->freq_hz, now);
+            app_scan(a); /* hunt stays set */
+            a->hunt_pass = 0;
+            if (a->state == ST_SCAN) set_status(a, "scanning for sondes");
+            else a->hunt = 0;
+        }
+    }
 }
 
 /* ---------------- known frequencies ---------------- */
@@ -400,6 +468,7 @@ void app_poll(app_t *a)
     } else if (a->state == ST_SCAN && a->sw.sdr) {
         sweep_poll(a);
     }
+    if (a->hunt) hunt_poll(a, now);
 
 derived:
     a->have_geo = a->have_land = 0;

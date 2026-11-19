@@ -32,6 +32,8 @@ static lv_layer_t *LY;
 static const lv_font_t *F_S, *F_M, *F_NUM, *F_BIG, *F_TTL; /* 11, 12, Orbitron 17 / 30 / 25 */
 static int page, gpage, quit, entry, entry_len, map_follow, map_zoom = -1, batt_pct = -1;
 static char entry_buf[8];
+static int scan_from = ST_IDLE; /* what the receiver did before S: Esc on Scan goes back to it */
+static long scan_from_hz;
 static double batt_t;
 
 /* Decoded map tiles kept in RAM as RGB565. Pixel buffers are static, so a descriptor handed
@@ -85,14 +87,19 @@ static void ln_clip(double x1, double y1, double x2, double y2, int cx0, int cy0
     ln(x1 + t0 * dx, y1 + t0 * dy, x1 + t1 * dx, y1 + t1 * dy, col, w);
 }
 
-static void fill(int x, int y, int w, int h, uint32_t col)
+static void fill_opa(int x, int y, int w, int h, uint32_t col, lv_opa_t opa)
 {
     lv_draw_rect_dsc_t d;
     lv_area_t a = {x, y, x + w - 1, y + h - 1};
     lv_draw_rect_dsc_init(&d);
     d.bg_color = lv_color_hex(col);
-    d.bg_opa = LV_OPA_COVER;
+    d.bg_opa = opa;
     lv_draw_rect(LY, &d, &a);
+}
+
+static void fill(int x, int y, int w, int h, uint32_t col)
+{
+    fill_opa(x, y, w, h, col, LV_OPA_COVER);
 }
 
 static void txt(int x, int y, int w, const lv_font_t *f, uint32_t col, int align, const char *fmt, ...)
@@ -215,10 +222,12 @@ static void top_bar(const char *name, uint32_t chip, const char *mid)
     if (A->state == ST_DECODE && A->have_sonde) {
         if (fresh()) txt(196, 0, 44, F_S, C_CY, AL_R, "RX %.0f s", now - A->sonde.t_rx);
         else txt(196, 0, 44, F_S, C_RD, AL_R, "RX lost");
-    } else if (A->state == ST_SCAN) {
+    } else if (A->state == ST_SCAN) { /* what the receiver does, on every screen; the Radio screen does not repeat it */
         txt(196, 0, 44, F_S, C_YL, AL_R, "scan");
     } else if (A->state == ST_LISTEN) {
         txt(196, 0, 44, F_S, C_YL, AL_R, "listen");
+    } else if (A->state == ST_DECODE) {
+        txt(196, 0, 44, F_S, C_YL, AL_R, A->hunt ? "try" : "decode");
     }
     if (gps_ok(&A->gps, now)) {
         txt(244, 0, 40, F_S, C_TX, AL_R, A->gps.mode == 3 ? "GPS 3D" : "GPS 2D");
@@ -849,12 +858,12 @@ static void p_scan_live(void)
     spec_peaks(sp, 8.0, pk, MAX_PEAKS); /* floor and max for the scale */
     lo = sp->floor_db - 4;
     hi = sp->max_db > sp->floor_db + 26 ? sp->max_db + 4 : sp->floor_db + 30;
-    if (A->state == ST_LISTEN)
-        snprintf(mid, sizeof mid, "%.3f MHz   listening", A->freq_hz / 1e6); /* a known sonde has its label below */
-    else if (kn && sc_now() - kn->t <= A->cfg.stale_s)
+    if (A->hunt) /* Scan trying this peak: seconds left before it moves on */
+        snprintf(mid, sizeof mid, "%.3f MHz   %.0f s", A->freq_hz / 1e6, HUNT_TRY_S - (sc_now() - A->t_try));
+    else if (A->state == ST_DECODE && kn && sc_now() - kn->t <= A->cfg.stale_s)
         snprintf(mid, sizeof mid, "%.3f MHz   RS41 %s", A->freq_hz / 1e6, kn->id); /* RX n s on the right */
     else
-        snprintf(mid, sizeof mid, "%.3f MHz   decoding", A->freq_hz / 1e6);
+        snprintf(mid, sizeof mid, "%.3f MHz", A->freq_hz / 1e6);
     top_bar("Radio", C_CY, mid);
     fill(X0, YT, W, YB - YT, C_P);
     for (f = (lo_hz + 99999) / 100000 * 100000; f <= lo_hz + span; f += 100000) { /* 100 kHz grid */
@@ -862,6 +871,15 @@ static void p_scan_live(void)
         ln(x, YT, x, YB, C_L, 1);
         if (f % 200000 == 0 && x > X0 + 18 && x < X0 + W - 18)
             txt(x - 20, 124, 40, F_S, C_DIM, AL_C, "%.1f", f / 1e6);
+    }
+    { /* the channel being heard, shaded under the trace: as wide as the filter, one-sided for USB / LSB */
+        const radio_t *r = &A->radio;
+        int bw = (int)ceil((double)r->bw_hz / span * W), x0;
+        if (bw < 3) bw = 3;
+        x0 = r->mode == DEMOD_USB ? XC : (r->mode == DEMOD_LSB ? XC - bw : XC - bw / 2);
+        fill_opa(x0, YT, bw, YB - YT, C_PK, LV_OPA_30);
+        ln(x0, YT, x0, YB, C_PK, 1);
+        ln(x0 + bw - 1, YT, x0 + bw - 1, YB, C_PK, 1);
     }
     ln(XC, YT, XC, YB, C_PK, 1);
     spec_trace(sp, (int)((lo_hz - sp->f0) / sp->step), (int)(span / sp->step), X0, W, YT, YB, lo, hi);
@@ -871,14 +889,13 @@ static void p_scan_live(void)
         fill(XC - 30, YT + 16, 60, 12, C_GN);
         txt(XC - 30, YT + 15, 60, F_S, C_G, AL_C, "%s", kn->id);
     }
-    { /* the channel being heard: a bar under the spectrum, one-sided for USB / LSB */
+    {
         const radio_t *r = &A->radio;
-        int bw = (int)ceil((double)r->bw_hz / span * W), x0 = r->mode == DEMOD_USB ? XC : (r->mode == DEMOD_LSB ? XC - bw : XC - bw / 2);
-        fill(x0, YB - 3, bw > 1 ? bw : 2, 3, C_YL);
         txt(X0 + 4, YT + 2, 90, F_S, C_YL, AL_L, "%s %.1f kHz", radio_mode_name(r->mode), r->bw_hz / 1000.0);
         txt(X0 + W - 104, YT + 2, 100, F_S, C_DIM, AL_R, "B  width   D  mode");
     }
-    scan_hints(A->state == ST_LISTEN ? "Enter  decode" : "S  band", A->state == ST_LISTEN ? "S  band" : "F  freq");
+    if (A->hunt) scan_hints("Esc  stop", "F  freq");
+    else scan_hints(A->state == ST_LISTEN ? "Enter  decode" : "S  scan", A->state == ST_LISTEN ? "S  scan" : "F  freq");
     nav_bar(PG_RADIO);
 }
 
@@ -891,18 +908,18 @@ static void p_scan(void)
     const known_t *kn;
     peak_t pk[MAX_PEAKS];
     char mid[96];
-    int i, cx;
+    int i, cx, np;
 
     if ((A->state == ST_LISTEN || A->state == ST_DECODE) && A->dsdr) {
         p_scan_live();
         return;
     }
-    spec_peaks(sp, 8.0, pk, MAX_PEAKS); /* floor and max for the scale */
+    np = spec_peaks(sp, 8.0, pk, MAX_PEAKS); /* floor and max for the scale, and the peaks */
     lo = sp->floor_db - 4;
     hi = sp->max_db > sp->floor_db + 26 ? sp->max_db + 4 : sp->floor_db + 30;
     kn = app_known(A, A->cursor_hz);
     if (A->state == ST_SCAN)
-        snprintf(mid, sizeof mid, "%.3f MHz   %s", A->cursor_hz / 1e6, kn ? kn->id : "scanning");
+        snprintf(mid, sizeof mid, "%.3f MHz   %s", A->cursor_hz / 1e6, kn ? kn->id : (A->hunt ? "looking for RS41" : ""));
     else
         snprintf(mid, sizeof mid, "%s", A->status);
     top_bar("Radio", C_CY, mid);
@@ -917,6 +934,12 @@ static void p_scan(void)
         fill(lx, YT + 16, 60, 12, C_GN);
         txt(lx, YT + 15, 60, F_S, C_G, AL_C, "%s", k->id);
     }
+    for (i = 0; i < MAX_PEAKS && A->state == ST_SCAN; i++) { /* peaks Scan would try; dim: tried lately, no frame */
+        double xp;
+        if (i >= np || pk[i].snr_db < HUNT_SNR_DB) continue;
+        xp = X0 + (pk[i].f_hz - A->cfg.scan_lo_hz) / fspan * W;
+        fill((int)xp - 2, YB - 6, 5, 5, app_skipped(A, pk[i].f_hz, sc_now()) ? C_DIM : C_YL);
+    }
     if (A->state == ST_SCAN) {
         xc = X0 + (A->cursor_hz - A->cfg.scan_lo_hz) / fspan * W;
         cx = (int)xc - 24 < X0 ? X0 : ((int)xc + 24 > X0 + W ? X0 + W - 48 : (int)xc - 24);
@@ -927,7 +950,7 @@ static void p_scan(void)
     for (i = 0; i <= 6; i++)
         txt(X0 + i * W / 6 - (i == 0 ? 0 : (i == 6 ? 40 : 20)), 124, 40, F_S, C_DIM,
             i == 0 ? AL_L : (i == 6 ? AL_R : AL_C), "%.0f", (A->cfg.scan_lo_hz + i * fspan / 6) / 1e6);
-    if (A->state == ST_SCAN) scan_hints("Enter  listen", "F  freq");
+    if (A->state == ST_SCAN) scan_hints("Enter  decode", "Esc  back");
     else txt(6, 140, 308, F_S, C_DIM, AL_L, "S  scan the band      F  enter a frequency");
     nav_bar(PG_RADIO);
 }
@@ -981,11 +1004,13 @@ static void p_info(void)
 /* ---------------- overlays ---------------- */
 static void p_freq(void)
 {
+    long lo, hi;
+    const char *tuner = sdr_range(A->rx, &lo, &hi);
     top_bar("Tune", C_CY, NULL);
     box(44, 30, 232, 92, C_CY, C_P);
     txt(58, 40, 200, F_M, C_DIM, AL_L, "Frequency, kHz");
     txt(58, 56, 200, F_BIG, C_TX, AL_L, "%s_", entry_buf);
-    txt(58, 100, 210, F_S, C_DIM, AL_L, "%ld to %ld, in 10 kHz steps", A->cfg.scan_lo_hz / 1000, A->cfg.scan_hi_hz / 1000);
+    txt(58, 100, 210, F_S, C_DIM, AL_L, "%s: %ld to %ld", tuner, lo / 1000, hi / 1000);
     txt(44, 130, 50, F_S, C_DIM, AL_L, "0-9  type");
     txt(100, 130, 54, F_S, C_DIM, AL_L, "Bksp  del");
     txt(156, 130, 56, F_S, C_DIM, AL_L, "Enter  tune");
@@ -1123,9 +1148,10 @@ void ui_init(app_t *a)
     lv_obj_set_size(root, 320, 170);
     lv_obj_add_event_cb(root, draw_cb, LV_EVENT_DRAW_MAIN, NULL);
     lv_timer_create(tick_cb, 200, NULL);
-    if (a->freq_hz <= 0) { /* nothing to decode yet: open on a band overview */
+    if (a->freq_hz <= 0) { /* nothing to decode yet: open on the Radio screen, listening mid-band like an SDR app */
         page = PG_RADIO;
-        app_scan(a);
+        if (a->cfg.demo) app_scan(a); /* no receiver to listen with: the demo's simulated band overview */
+        else app_listen(a, (a->cfg.scan_lo_hz + a->cfg.scan_hi_hz) / 2 / TUNE_STEP_HZ * TUNE_STEP_HZ);
     }
     a->radio_audio = page == PG_RADIO;
 }
@@ -1175,38 +1201,49 @@ void ui_key(int k)
         if (k == K_ENTER) { A->burst_alert = 0; page = PG_MAP; map_follow = 0; map_zoom = -1; }
         else if (k == K_ESC) A->burst_alert = 0;
     } else if (entry) {
-        if (k >= '0' && k <= '9' && entry_len < 6) { entry_buf[entry_len++] = (char)k; entry_buf[entry_len] = 0; }
+        if (k >= '0' && k <= '9' && entry_len < 7) { entry_buf[entry_len++] = (char)k; entry_buf[entry_len] = 0; }
         else if (k == K_BKSP && entry_len > 0) entry_buf[--entry_len] = 0;
         else if (k == K_ESC) entry = 0;
         else if (k == K_ENTER) {
-            long khz = strtol(entry_buf, NULL, 10);
-            if (khz >= 24000 && khz <= 1766000) { app_tune(A, khz * 1000L); page = PG_RADIO; }
+            long khz = strtol(entry_buf, NULL, 10), lo, hi;
+            sdr_range(A->rx, &lo, &hi);
+            if (khz * 1000L >= lo && khz * 1000L <= hi) { app_tune(A, khz * 1000L); page = PG_RADIO; }
             entry = 0;
         }
     } else if (k >= '4' && k <= '8') page = k - '4'; /* keys 4-8 sit right under the nav bar labels */
     else if (k == K_TAB) page = (page + 1) % (PG_INFO + 1); /* next screen, Info wraps to Track */
     else if (k == 'q') quit = 1;
     else if (k == 'm') A->prox.muted = !A->prox.muted;
-    else if (k == 's') { app_scan(A); page = PG_RADIO; }
+    else if (k == 's') {
+        if (A->state != ST_SCAN && !A->hunt) {
+            scan_from = A->state;
+            scan_from_hz = A->freq_hz;
+        }
+        app_hunt(A);
+        page = PG_RADIO;
+    } else if (page == PG_RADIO && (A->state == ST_SCAN || A->hunt) && k == K_ESC) { /* back to the frequency it left */
+        long f = scan_from_hz > 0 ? scan_from_hz : (A->cfg.scan_lo_hz + A->cfg.scan_hi_hz) / 2 / TUNE_STEP_HZ * TUNE_STEP_HZ;
+        if (scan_from == ST_DECODE || A->cfg.demo) app_tune(A, f); /* the demo has no receiver to listen with */
+        else app_listen(A, f);
+    }
     else if (k == 'f') { entry = 1; entry_len = 0; entry_buf[0] = 0; }
     else if (k == 'r' && A->freq_hz > 0) app_tune(A, A->freq_hz);
     else if (k == 'x') app_stop(A);
     else if (page == PG_RADIO && k == 'b') radio_init(&A->radio, A->radio.mode, radio_next_bw(A->radio.mode, A->radio.bw_hz));
-    else if (page == PG_RADIO && k == 'd') { /* NFM -> AM -> USB -> LSB, each with its usual width */
+    else if (page == PG_RADIO && k == 'd') { /* NFM -> AM -> USB -> LSB -> WFM, each with its usual width */
         int m = (A->radio.mode + 1) % DEMOD_N;
         radio_init(&A->radio, m, radio_default_bw(m));
     }
     else if (page == PG_RADIO && A->dsdr && (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN)) { /* tune */
-        long f = A->freq_hz + tune_step(k);
-        if (f >= 24000000L && f <= 1766000000L) app_listen(A, f);
+        long f = A->freq_hz + tune_step(k), lo, hi;
+        sdr_range(A->rx, &lo, &hi);
+        if (f >= lo && f <= hi) app_listen(A, f);
     } else if (page == PG_RADIO && A->dsdr && A->state == ST_LISTEN && k == K_ENTER) app_tune(A, A->freq_hz);
     else if (page == PG_RADIO && A->state == ST_SCAN && (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN)) {
-        long f = A->cursor_hz + tune_step(k); /* the overview's cursor, kept inside the band */
+        long f = A->cursor_hz + tune_step(k); /* the overview's cursor, kept inside the band; picking by hand ends Scan's */
+        A->hunt = 0;
         A->cursor_hz = f < A->cfg.scan_lo_hz ? A->cfg.scan_lo_hz : (f > A->cfg.scan_hi_hz ? A->cfg.scan_hi_hz : f);
-    } else if (page == PG_RADIO && A->state == ST_SCAN && k == K_ENTER) { /* -> tuned view */
-        if (A->cfg.demo) app_tune(A, A->cursor_hz); /* no receiver to listen with */
-        else app_listen(A, A->cursor_hz);
-    }
+    } else if (page == PG_RADIO && A->state == ST_SCAN && k == K_ENTER) app_tune(A, A->cursor_hz); /* -> tuned view, heard and decoded */
     else if (page == PG_GRAPH && (k == K_LEFT || k == K_RIGHT)) gpage ^= 1;
     else if (page == PG_MAP && (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN)) map_pan(k);
     else if (page == PG_MAP && (k == '+' || k == '=')) {

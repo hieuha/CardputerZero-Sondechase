@@ -21,7 +21,7 @@ với một sonde RS41 đang phát (Y0532351). Chưa thử chase ngoài thực �
 | ![Màn Track: la bàn, khoảng cách và hướng tới sonde](screenshots/mockup/track.png) | ![Màn Map, kiểu simple: chỉ nước và đường](screenshots/mockup/map.png) |
 | **Track**: khoảng cách, hướng, góc ngẩng tới sonde, dự đoán điểm rơi | **Map**: kiểu simple (nước và đường), vệt bay, điểm rơi |
 | ![Màn Radio đang giải mã một RS41](screenshots/mockup/radio-decoding.png) | ![Màn Radio, tổng quan dải với con trỏ tự do](screenshots/mockup/band-overview.png) |
-| **Radio**: phổ đang thu, audio NFM, `Enter` để giải mã | **Radio, tổng quan dải** (`S`): phím mũi tên di chuyển con trỏ, `Enter` để nghe |
+| **Radio**: phổ đang thu, audio NFM, `Enter` để giải mã | **Radio, Scan** (`S`): tự tìm đỉnh sóng và thử giải mã từng đỉnh; phím mũi tên để chọn tay |
 | ![Biểu đồ Skew-T log-P của chuyến bay](screenshots/mockup/skew-t.png) | ![Độ cao và tốc độ đứng theo thời gian](screenshots/mockup/flight.png) |
 | **Graph**: Skew-T log-P của chuyến thám không | **Graph**: độ cao và tốc độ đứng, có đánh dấu điểm nổ |
 | ![Màn Info: sonde, thu nhận, thiết bị](screenshots/mockup/info.png) | ![Cảnh báo bóng nổ](screenshots/mockup/burst.png) |
@@ -52,7 +52,7 @@ Trên máy thật (chụp framebuffer, phóng 2×):
                     │ FFT 1024 điểm, giữ đỉnh    │    │ → cs16 48 kHz + FFT trực tiếp    │
                     └─────────────┬──────────────┘    └───────────────┬─────────┬────────┘
                                   │ phổ                               │ stdin   │
-                                  │                                   ▼         └─► radio.c NFM / AM / SSB audio → pacat
+                                  │                                   ▼         └─► radio.c NFM/AM/SSB/WFM audio → pacat
                                   │                         ┌────────────────────────┐
                                   │                         │ fsk_demod │ rs41mod    │
                                   │                         └───────────┬────────────┘
@@ -87,7 +87,7 @@ hoặc dongle đang bị chương trình khác giữ, lý do hiện trên dòng 
 | `4` Track | La bàn HUD, khoảng cách, bearing, elevation, điểm rơi dự đoán; số hiệu, frame và pin của sonde khi GPS của nó chưa fix |
 | `5` Map | Tile, vị trí máy, sonde, vệt bay, điểm rơi. Phím mũi tên để pan (giữ phím thì chạy liên tục; bản đồ thôi bám, hiện `free`), `+` / `-` để zoom, `C` bám lại như trước khi pan, còn lại thì đổi both / device / sonde, `V` đổi bản đồ đơn giản / chi tiết. Khi chưa có vị trí nào: căn giữa theo `map_lat` / `map_lon` |
 | `6` Graph | `Left/Right` đổi trang: Skew-T log-P, độ cao + tốc độ đứng theo thời gian |
-| `7` Radio | Phổ kiểu app SDR, kèm audio của tần số đang thu: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` để giải mã tại đó. `S` tổng quan dải: cùng các phím di chuyển con trỏ, `Enter` để nghe tại đó. Giữ phím mũi tên thì tần số tự chạy (sau 0,4 s, 12 bước mỗi giây). `D` đổi kiểu điều chế (NFM / AM / USB / LSB), `B` đổi độ rộng kênh |
+| `7` Radio | Phổ kiểu app SDR, kèm audio của tần số đang thu: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` để giải mã tại đó. `S` Scan: quét dải và thử giải mã từng đỉnh sóng cho tới khi gặp RS41 (xem bên dưới); `Esc` để quay lại. Giữ phím mũi tên thì tần số tự chạy (sau 0,4 s, 12 bước mỗi giây). `D` đổi kiểu điều chế (NFM / AM / USB / LSB / WFM cho đài phát thanh FM), `B` đổi độ rộng kênh, hiện bằng dải tô màu quanh tần số đang thu |
 | `8` Info | Sonde, thu nhận, thiết bị, một cặp tọa độ đích |
 | `Tab` | Sang màn kế tiếp (Track → Map → Graph → Radio → Info → Track) |
 | `F` | Nhập tần số (kHz) |
@@ -99,14 +99,19 @@ Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` mở Map, bấ
 
 **Màn Radio**
 
-- **Đang thu**: tần số đang thu nằm giữa màn, màn hình hiện chính mẫu của bộ thu ±384 kHz quanh nó, cập nhật 20 lần/s.
+- **Đang thu** (lúc mở app khi chưa đặt `freq_hz`: nghe ở giữa dải, 403,000 MHz): tần số đang thu nằm giữa màn, màn hình hiện chính mẫu của bộ thu ±384 kHz quanh nó, cập nhật 20 lần/s.
   Audio của tần số đó phát khi đang ở màn Radio: mặc định NFM 16 kHz (đúng kênh của RS41), có squelch theo mức nhiễu nên
-  kênh trống chỉ còn tiếng rì nhỏ. `D` đổi NFM / AM / USB / LSB, `B` đổi độ rộng của chế độ đó (NFM 16 / 25 / 6 / 12 kHz,
-  AM 6 / 10 kHz, SSB 2,4 / 3 kHz); chế độ và độ rộng hiện ở góc trên bên trái phổ, vạch vàng dưới phổ đánh dấu kênh.
-  Decoder luôn nhận đủ dòng 48 kHz, bất kể đang nghe chế độ nào. Dò tần chỉ để nghe; `Enter` bắt đầu giải mã ở tần số đó (thanh trên: `listening` → `decoding`),
+  kênh trống chỉ còn tiếng rì nhỏ. `D` đổi NFM / AM / USB / LSB / WFM, `B` đổi độ rộng của chế độ đó (NFM 16 / 25 / 6 / 12 kHz,
+  AM 6 / 10 kHz, SSB 2,4 / 3 kHz, WFM 180 kHz); chế độ và độ rộng hiện ở góc trên bên trái phổ, một dải tô màu rộng
+  đúng bằng kênh đánh dấu kênh đang nghe.
+  Decoder luôn nhận đủ dòng 48 kHz, bất kể đang nghe chế độ nào. Dò tần chỉ để nghe; `Enter` bắt đầu giải mã ở tần số đó (chữ vàng trên thanh trên: `listen` → `decode`),
   dịch đi thì decoder dừng cho tới khi bấm `Enter` lại.
-- **Tổng quan dải** (`S`, và lúc mở app khi chưa đặt `freq_hz`): quét 400–406 MHz liên tục, khoảng 4 lượt mỗi giây,
-  có giữ đỉnh. Phím mũi tên di chuyển con trỏ (cùng bước), `Enter` để nghe tại đó, `X` để dừng.
+- **Scan** (`S`, thanh trên hiện `scan`): quét 400–406 MHz liên tục, khoảng 4 lượt mỗi giây, có giữ đỉnh. Các đỉnh
+  cao hơn nền ≥ 10 dB được đánh dấu dưới phổ. Sau hai lượt quét, Scan lấy đỉnh mạnh nhất và chạy decoder ở đó (thanh
+  trên hiện `try` và số giây còn lại): có khung RS41 trong 10 s thì Scan dừng ở đó (kêu hai tiếng, `found RS41 …`);
+  không có thì bỏ qua đỉnh đó 2 phút (dấu mờ đi) và quét tiếp. Bấm phím mũi tên thì thôi tự chọn, con trỏ di chuyển
+  theo tay (cùng bước), `Enter` để chuyển tới đó (vừa nghe vừa giải mã); `Esc` để quay lại tần số trước khi bấm `S`
+  (đang nghe thì nghe tiếp, đang giải mã thì giải mã tiếp), `X` để dừng.
 - Mọi frame giải mã được đều ghi lại tần số kèm số hiệu sonde; phổ gắn số hiệu (`Y0532351`) tại tần số đó.
 
 **Trạng thái thiếu phần cứng**
@@ -138,7 +143,10 @@ nguyên khối (có đếm) chứ không bao giờ lệch biên mẫu.
 số phức với USB / LSB để chỉ giữ một biên), giải điều chế, rồi lấy trung bình 3 mẫu xuống 16 kHz. NFM: bộ phân biệt
 theo hiệu pha; squelch so trung bình bình phương đầu ra trong 20 ms với ngưỡng riêng cho từng độ rộng, nằm giữa
 ~0,05 rad² (sóng mang với độ di tần như RS41) và mức nhiễu qua bộ lọc đó (0,13 tới 1,39). AM: đường bao quanh mức sóng
-mang, mức này cũng làm hệ số khuếch đại. SSB: phần thực, có AGC. WFM phát thanh (~200 kHz) không vừa dòng 48 kHz. Audio
+mang, mức này cũng làm hệ số khuếch đại. SSB: phần thực, có AGC. FM phát
+thanh (độ di tần ±75 kHz) không vừa dòng 48 kHz: WFM lấy dòng 192 kHz của bộ hạ tần (sau lần chia đôi thứ ba), dịch
+−12 kHz, giải điều chế bằng cùng bộ phân biệt pha, rồi de-emphasis 50 µs, lọc thông thấp 10 kHz và lấy trung bình 12
+mẫu xuống 16 kHz. Audio
 được trộn dưới tiếng beeper trong cùng một luồng `pacat`.
 
 **Dự đoán điểm rơi** (`geo.c`, `predict_landing`)
@@ -272,11 +280,11 @@ màu so với màu nền chiếm đa số; cần chỉnh lại nếu style tile 
 
 ## Trạng thái kiểm thử
 
-`tests/test_core.c`: 4271 phép kiểm đạt trên Debian 13 arm64 và, trong CI, trên Ubuntu x86-64 (`-Wall -Wextra`). Một `librtlsdr` giả
+`tests/test_core.c`: 4285 phép kiểm đạt trên Debian 13 arm64 và, trong CI, trên Ubuntu x86-64 (`-Wall -Wextra`). Một `librtlsdr` giả
 (`tests/fake_rtlsdr.c`, phát sóng mang 403,000 MHz ở bất kỳ tần số nào đang đặt) cho phép chạy trọn quét và giải mã
 mà không cần dongle. Phạm vi: geodesy, ISA, dew point, dự đoán
 điểm rơi, parser JSON rs41mod (kể cả một frame thật chưa có fix) và gpsd, heading, ô phổ và giữ đỉnh, ring IQ, FFT,
-bộ hạ tần (sonde rơi đúng +12 kHz, tần số ảnh yếu hơn ≥ 20 dB, chia mẩu cho kết quả giống từng bit), audio radio (NFM / AM / USB / LSB khôi phục đúng tone thử, NFM squelch nhiễu), chuyển nghe → giải mã, lặp phím khi giữ, kiểu bản đồ, lý do tải tile lỗi (DNS chặn), ghi stdin, thu
+bộ hạ tần (sonde rơi đúng +12 kHz, tần số ảnh yếu hơn ≥ 20 dB, chia mẩu cho kết quả giống từng bit), audio radio (NFM / AM / USB / LSB / WFM khôi phục đúng tone thử, NFM squelch nhiễu), chuyển nghe → giải mã, lặp phím khi giữ, kiểu bản đồ, lý do tải tile lỗi (DNS chặn), ghi stdin, thu
 dọn process group, lịch sử bay, tile, vòng đời pipeline con.
 
 Trên CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 ở 403,000 MHz):

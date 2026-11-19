@@ -20,8 +20,8 @@ device with a live RS41 (Y0532351). GPS chasing in the field has not been tried 
 |---|---|
 | ![Track screen: compass, distance and bearing to the sonde](screenshots/mockup/track.png) | ![Map screen, simple style: water and roads only](screenshots/mockup/map.png) |
 | **Track**: distance, bearing and elevation to the sonde, landing prediction | **Map**: simple style (water and roads), flight track, landing point |
-| ![Radio screen decoding an RS41](screenshots/mockup/radio-decoding.png) | ![Radio screen, band overview with a free cursor](screenshots/mockup/band-overview.png) |
-| **Radio**: tuned spectrum, NFM audio, `Enter` decodes | **Radio, band overview** (`S`): arrow keys move the cursor, `Enter` listens |
+| ![Radio screen decoding an RS41](screenshots/mockup/radio-decoding.png) | ![Radio screen, Scan over the band](screenshots/mockup/band-overview.png) |
+| **Radio**: tuned spectrum, NFM audio, `Enter` decodes | **Radio, Scan** (`S`): finds the peaks and tries each on the decoder; arrow keys pick by hand |
 | ![Skew-T log-P diagram of the sounding](screenshots/mockup/skew-t.png) | ![Altitude and vertical speed over time](screenshots/mockup/flight.png) |
 | **Graph**: Skew-T log-P of the sounding | **Graph**: altitude and vertical speed, burst marked |
 | ![Info screen: sonde, reception, this device](screenshots/mockup/info.png) | ![Balloon burst alert](screenshots/mockup/burst.png) |
@@ -52,7 +52,7 @@ On the device (framebuffer captures, 2×):
                     │ 1024-pt FFT, peak hold     │    │ → 48 kHz cs16 + live FFT         │
                     └─────────────┬──────────────┘    └───────────────┬─────────┬────────┘
                                   │ spectrum                          │ stdin   │
-                                  │                                   ▼         └─► radio.c NFM / AM / SSB audio → pacat
+                                  │                                   ▼         └─► radio.c NFM/AM/SSB/WFM audio → pacat
                                   │                         ┌────────────────────────┐
                                   │                         │ fsk_demod │ rs41mod    │
                                   │                         └───────────┬────────────┘
@@ -86,7 +86,7 @@ If `librtlsdr0` is missing or the dongle is busy, the reason shows on the status
 | `4` Track | HUD compass, distance, bearing, elevation, predicted landing point; sonde serial, frame and battery while its GPS has no fix |
 | `5` Map | Tiles, device position, sonde, flight track, landing point. Arrow keys pan (hold to keep moving; the map stops following, `free`), `+` / `-` zoom, `C` follows again as before panning, and otherwise cycles both / device / sonde, `V` simple / detailed map. With no position yet: centred on `map_lat` / `map_lon` |
 | `6` Graph | `Left/Right` switch page: Skew-T log-P, altitude + vertical speed over time |
-| `7` Radio | Spectrum, like an SDR app, with the tuned frequency's audio: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` decode here. `S` band overview: the same keys move a cursor, `Enter` listens there. Holding an arrow key keeps tuning (after 0.4 s, 12 steps a second). `D` mode (NFM / AM / USB / LSB), `B` channel width |
+| `7` Radio | Spectrum, like an SDR app, with the tuned frequency's audio: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` decode here. `S` Scan: sweeps the band and tries each peak on the decoder until an RS41 answers (below); `Esc` goes back. Holding an arrow key keeps tuning (after 0.4 s, 12 steps a second). `D` mode (NFM / AM / USB / LSB / WFM for broadcast FM), `B` channel width, shown as the shaded band around the tuned frequency |
 | `8` Info | Sonde, reception, device, one pair of target coordinates |
 | `Tab` | Next screen (Track → Map → Graph → Radio → Info → Track) |
 | `F` | Enter frequency (kHz) |
@@ -98,15 +98,19 @@ The burst alert overlays every screen: `Enter` opens Map, a short `Esc` dismisse
 
 **Radio screen**
 
-- **Tuned view**: the tuned frequency stays in the middle and the screen shows the receiver's own samples ±384 kHz
+- **Tuned view** (at start-up when no `freq_hz` is set: listening mid-band, 403.000 MHz): the tuned frequency stays in the middle and the screen shows the receiver's own samples ±384 kHz
   around it, refreshed 20 times a second. Its audio plays while the Radio screen is shown: NFM 16 kHz by default
   (the RS41's channel), with a noise squelch that turns an empty channel down to a murmur. `D` cycles NFM / AM / USB /
-  LSB, `B` the mode's widths (NFM 16 / 25 / 6 / 12 kHz, AM 6 / 10 kHz, SSB 2.4 / 3 kHz); the mode and width show
-  at the top left of the spectrum and a yellow bar under it marks the channel. The decoder always gets the full
+  LSB / WFM, `B` the mode's widths (NFM 16 / 25 / 6 / 12 kHz, AM 6 / 10 kHz, SSB 2.4 / 3 kHz, WFM 180 kHz); the mode
+  and width show at the top left of the spectrum and a shaded band, as wide as the channel, marks it. The decoder always gets the full
   48 kHz stream, whatever is being listened to. Tuning only listens; `Enter` starts the decoder on
-  that frequency (top bar: `listening` → `decoding`), and tuning away stops it until `Enter` again.
-- **Band overview** (`S`, and at start-up when no `freq_hz` is set): 400–406 MHz swept continuously, about 4 passes a
-  second with peak hold. Arrow keys move a cursor (same steps), `Enter` listens there, `X` stops.
+  that frequency (the yellow word in the top bar: `listen` → `decode`), and tuning away stops it until `Enter` again.
+- **Scan** (`S`, top bar `scan`): 400–406 MHz swept continuously, about 4 passes a second with peak hold. Peaks
+  ≥ 10 dB above the floor are marked under the spectrum. After two passes Scan takes the strongest one and runs the
+  decoder on it (top bar `try`, seconds left): an RS41 frame within 10 s ends the Scan there (two tones, `found
+  RS41 …`); otherwise that peak is left alone for 2 min (dimmed marker) and the sweep goes on. Arrow keys stop the
+  automatic choice and move a cursor (same steps), `Enter` tunes there (audio and decoder); `Esc` goes back to the
+  frequency before `S` (listening, or decoding if it was), `X` stops.
 - Every decoded frame records its frequency with the sonde serial; the spectrum labels that frequency with the serial
   (`Y0532351`).
 
@@ -140,7 +144,9 @@ channel filter (complex for USB / LSB, which keeps one side), the demodulator, a
 NFM: phase-difference discriminator; its squelch compares the discriminator's mean square over 20 ms with a threshold
 per width, between ~0.05 rad² for a carrier with RS41 deviation and the noise level through that filter (0.13 to
 1.39). AM: envelope around the carrier level, which also sets the gain. SSB: the real part, with an AGC. Broadcast
-WFM (~200 kHz) does not fit in the 48 kHz stream. The audio is mixed under the beeper in the one `pacat` stream.
+FM (±75 kHz deviation) does not fit in the 48 kHz stream: WFM takes the DDC's 192 kHz stream (after its third halving),
+shifts it by −12 kHz, demodulates it with the same discriminator, then 50 µs de-emphasis, a 10 kHz low-pass and an
+average of 12 down to 16 kHz. The audio is mixed under the beeper in the one `pacat` stream.
 
 **Landing prediction** (`geo.c`, `predict_landing`)
 
@@ -274,12 +280,12 @@ distance from the dominant background color; it needs tuning if the tile style d
 
 ## Test status
 
-`tests/test_core.c`: 4271 checks pass on Debian 13 arm64 and, in CI, on Ubuntu x86-64 (`-Wall -Wextra`). A fake `librtlsdr`
+`tests/test_core.c`: 4285 checks pass on Debian 13 arm64 and, in CI, on Ubuntu x86-64 (`-Wall -Wextra`). A fake `librtlsdr`
 (`tests/fake_rtlsdr.c`, a 403.000 MHz carrier wherever it is tuned) runs scanning and decoding end to end without a
 dongle. Covered: geodesy, ISA,
 dew point, landing prediction, rs41mod JSON (including a real no-fix frame) and gpsd parsers, heading, spectrum
 cells and peak hold, IQ ring, FFT, decoder front end (sonde lands at +12 kHz, images ≥ 20 dB down, chunking
-bit-exact), radio audio (NFM / AM / USB / LSB recover their test tone, NFM squelches noise), listen → decode switching, held-key repeat, map styles, tile download failure reasons (DNS block), stdin feeding, process-group reaping, flight history, tiles, child pipeline lifecycle.
+bit-exact), radio audio (NFM / AM / USB / LSB / WFM recover their test tone, NFM squelches noise), listen → decode switching, held-key repeat, map styles, tile download failure reasons (DNS block), stdin feeding, process-group reaping, flight history, tiles, child pipeline lifecycle.
 
 On a CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 at 403.000 MHz):
 

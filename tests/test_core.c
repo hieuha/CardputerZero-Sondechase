@@ -318,6 +318,14 @@ static void t_dsp(void)
     for (off = 0, nb = 0; off < sizeof iq; off += 38)
         nb += ddc_process(&d2, iq + off, off + 38 <= sizeof iq ? 38 : sizeof iq - off, b + 2 * nb);
     CHECK(nb == na && !memcmp(a, b, na * 2 * sizeof a[0]));
+    { /* asking for the 192 kHz stream as well leaves the 48 kHz one unchanged */
+        static int16_t w[2 * 4 * (PAIRS / DDC_DECIM)];
+        size_t nw;
+        ddc_init(&d2);
+        nb = ddc_process_wide(&d2, iq, sizeof iq, b, w, &nw);
+        CHECK(nb == na && nw == 4 * na && !memcmp(a, b, na * 2 * sizeof a[0]));
+        CHECK(cs16_power(w, (int)nw, 12000.0, DDC_WIDE_RATE) > 100.0 * cs16_power(w, (int)nw, -12000.0, DDC_WIDE_RATE));
+    }
 }
 
 /* Held arrow keys repeat (after 0.4 s, every 0.08 s) until released; other keys act once. */
@@ -431,6 +439,23 @@ static void t_radio(void)
         n = radio_process(&r, iq, NP, pcm);
         i = zero_crossings(pcm, 1000, n);
         CHECK(i > 3650 && i < 3850);
+    }
+
+    { /* broadcast FM, 75 kHz deviation, in the 192 kHz stream: WFM recovers the tone, NFM in 48 kHz cannot carry it */
+        static int16_t w[2 * 192000];
+        for (i = 0; i < 192000; i++) {
+            double t = i / 192000.0, ph = 2.0 * M_PI * 12000.0 * t + 75.0 * sin(2.0 * M_PI * 1000.0 * t);
+            w[2 * i] = (int16_t)lround(1000.0 * cos(ph));
+            w[2 * i + 1] = (int16_t)lround(1000.0 * sin(ph));
+        }
+        CHECK(radio_default_bw(DEMOD_WFM) == 180000 && !strcmp(radio_mode_name(DEMOD_WFM), "WFM"));
+        radio_init(&r, DEMOD_WFM, 180000);
+        n = radio_process_wfm(&r, w, 192000, pcm);
+        CHECK(n == 16000);
+        i = zero_crossings(pcm, 1000, n);
+        CHECK(i > 1850 && i < 1950); /* 0.9375 s of 1 kHz: ~1875 */
+        for (pk = 0, i = 1000; i < n; i++) if (abs(pcm[i]) > pk) pk = abs(pcm[i]);
+        CHECK(pk > 3000 && pk < 32767); /* the de-emphasis takes 1 kHz down ~1 dB */
     }
 }
 
@@ -610,6 +635,11 @@ static void t_app(const char *fake, const char *fakelib)
     app_stop(&a);
     app_scan(&a);
     CHECK(a.state == ST_SCAN && a.sw.sdr == a.rx && a.rx != NULL);
+    {
+        long lo, hi;
+        CHECK(!strcmp(sdr_range(a.rx, &lo, &hi), "R828D") && lo == 24000000L && hi == 1766000000L);
+        CHECK(!strcmp(sdr_range(NULL, &lo, &hi), "RTL-SDR") && hi == 1766000000L);
+    }
     for (i = 0; i < 500 && a.sw.passes < 6; i++) {
         app_poll(&a);
         usleep(10000);
@@ -641,6 +671,34 @@ static void t_app(const char *fake, const char *fakelib)
     app_listen(&a, 403010000L);
     CHECK(a.state == ST_LISTEN && a.proc.pid == 0 && a.dsdr == a.rx && a.freq_hz == 403010000L);
     CHECK(a.live.f0 == 403010000L - RS41_TUNE_OFFSET_HZ + DDC_RATE / 4 - DDC_RATE / 2);
+
+    /* Scan: the fake's carrier is tried on the decoder; with no frame it is skipped and the sweep goes on,
+     * with frames Scan stays there */
+    snprintf(a.cfg.decoder_feed_cmd, sizeof a.cfg.decoder_feed_cmd, "sleep 5");
+    app_hunt(&a);
+    CHECK(a.state == ST_SCAN && a.hunt);
+    for (i = 0; i < 500 && a.state == ST_SCAN; i++) {
+        app_poll(&a);
+        usleep(10000);
+    }
+    CHECK(a.state == ST_DECODE && a.hunt && a.freq_hz == 403000000L && a.proc.pid > 0);
+    a.t_try = sc_now() - HUNT_TRY_S - 1.0;
+    app_poll(&a);
+    CHECK(a.state == ST_SCAN && a.hunt && a.proc.pid == 0 && app_skipped(&a, 403000000L, sc_now()));
+    for (i = 0; i < 300; i++) {
+        app_poll(&a);
+        usleep(10000);
+    }
+    CHECK(a.state == ST_SCAN && a.hunt && a.sw.passes >= 3); /* its only peak was tried: it keeps sweeping */
+    memset(a.skip, 0, sizeof a.skip);
+    snprintf(a.cfg.decoder_feed_cmd, sizeof a.cfg.decoder_feed_cmd, "sh %s {f_hz}", fake);
+    for (i = 0; i < 800 && a.hunt; i++) {
+        app_poll(&a);
+        usleep(10000);
+    }
+    CHECK(!a.hunt && a.state == ST_DECODE && a.freq_hz == 403000000L && !strcmp(a.status, "found RS41 S4430329"));
+    app_listen(&a, 403100000L); /* tuning by hand while Scan runs ends it */
+    CHECK(!a.hunt && a.state == ST_LISTEN);
     app_free(&a);
 
     /* librtlsdr0 missing: the reason is shown, nothing is spawned, scanning is refused the same way */

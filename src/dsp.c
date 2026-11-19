@@ -182,7 +182,13 @@ static void rotate_pair(unsigned phase, unsigned char i, unsigned char q, int16_
 
 size_t ddc_process(ddc_t *d, const unsigned char *iq, size_t nbytes, int16_t *out)
 {
+    return ddc_process_wide(d, iq, nbytes, out, NULL, NULL);
+}
+
+size_t ddc_process_wide(ddc_t *d, const unsigned char *iq, size_t nbytes, int16_t *out, int16_t *wide, size_t *nwide)
+{
     size_t p, npairs = nbytes / 2, written = 0;
+    if (nwide) *nwide = 0;
     for (p = 0; p < npairs; p++) {
         rotate_pair(d->phase, iq[2 * p], iq[2 * p + 1], d->pend + 2 * d->npend);
         d->phase = (d->phase + 1) & 3;
@@ -192,6 +198,10 @@ size_t ddc_process(ddc_t *d, const unsigned char *iq, size_t nbytes, int16_t *ou
             for (i = 0; i < DDC_PASSES; i++) {
                 fifth_order(d->pend, len >> i, d->hist_i[i]);
                 fifth_order(d->pend + 1, (len >> i) - 1, d->hist_q[i]);
+                if (wide && i == DDC_WIDE_PASS) { /* the stream at DDC_WIDE_RATE, before the last two halvings */
+                    memcpy(wide + 2 * *nwide, d->pend, (len >> (i + 1)) * sizeof *wide);
+                    *nwide += (size_t)(len >> (i + 2));
+                }
             }
             len >>= DDC_PASSES;
             generic_fir(d->pend, len, cic_9_tables[DDC_PASSES], d->droop_i);

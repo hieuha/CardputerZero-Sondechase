@@ -187,12 +187,18 @@ void ddc_init(ddc_t *d);
 /* Consume nbytes (even) of u8 IQ; write 48 kHz cs16 pairs to out, which must hold at least
  * nbytes / (2 * DDC_DECIM) + DDC_BLOCK / DDC_DECIM pairs. Returns pairs written. */
 size_t ddc_process(ddc_t *d, const unsigned char *iq, size_t nbytes, int16_t *out);
+/* The same, and also the stream after the third halving (DDC_WIDE_RATE, the tuned frequency again at
+ * +RS41_TUNE_OFFSET_HZ) into wide, which must hold 4x the pairs of out; *nwide gets its pairs. */
+#define DDC_WIDE_PASS 2
+#define DDC_WIDE_RATE (DDC_RATE >> (DDC_WIDE_PASS + 1)) /* 192 kHz: wide enough for broadcast FM */
+size_t ddc_process_wide(ddc_t *d, const unsigned char *iq, size_t nbytes, int16_t *out, int16_t *wide, size_t *nwide);
 
 /* Listening on the tuned frequency: demodulator over the DDC's 48 kHz output, where the tuned frequency sits at
  * +RS41_TUNE_OFFSET_HZ. Shift it to 0 Hz, filter the channel (bw_hz wide; one sideband for USB/LSB),
  * demodulate, and average down to AUDIO_RATE. NFM has a noise squelch that drops an empty channel to a murmur;
- * AM follows its carrier level and SSB has an AGC. */
-enum { DEMOD_NFM, DEMOD_AM, DEMOD_USB, DEMOD_LSB, DEMOD_N };
+ * AM follows its carrier level and SSB has an AGC. WFM (broadcast FM, +-75 kHz deviation) does not fit in
+ * 48 kHz: it takes the DDC's 192 kHz stream instead (radio_process_wfm). */
+enum { DEMOD_NFM, DEMOD_AM, DEMOD_USB, DEMOD_LSB, DEMOD_WFM, DEMOD_N };
 #define RADIO_TAPS 63
 typedef struct {
     int mode;
@@ -200,17 +206,20 @@ typedef struct {
     float tr[RADIO_TAPS], ti[RADIO_TAPS];            /* channel filter, complex for one sideband */
     float hi[2 * RADIO_TAPS], hq[2 * RADIO_TAPS];    /* its history, doubled to read it without wrapping */
     int pos;
-    unsigned phase;            /* frequency shift step (0..3) */
+    unsigned phase;            /* frequency shift step (0..3; WFM 0..15) */
     float pi, pq;              /* previous filtered sample, for the FM discriminator */
     float acc;                 /* decimation by 3 */
     int nacc;
     float sq_sum, sq_thr, gain; /* NFM squelch: discriminator mean square over a window, threshold, gain */
     int sq_n, open;
     float level;               /* AM carrier / SSB envelope */
+    float deemph, lp;          /* WFM: 50 us de-emphasis and a further low-pass, both one-pole */
 } radio_t;
 void radio_init(radio_t *r, int mode, long bw_hz);
 /* npairs 48 kHz cs16 pairs in; at most npairs / 3 + 1 audio samples out (16 kHz). Returns samples written. */
 int radio_process(radio_t *r, const int16_t *iq, size_t npairs, int16_t *out);
+/* WFM: npairs DDC_WIDE_RATE cs16 pairs in; at most npairs / 12 + 1 audio samples out. */
+int radio_process_wfm(radio_t *r, const int16_t *iq, size_t npairs, int16_t *out);
 const char *radio_mode_name(int mode);
 long radio_default_bw(int mode);
 long radio_next_bw(int mode, long bw_hz); /* the mode's next channel width, wrapping */
@@ -244,6 +253,9 @@ void sdr_flush(sdr_t *s);
 int sdr_alive(const sdr_t *s);                 /* 0 once the stream ended (dongle unplugged) */
 unsigned long sdr_dropped(const sdr_t *s);     /* IQ bytes lost to a full ring */
 void sdr_close(sdr_t *s);
+/* Tuning range of the dongle's tuner; its name is returned ("RTL-SDR" with the R820T's range when s is NULL or
+ * the tuner unknown). */
+const char *sdr_range(const sdr_t *s, long *lo_hz, long *hi_hz);
 
 /* ---------------- spectrum scan ---------------- */
 #define SPEC_MAX 2048
@@ -389,6 +401,11 @@ typedef struct {
     float db[SWEEP_FFT];
 } sweep_t;
 #define MAX_PEAKS 8
+/* Scan (S): sweep, try the strongest peak with the decoder, stay on the first one that gives an RS41 frame. */
+#define HUNT_SNR_DB 10.0  /* a peak this far above the floor is tried */
+#define HUNT_TRY_S 10.0   /* per peak: an RS41's first frame comes ~4 s after tuning */
+#define HUNT_SKIP_S 120.0 /* a peak that gave no frame is left alone this long */
+#define HUNT_SKIP_N 16
 typedef struct {
     cfg_t cfg;
     int state;
@@ -415,6 +432,10 @@ typedef struct {
     pred_t pred;
     spectrum_t spec;
     long cursor_hz;          /* band overview cursor */
+    int hunt;                /* Scan is choosing and trying peaks; any tuning by hand ends it */
+    unsigned hunt_pass;      /* sweep pass whose peaks were last looked at */
+    double t_try;            /* when the decode of the peak being tried began */
+    struct { long f_hz; double t; } skip[HUNT_SKIP_N]; /* peaks that gave no frame */
     int have_geo; /* dist/brg/elev valid */
     double dist, brg, elev, rel;
     int have_land;
@@ -438,7 +459,9 @@ typedef struct {
 void app_init(app_t *a, const char *cfg_path);
 void app_poll(app_t *a);
 void app_tune(app_t *a, long f_hz);
-void app_scan(app_t *a);
+void app_scan(app_t *a);  /* band overview only */
+void app_hunt(app_t *a);  /* Scan: band overview that tries each peak until an RS41 decodes */
+int app_skipped(const app_t *a, long f_hz, double now); /* tried lately without a frame */
 void app_stop(app_t *a);
 void app_listen(app_t *a, long f_hz); /* tune without decoding: spectrum and radio audio; app_tune sets the decode */
 const known_t *app_known(const app_t *a, long f_hz); /* NULL: nothing known about this frequency */

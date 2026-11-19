@@ -28,6 +28,7 @@ int rtlsdr_set_tuner_gain_mode(rtlsdr_dev_t *d, int manual) { (void)d; (void)man
 int rtlsdr_set_tuner_gain(rtlsdr_dev_t *d, int gain) { (void)d; (void)gain; return 0; }
 int rtlsdr_set_bias_tee(rtlsdr_dev_t *d, int on) { (void)d; (void)on; return 0; }
 int rtlsdr_reset_buffer(rtlsdr_dev_t *d) { (void)d; return 0; }
+int rtlsdr_get_tuner_type(rtlsdr_dev_t *d) { (void)d; return 6; } /* R828D, as on an RTL-SDR Blog V4 */
 int rtlsdr_cancel_async(rtlsdr_dev_t *d) { (void)d; cancelled = 1; return 0; }
 
 int rtlsdr_read_async(rtlsdr_dev_t *d, rtl_cb_t cb, void *ctx, uint32_t buf_num, uint32_t buf_len)

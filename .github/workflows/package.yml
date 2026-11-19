@@ -1,0 +1,18 @@
+name: package
+on:
+  push:
+  pull_request:
+jobs:
+  deb:
+    # The CardputerZero package, built natively on arm64 in Debian 13 like on the device itself.
+    runs-on: ubuntu-24.04-arm
+    container: debian:trixie
+    steps:
+      - run: apt-get update && apt-get install -y cmake ninja-build build-essential git ca-certificates
+      - uses: actions/checkout@v4
+      - run: cmake --workflow --preset cp0-native-package
+      - run: ctest --test-dir build/cp0-native -C Release --output-on-failure
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sondechase-deb
+          path: dist/*.deb

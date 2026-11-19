@@ -2,6 +2,14 @@
 
 **English** | [Tiếng Việt](README.vi.md)
 
+[![tests](https://github.com/hieuha/CardputerZero-Sondechase/actions/workflows/tests.yml/badge.svg)](https://github.com/hieuha/CardputerZero-Sondechase/actions/workflows/tests.yml)
+[![package](https://github.com/hieuha/CardputerZero-Sondechase/actions/workflows/package.yml/badge.svg)](https://github.com/hieuha/CardputerZero-Sondechase/actions/workflows/package.yml)
+[![validate](https://github.com/hieuha/CardputerZero-Sondechase/actions/workflows/validate.yml/badge.svg)](https://github.com/hieuha/CardputerZero-Sondechase/actions/workflows/validate.yml)
+[![release](https://img.shields.io/github/v/release/hieuha/CardputerZero-Sondechase)](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest)
+[![license](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
+[![platform](https://img.shields.io/badge/platform-CardputerZero%20arm64-orange)](https://docs.m5stack.com/)
+[![LVGL](https://img.shields.io/badge/LVGL-9.5-6c5ce7)](https://lvgl.io)
+
 RS41 radiosonde receiver, decoder and chase aid for the M5Stack CardputerZero
 (Raspberry Pi CM0, 320×170 LCD, 46-key keyboard) with an RTL-SDR v4 and GPS.
 
@@ -37,14 +45,14 @@ On the device (framebuffer captures, 2×):
 ┌────────────┐          ┌────────────────────────────────────────────────────────────┐
 │ RTL-SDR v4 │── USB ──►│ sdr.c  librtlsdr (dlopen) · USB thread · IQ ring           │
 └────────────┘          └─────────┬─────────────────────────────────────┬────────────┘
-                                  │ scan 2.048 MS/s                     │ decode 1.536 MS/s
+                                  │ scan 2.048 MS/s                     │ listen / decode 1.536 MS/s
                                   ▼                                     ▼
                     ┌────────────────────────────┐    ┌──────────────────────────────────┐
                     │ sweep: 4 steps             │    │ dsp.c DDC (rtl_fm -F9 chain)     │
                     │ 1024-pt FFT, peak hold     │    │ → 48 kHz cs16 + live FFT         │
-                    └─────────────┬──────────────┘    └─────────────────┬────────────────┘
-                                  │ spectrum                            │ stdin
-                                  │                                     ▼
+                    └─────────────┬──────────────┘    └───────────────┬─────────┬────────┘
+                                  │ spectrum                          │ stdin   │
+                                  │                                   ▼         └─► radio.c NFM / AM / SSB audio → pacat
                                   │                         ┌────────────────────────┐
                                   │                         │ fsk_demod │ rs41mod    │
                                   │                         └───────────┬────────────┘
@@ -55,10 +63,10 @@ Magnetometer ── IIO sysfs ────────┼─► heading         
                                   │                                     │
                     ┌─────────────▼─────────────────────────────────────▼────────────────┐
                     │ sondechase  ·  C, LVGL 9.5, /dev/fb0 + evdev                       │
-                    │ app.c   IDLE / SCAN / DECODE, tuning, known sondes                 │
+                    │ app.c   IDLE / SCAN / LISTEN / DECODE, tuning, known sondes        │
                     │ geo.c   distance, bearing, ISA, landing prediction                 │
-                    │ track.c history, burst, beeper → pacat → PipeWire                  │
-                    │ ui.c    7 screens + alerts                                         │
+                    │ track.c history, burst, beeper + radio audio → pacat → PipeWire    │
+                    │ ui.c    Track, Map, Graph, Radio, Info + alerts                    │
                     └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -67,8 +75,8 @@ cross build needs no librtlsdr in the sysroot). One USB thread fills a lock-free
 main loop. `fsk_demod` and `rs41mod` from `radiosonde_auto_rx` are the only external decoders; `radiosonde_auto_rx`
 itself does not run.
 
-The dongle is opened once and kept for the session; the scan sweep (2.048 MS/s) and the decoder (1.536 MS/s) take
-turns on it, so switching job only restarts the USB stream at the other rate. `rtl_power` and `rtl_fm` are not used.
+The dongle is opened once and kept for the session; the band sweep (2.048 MS/s) and the tuned receiver (1.536 MS/s,
+listening and decoding) take turns on it, so switching job only restarts the USB stream at the other rate. `rtl_power` and `rtl_fm` are not used.
 If `librtlsdr0` is missing or the dongle is busy, the reason shows on the status line and the app retries.
 
 ## Screens and keys
@@ -87,7 +95,7 @@ If `librtlsdr0` is missing or the dongle is busy, the reason shows on the status
 
 The burst alert overlays every screen: `Enter` opens Map, a short `Esc` dismisses.
 
-**Spectrum**
+**Radio screen**
 
 - **Tuned view**: the tuned frequency stays in the middle and the screen shows the receiver's own samples ±384 kHz
   around it, refreshed 20 times a second. Its audio plays while the Radio screen is shown: NFM 16 kHz by default
@@ -223,16 +231,17 @@ Package contents:
 `Depends: libc6, curl, librtlsdr0 (>= 2.0.2)` (Debian 13's librtlsdr0 drives the RTL-SDR Blog V4; it is loaded at
 run time, not linked). The build downloads the `radiosonde_auto_rx` v1.9.0 release tarball (SHA-256 pinned) and
 compiles `fsk_demod` and `rs41mod` with the flags of its Makefiles; their licenses go to `/usr/share/doc/sondechase/`.
-Optional at run time: `gpsd` for this device's position, `pacat` (`pulseaudio-utils`) for the beeper (both in
-`Recommends`).
+Optional at run time: `gpsd` for this device's position, `pacat` (`pulseaudio-utils`) for the beeper and the radio audio
+(both in `Recommends`).
 
 The package installs no systemd service: the app is opened from APPLaunch and runs as the launcher's user.
 That user needs read/write access to `/dev/fb0`, `/dev/input/event*`, the RTL-SDR and PipeWire (groups
 `video`, `input`, `plugdev`, `audio`). The app is a child subreaper: decoder, audio and tile pipelines it stops are
 collected by the app itself instead of being left as zombies under the launcher.
 
-`app-builder.json` is the manifest for `czdev publish`; the Template's check script
-(`validate_app_builder.cmake`) accepts it.
+`app-builder.json` is the store manifest (developer portal or `czdev publish`); `tools/validate_app_builder.py`
+checks it against the store's rules (required fields, version equal to `CMakeLists.txt`, share code, categories,
+permissions, icon and 320×170 screenshots) and runs in CI.
 
 ### Demo mode and rendered screenshots
 
@@ -264,12 +273,12 @@ distance from the dominant background color; it needs tuning if the tile style d
 
 ## Test status
 
-`tests/test_core.c`: 4247 checks pass on Debian 13 arm64 (`-Wall -Wextra -Werror`). A fake `librtlsdr`
+`tests/test_core.c`: 4268 checks pass on Debian 13 arm64 and, in CI, on Ubuntu x86-64 (`-Wall -Wextra`). A fake `librtlsdr`
 (`tests/fake_rtlsdr.c`, a 403.000 MHz carrier wherever it is tuned) runs scanning and decoding end to end without a
 dongle. Covered: geodesy, ISA,
 dew point, landing prediction, rs41mod JSON (including a real no-fix frame) and gpsd parsers, heading, spectrum
 cells and peak hold, IQ ring, FFT, decoder front end (sonde lands at +12 kHz, images ≥ 20 dB down, chunking
-bit-exact), radio audio (NFM / AM / USB / LSB recover their test tone, NFM squelches noise), listen → decode switching, held-key repeat, stdin feeding, process-group reaping, flight history, tiles, child pipeline lifecycle.
+bit-exact), radio audio (NFM / AM / USB / LSB recover their test tone, NFM squelches noise), listen → decode switching, held-key repeat, map styles, tile download failure reasons (DNS block), stdin feeding, process-group reaping, flight history, tiles, child pipeline lifecycle.
 
 On a CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 at 403.000 MHz):
 
@@ -284,7 +293,9 @@ On a CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 at 403.000 MHz):
 | Display, keyboard, PipeWire audio, magnetometer node, OSM tile download | working |
 
 Not yet checked: GPS (no module fitted yet), the proximity beeper in the field, burst detection and landing
-prediction on a real flight, the `cp0-cross` cross build, drawing speed with many map tiles.
+prediction on a real flight, the `cp0-cross` cross build, drawing speed with many map tiles. New in 0.4.0 and so far
+seen only in rendered screenshots or with the fake receiver: AM / SSB audio on real signals, the simple map style
+and map panning on the device.
 
 ## Known limitations
 

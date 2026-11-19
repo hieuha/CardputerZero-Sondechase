@@ -2,6 +2,14 @@
 
 [English](README.md) | **Tiếng Việt**
 
+[![tests](https://github.com/hieuha/CardputerZero-Sondechase/actions/workflows/tests.yml/badge.svg)](https://github.com/hieuha/CardputerZero-Sondechase/actions/workflows/tests.yml)
+[![package](https://github.com/hieuha/CardputerZero-Sondechase/actions/workflows/package.yml/badge.svg)](https://github.com/hieuha/CardputerZero-Sondechase/actions/workflows/package.yml)
+[![validate](https://github.com/hieuha/CardputerZero-Sondechase/actions/workflows/validate.yml/badge.svg)](https://github.com/hieuha/CardputerZero-Sondechase/actions/workflows/validate.yml)
+[![release](https://img.shields.io/github/v/release/hieuha/CardputerZero-Sondechase)](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest)
+[![license](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
+[![platform](https://img.shields.io/badge/platform-CardputerZero%20arm64-orange)](https://docs.m5stack.com/)
+[![LVGL](https://img.shields.io/badge/LVGL-9.5-6c5ce7)](https://lvgl.io)
+
 Ứng dụng thu, giải mã radiosonde RS41 và hỗ trợ chase trên M5Stack CardputerZero
 (Raspberry Pi CM0, LCD 320×170, bàn phím 46 phím) với RTL-SDR v4 và GPS.
 
@@ -37,14 +45,14 @@ Trên máy thật (chụp framebuffer, phóng 2×):
 ┌────────────┐          ┌────────────────────────────────────────────────────────────┐
 │ RTL-SDR v4 │── USB ──►│ sdr.c  librtlsdr (dlopen) · luồng USB · ring IQ            │
 └────────────┘          └─────────┬─────────────────────────────────────┬────────────┘
-                                  │ quét 2,048 MS/s                     │ giải mã 1,536 MS/s
+                                  │ quét 2,048 MS/s                     │ nghe / giải mã 1,536 MS/s
                                   ▼                                     ▼
                     ┌────────────────────────────┐    ┌──────────────────────────────────┐
                     │ quét: 4 bước               │    │ dsp.c DDC (chuỗi rtl_fm -F9)     │
                     │ FFT 1024 điểm, giữ đỉnh    │    │ → cs16 48 kHz + FFT trực tiếp    │
-                    └─────────────┬──────────────┘    └─────────────────┬────────────────┘
-                                  │ phổ                                 │ stdin
-                                  │                                     ▼
+                    └─────────────┬──────────────┘    └───────────────┬─────────┬────────┘
+                                  │ phổ                               │ stdin   │
+                                  │                                   ▼         └─► radio.c NFM / AM / SSB audio → pacat
                                   │                         ┌────────────────────────┐
                                   │                         │ fsk_demod │ rs41mod    │
                                   │                         └───────────┬────────────┘
@@ -55,10 +63,10 @@ Từ kế ── IIO sysfs ───────────────┼─�
                                   │                                     │
                     ┌─────────────▼─────────────────────────────────────▼────────────────┐
                     │ sondechase  ·  C, LVGL 9.5, /dev/fb0 + evdev                       │
-                    │ app.c   IDLE / SCAN / DECODE, dò tần, sonde đã biết                │
+                    │ app.c   IDLE / SCAN / LISTEN / DECODE, dò tần, sonde đã biết       │
                     │ geo.c   khoảng cách, hướng, ISA, dự đoán điểm rơi                  │
-                    │ track.c lịch sử, bóng nổ, beeper → pacat → PipeWire                │
-                    │ ui.c    7 màn hình + cảnh báo                                      │
+                    │ track.c lịch sử, bóng nổ, beeper + audio radio → pacat → PipeWire  │
+                    │ ui.c    Track, Map, Graph, Radio, Info + cảnh báo                  │
                     └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -67,7 +75,8 @@ librtlsdr trong sysroot). Một luồng USB đổ IQ vào ring không khóa; m�
 `fsk_demod` và `rs41mod` của `radiosonde_auto_rx` là hai decoder ngoài duy nhất; bản thân `radiosonde_auto_rx`
 không chạy.
 
-Dongle được mở một lần và giữ suốt phiên; việc quét (2,048 MS/s) và việc giải mã (1,536 MS/s) lần lượt dùng nó, nên
+Dongle được mở một lần và giữ suốt phiên; việc quét dải (2,048 MS/s) và bộ thu đang dò (1,536 MS/s, nghe và giải
+mã) lần lượt dùng nó, nên
 đổi việc chỉ cần chạy lại luồng USB ở tốc độ mẫu kia. App không dùng `rtl_power` và `rtl_fm`. Nếu thiếu `librtlsdr0`
 hoặc dongle đang bị chương trình khác giữ, lý do hiện trên dòng trạng thái và app tự thử lại.
 
@@ -87,7 +96,7 @@ hoặc dongle đang bị chương trình khác giữ, lý do hiện trên dòng 
 
 Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` mở Map, bấm `Esc` ngắn để đóng.
 
-**Phổ**
+**Màn Radio**
 
 - **Đang thu**: tần số đang thu nằm giữa màn, màn hình hiện chính mẫu của bộ thu ±384 kHz quanh nó, cập nhật 20 lần/s.
   Audio của tần số đó phát khi đang ở màn Radio: mặc định NFM 16 kHz (đúng kênh của RS41), có squelch theo mức nhiễu nên
@@ -220,7 +229,7 @@ Nội dung gói:
 `Depends: libc6, curl, librtlsdr0 (>= 2.0.2)` (librtlsdr0 của Debian 13 chạy được RTL-SDR Blog V4; app nạp nó lúc
 chạy chứ không link). Lúc build, CMake tải bản phát hành `radiosonde_auto_rx` v1.9.0 (đã ghim SHA-256) và biên dịch
 `fsk_demod`, `rs41mod` với đúng cờ trong Makefile của nó; giấy phép của chúng nằm ở `/usr/share/doc/sondechase/`.
-Tùy chọn lúc chạy: `gpsd` cho vị trí của máy, `pacat` (`pulseaudio-utils`) cho beeper (cả hai nằm trong
+Tùy chọn lúc chạy: `gpsd` cho vị trí của máy, `pacat` (`pulseaudio-utils`) cho beeper và audio radio (cả hai nằm trong
 `Recommends`).
 
 Gói không cài systemd service: app được mở từ APPLaunch và chạy với user của launcher. User đó cần quyền
@@ -228,8 +237,9 @@ Gói không cài systemd service: app được mở từ APPLaunch và chạy v�
 App là child subreaper: các pipeline decoder, âm thanh và tải tile mà app dừng đều được chính app thu dọn, không còn
 để lại zombie dưới launcher.
 
-`app-builder.json` là manifest cho `czdev publish`; script kiểm tra của Template
-(`validate_app_builder.cmake`) chấp nhận file này.
+`app-builder.json` là manifest cho store (trang developer hoặc `czdev publish`); `tools/validate_app_builder.py`
+kiểm tra nó theo luật của store (trường bắt buộc, version khớp `CMakeLists.txt`, share code, danh mục, quyền, icon
+và ảnh 320×170) và chạy trong CI.
 
 ### Chế độ demo và ảnh render
 
@@ -261,11 +271,11 @@ màu so với màu nền chiếm đa số; cần chỉnh lại nếu style tile 
 
 ## Trạng thái kiểm thử
 
-`tests/test_core.c`: 4247 phép kiểm đạt trên Debian 13 arm64 (`-Wall -Wextra -Werror`). Một `librtlsdr` giả
+`tests/test_core.c`: 4268 phép kiểm đạt trên Debian 13 arm64 và, trong CI, trên Ubuntu x86-64 (`-Wall -Wextra`). Một `librtlsdr` giả
 (`tests/fake_rtlsdr.c`, phát sóng mang 403,000 MHz ở bất kỳ tần số nào đang đặt) cho phép chạy trọn quét và giải mã
 mà không cần dongle. Phạm vi: geodesy, ISA, dew point, dự đoán
 điểm rơi, parser JSON rs41mod (kể cả một frame thật chưa có fix) và gpsd, heading, ô phổ và giữ đỉnh, ring IQ, FFT,
-bộ hạ tần (sonde rơi đúng +12 kHz, tần số ảnh yếu hơn ≥ 20 dB, chia mẩu cho kết quả giống từng bit), audio radio (NFM / AM / USB / LSB khôi phục đúng tone thử, NFM squelch nhiễu), chuyển nghe → giải mã, lặp phím khi giữ, ghi stdin, thu
+bộ hạ tần (sonde rơi đúng +12 kHz, tần số ảnh yếu hơn ≥ 20 dB, chia mẩu cho kết quả giống từng bit), audio radio (NFM / AM / USB / LSB khôi phục đúng tone thử, NFM squelch nhiễu), chuyển nghe → giải mã, lặp phím khi giữ, kiểu bản đồ, lý do tải tile lỗi (DNS chặn), ghi stdin, thu
 dọn process group, lịch sử bay, tile, vòng đời pipeline con.
 
 Trên CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 ở 403,000 MHz):
@@ -281,7 +291,8 @@ Trên CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 ở 403,000 MHz)
 | Màn hình, bàn phím, âm thanh PipeWire, node từ kế, tải tile OSM | chạy được |
 
 Chưa kiểm: GPS (chưa có module), beeper khi chase thực địa, phát hiện bóng nổ và dự đoán điểm rơi trên chuyến bay
-thật, cross build `cp0-cross`, tốc độ vẽ khi có nhiều tile bản đồ.
+thật, cross build `cp0-cross`, tốc độ vẽ khi có nhiều tile bản đồ. Phần mới trong 0.4.0, mới chỉ xem qua ảnh render
+hoặc bộ thu giả: audio AM / SSB với tín hiệu thật, bản đồ kiểu simple và pan bản đồ trên máy.
 
 ## Giới hạn đã biết
 

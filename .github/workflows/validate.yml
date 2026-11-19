@@ -1,0 +1,11 @@
+name: validate
+on:
+  push:
+  pull_request:
+jobs:
+  app-builder:
+    # app-builder.json against the CardputerZero store's metadata rules.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/validate_app_builder.py

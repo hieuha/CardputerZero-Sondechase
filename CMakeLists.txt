@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(sondechase VERSION 0.4.0 LANGUAGES C)
+project(sondechase VERSION 0.4.1 LANGUAGES C)
 # The store reads the version from app-builder.json and the package from this project; keep them equal.
 if(NOT CMAKE_VERSION VERSION_LESS 3.19)
   file(READ "${CMAKE_SOURCE_DIR}/app-builder.json" SC_APP_BUILDER)

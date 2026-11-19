@@ -10,6 +10,8 @@
 [![platform](https://img.shields.io/badge/platform-CardputerZero%20arm64-orange)](https://docs.m5stack.com/)
 [![LVGL](https://img.shields.io/badge/LVGL-9.5-6c5ce7)](https://lvgl.io)
 
+> **New here? See the [keyboard cheatsheet](docs/keyboard-cheatsheet.md)** for every key on every screen.
+
 RS41 radiosonde receiver, decoder and chase aid for the M5Stack CardputerZero (Raspberry Pi CM0, 320×170 LCD,
 46-key keyboard), with an RTL-SDR and an optional GPS.
 
@@ -156,6 +158,7 @@ Everything the app keeps is in one folder, `data_dir` (default `~/sondechase`):
 
 | Document | Contents |
 |---|---|
+| [Keyboard cheatsheet](docs/keyboard-cheatsheet.md) | Every key, screen by screen |
 | [Project overview and PDR](docs/project-overview-pdr.md) | Scope, requirements, acceptance criteria |
 | [System architecture](docs/system-architecture.md) | Modules, data flow, peripherals, algorithms (DSP, demodulation, landing prediction, burst, beeper), map and tiles |
 | [Code standards](docs/code-standards.md) | C conventions, naming, tests, commits |

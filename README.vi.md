@@ -10,6 +10,8 @@
 [![platform](https://img.shields.io/badge/platform-CardputerZero%20arm64-orange)](https://docs.m5stack.com/)
 [![LVGL](https://img.shields.io/badge/LVGL-9.5-6c5ce7)](https://lvgl.io)
 
+> **Mới dùng lần đầu? Xem [bảng phím tắt](docs/keyboard-cheatsheet.md)** (tiếng Anh) để biết mọi phím trên từng màn hình.
+
 Ứng dụng thu, giải mã và bám theo bóng thám không RS41 cho M5Stack CardputerZero (Raspberry Pi CM0, màn hình
 320×170, bàn phím 46 phím), dùng một RTL-SDR và GPS (không bắt buộc).
 
@@ -159,6 +161,7 @@ Tài liệu kỹ thuật viết bằng tiếng Anh:
 
 | Tài liệu | Nội dung |
 |---|---|
+| [Keyboard cheatsheet](docs/keyboard-cheatsheet.md) | Mọi phím tắt, theo từng màn hình |
 | [Project overview and PDR](docs/project-overview-pdr.md) | Phạm vi, yêu cầu, tiêu chí nghiệm thu |
 | [System architecture](docs/system-architecture.md) | Module, luồng dữ liệu, thiết bị ngoại vi, thuật toán (DSP, giải điều chế, dự đoán điểm rơi, phát hiện nổ, beeper), bản đồ và tile |
 | [Code standards](docs/code-standards.md) | Quy ước C, đặt tên, test, commit |

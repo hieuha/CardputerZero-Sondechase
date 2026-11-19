@@ -14,6 +14,7 @@ Last updated: 2026-11-20 (version 0.5.1). Describes the conventions the code alr
 - [Tests](#tests)
 - [Tools and scripts](#tools-and-scripts)
 - [File size](#file-size)
+- [Documentation with every change](#documentation-with-every-change)
 - [Commits and branches](#commits-and-branches)
 - [Known warnings](#known-warnings)
 
@@ -158,6 +159,20 @@ Unknown keys are reported on stderr and ignored. `#` starts a comment at the sta
 - Current sizes are listed in the [codebase summary](./codebase-summary.md). `src/ui.c` (1271 lines) is the largest
   and is the first candidate for splitting by screen (Track, Map, Graph, Radio, Info, overlays) if it keeps growing.
   Split only where it removes real complexity, and keep `ui_key` and the draw helpers shared.
+
+## Documentation with every change
+
+A change that touches behaviour, keys, screens, config keys, files on disk or the build updates, in the same commit:
+
+| What changed | Update |
+|---|---|
+| Any key, or what a key does on a screen | [`docs/keyboard-cheatsheet.md`](./keyboard-cheatsheet.md) and the Keys table in both READMEs |
+| User-visible behaviour, screens, logs, data folder | `README.md` and `README.vi.md` (same content, Vietnamese written with natural vi-VN terms) |
+| Config keys or defaults | `conf/sondechase.conf`, [deployment guide](./deployment-guide.md#configuration) |
+| Modules, data flow, peripherals, algorithms | [system architecture](./system-architecture.md), [codebase summary](./codebase-summary.md) |
+| A release | [roadmap](./project-roadmap.md), version in the READMEs and in each doc's "Last updated" line |
+
+Check the docs against the code before committing; do not describe behaviour that is planned but not built.
 
 ## Commits and branches
 

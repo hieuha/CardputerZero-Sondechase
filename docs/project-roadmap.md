@@ -1,6 +1,6 @@
 # Project Roadmap
 
-Last updated: 2026-11-19 (version 0.5.0). Versions come from `chore: version` commits and GitHub releases. The
+Last updated: 2026-11-20 (version 0.5.1). Versions come from `chore: version` commits and GitHub releases. The
 "Known gaps" list comes from the test status and limitations in the README and from the code. Nothing here is a
 commitment to a future feature.
 
@@ -17,10 +17,9 @@ commitment to a future feature.
 | 0.4.0 | 2026-11-19 03:57 | `f64e6fa`..`539c908` | In-process librtlsdr receiver (one open dongle); FFT spectrum and rtl_fm-equivalent front end; in-process sweep; decoding in process with live spectrum; manual or automatic scan with peak marks; pacat beeper; keys 4–8; hold `Esc` to quit; telemetry before the GPS fix; map before a position is known; decoders and store metadata in the package; GPL-3.0-or-later licence |
 | 0.4.1 | 2026-11-19 04:08 | `539c908`..`59e89c7` | Tune and listen like an SDR, `Enter` sets decode; NFM, AM, USB, LSB audio with selectable width (Scan tab becomes Radio); held arrow keys keep tuning; simple map style; map pan and zoom; DNS block messages for the map; CI (tests, arm64 package, store checks); launcher icon with a radiosonde; config fix for long `rtlsdr_lib` paths |
 | 0.5.0 | 2026-11-19 14:12 | `59e89c7`..`6f6f036` | `Tab` switches screens; SDR-style start on the Radio screen; WFM audio; automatic Scan that tries peaks; tuner-range frequency entry; frame tick and ACT LED on Track and Map; GPS satellite counts; auto_rx-format log per sonde; green compass ring within 15° |
-| Unreleased on `main` | not released | `6f6f036`..`e83d0d7` | Duplicate helpers removed; live spectrum computed only on the Radio screen (`92c7c44`); one CSV header per file and the auto_rx log timed by the sonde's GPS time (`e83d0d7`) |
+| 0.5.1 | 2026-11-20 | `6f6f036`..`v0.5.1` | `Z` (Sym+Z, printed +) zooms the map in; zoom range 6–18; app data grouped in `data_dir` (`~/sondechase`: `sondechase.csv`, `log/`, `tiles/`), older files moved in; map tile cache 1000 MB for offline use; one CSV header per file; auto_rx log timed by the sonde's GPS time; inline `#` comments in the config; versioned tile User-Agent; live spectrum only on the Radio screen |
 
 Notes:
-- Local `git tag` lists only `v0.5.0`. The `v0.4.0` and `v0.4.1` releases exist on GitHub.
 - Version bumps touch `CMakeLists.txt`, `app-builder.json` and both READMEs (see
   [release procedure](./deployment-guide.md#release-procedure)).
 

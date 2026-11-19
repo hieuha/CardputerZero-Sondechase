@@ -1,6 +1,6 @@
 # Project Overview and PDR
 
-Last updated: 2026-11-19 (version 0.5.0).
+Last updated: 2026-11-20 (version 0.5.1).
 
 ## Contents
 - [Overview](#overview)
@@ -89,19 +89,19 @@ Out of scope (decided or not planned):
 |---|---|---|
 | NFR-01 | Runs on the CardputerZero (4 cores, arm64) within its CPU budget while decoding | 15.6 % of one core for the whole app while decoding (device measurement, [deployment guide](./deployment-guide.md#device-checks)) |
 | NFR-02 | No dropped samples between the dongle and the decoder under normal load | 0 dropped in the IQ ring and the decoder pipe (device measurement) |
-| NFR-03 | Core logic is testable without hardware | `test_core`: 4315 checks, 0 failed |
+| NFR-03 | Core logic is testable without hardware | `test_core`: 4322 checks, 0 failed |
 | NFR-04 | Package installs with no build tools, only `libc6`, `curl`, `librtlsdr0 (>= 2.0.2)` | `cmake/cm0-package.cmake` |
 | NFR-05 | Works offline for everything except new map tiles | Cache and preloaded pack are used first |
 | NFR-06 | Does not stop on a missing optional peripheral (GPS, LED, audio) | Each has a disabled or retry state; see [system architecture](./system-architecture.md#failure-handling) |
 | NFR-07 | Stays within the screen: 320×170, text fits its box | Screenshots from `sc_render`, see [deployment guide](./deployment-guide.md#screenshots) |
 | NFR-08 | Respects the tile server's policy: download only what is on screen, identify the app in the User-Agent | `tiles.c`, `tile_user_agent` |
-| NFR-09 | Memory and storage are bounded: history 2048 points, tile cache 200 MB by default, IQ ring 4 MiB | `sc.h`, `base.c` |
+| NFR-09 | Memory and storage are bounded: history 2048 points, tile cache 1000 MB by default, IQ ring 4 MiB | `sc.h`, `base.c` |
 
 ## Acceptance criteria
 
 A release is accepted when all of these hold:
 
-1. `ctest` passes on a Linux core build (`-DSC_BUILD_UI=OFF`). Current: 4315 checks, 0 failed.
+1. `ctest` passes on a Linux core build (`-DSC_BUILD_UI=OFF`). Current: 4322 checks, 0 failed.
 2. The `package` workflow builds `sondechase_<version>-rev1_arm64.deb` on Debian 13 arm64 and its `ctest` passes.
 3. `tools/validate_app_builder.py` passes; `CMakeLists.txt` and `app-builder.json` have the same version.
 4. Both READMEs state the same version, keys, screens and facts.
@@ -134,9 +134,7 @@ A release is accepted when all of these hold:
 
 ## Status
 
-- Version 0.5.0 (tag `v0.5.0`, GitHub release published). Commits after the tag (`92c7c44`, `e83d0d7`) are in
-  `main` and not yet in a release: a duplicate-helper cleanup, live spectrum only on the Radio screen, one CSV header
-  per file, and the auto_rx log on the sonde's GPS time.
+- Version 0.5.1 (tag `v0.5.1`, GitHub release published).
 - Tested on hardware: scanning and decoding with a live RS41 (Y0532351), display, keyboard, PipeWire audio, magnetometer
   node, OSM tile download. Not yet tested in the field: GPS (no module fitted when this was written), the beeper, burst
   detection and landing on a real flight. Full list in the [roadmap](./project-roadmap.md#known-gaps).

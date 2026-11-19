@@ -13,7 +13,7 @@
 Ứng dụng thu, giải mã và bám theo bóng thám không RS41 cho M5Stack CardputerZero (Raspberry Pi CM0, màn hình
 320×170, bàn phím 46 phím), dùng một RTL-SDR và GPS (không bắt buộc).
 
-Phiên bản 0.5.0. Đã chạy trên CardputerZero thật với RTL-SDR Blog V4: phần quét và giải mã đã được kiểm với một quả
+Phiên bản 0.5.1. Đã chạy trên CardputerZero thật với RTL-SDR Blog V4: phần quét và giải mã đã được kiểm với một quả
 RS41 đang bay (Y0532351). Chưa thử đi săn ngoài thực địa với GPS; xem [Hạn chế đã biết](#hạn-chế-đã-biết).
 
 | | |
@@ -53,11 +53,11 @@ Không có GPS thì sonde vẫn được giải mã và telemetry vẫn hiện; 
 
 ## Cài đặt
 
-Tải `sondechase_0.5.0-rev1_arm64.deb` từ [bản release mới nhất](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest),
+Tải `sondechase_0.5.1-rev1_arm64.deb` từ [bản release mới nhất](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest),
 chép vào máy rồi cài:
 
 ```sh
-sudo apt install --no-install-recommends ./sondechase_0.5.0-rev1_arm64.deb
+sudo apt install --no-install-recommends ./sondechase_0.5.1-rev1_arm64.deb
 ```
 
 Mở **SondeChase** từ APPLaunch. Gói cài đã kèm sẵn bộ giải mã RS41 (`fsk_demod` và `rs41mod`, lấy từ
@@ -124,7 +124,7 @@ sdr_check = 1            # bắt buộc có RTL-SDR trên USB
 gpsd_port = 2947         # gpsd (0 để tắt GPS)
 burst_alt = 30000        # độ cao nổ giả định khi bóng đang lên, m
 tile_online = 1          # tải các tile bản đồ đang hiện trên màn hình
-tile_cache_mb = 200      # giới hạn dung lượng cache tile
+tile_cache_mb = 1000     # giới hạn cache tile, MB (tile đã xem được giữ để dùng khi không có mạng)
 map_simple = 1           # kiểu bản đồ đơn giản (V trên màn Map để đổi)
 demo = 0                 # 1 = chuyến bay giả lập, không cần phần cứng
 ```
@@ -134,14 +134,24 @@ Danh sách đầy đủ các key, giá trị mặc định, đóng gói và gói
 Chế độ demo (`demo = 1`) phát một chuyến bay giả lập qua đúng luồng code thật, tiện để xem mọi màn hình khi không có
 dongle.
 
-## Log
+## Dữ liệu và cache bản đồ
 
-- `~/sondechase.csv`: mỗi frame hợp lệ một dòng, ghi nối tiếp qua các lần mở app.
-- `~/sondechase/log/YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log`: mỗi sonde một file theo định dạng log của
-  radiosonde_auto_rx. Giờ ghi theo UTC, lấy từ GPS của chính sonde, nên vẫn đúng ngoài thực địa khi không có mạng. SNR
-  và lệch tần ghi là `-1`.
+Mọi dữ liệu app lưu nằm trong một thư mục, `data_dir` (mặc định `~/sondechase`):
 
-Thư mục: `log_dir` (mặc định `$HOME`).
+```
+~/sondechase/
+├── sondechase.csv   # mọi frame hợp lệ, ghi nối tiếp qua các lần mở app
+├── log/             # mỗi sonde một file log theo định dạng radiosonde_auto_rx
+└── tiles/           # các tile bản đồ đã tải (bản đồ dùng khi không có mạng)
+```
+
+- `log/YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log`: giờ ghi theo UTC, lấy từ GPS của chính sonde, nên vẫn đúng
+  ngoài thực địa khi không có mạng. SNR và lệch tần ghi là `-1`.
+- `tiles/`: mọi tile đã hiện trên màn Map đều được giữ lại và dùng trước khi tải qua mạng, nên vùng đã xem một lần sẽ
+  xem được khi không có mạng. Trước khi đi săn, bạn nên mở Map xem qua khu vực đó ở các mức zoom cần dùng khi còn
+  Wi-Fi. Cache giữ tối đa `tile_cache_mb` (1000 MB), vượt quá thì xoá các tile cũ nhất.
+- File từ các bản trước 0.5.1 (`~/sondechase.csv`, `~/.cache/sondechase/tiles`) được tự chuyển vào đây ở lần mở app
+  đầu tiên.
 
 ## Tài liệu
 
@@ -158,7 +168,7 @@ Tài liệu kỹ thuật viết bằng tiếng Anh:
 
 ## Tình trạng test
 
-`tests/test_core.c`: 4315 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
+`tests/test_core.c`: 4322 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
 native trên Debian 13. Một `librtlsdr` giả và một bộ giải mã giả chạy trọn quy trình quét và giải mã mà không cần
 dongle. Chi tiết và số đo trên máy thật: [hướng dẫn deploy](docs/deployment-guide.md#tests).
 

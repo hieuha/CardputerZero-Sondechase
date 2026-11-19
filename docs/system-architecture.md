@@ -1,6 +1,6 @@
 # System Architecture
 
-Last updated: 2026-11-19 (version 0.5.0, commit e83d0d7).
+Last updated: 2026-11-20 (version 0.5.1).
 
 SondeChase is one C11 process on the CardputerZero. It reads the RTL-SDR in process, runs the RS41 decoder as
 a child pipeline, merges GPS and magnetometer data, and draws every screen with LVGL 9.5 on `/dev/fb0`.
@@ -272,14 +272,14 @@ Moist adiabats and mixing-ratio lines are not drawn.
 Tile lookup order (`tf_find`, then `tf_request` for a download):
 
 1. Preloaded pack in `tile_dir` (`z/x/y.png`, already in UI colours, see [deployment guide](./deployment-guide.md#map-tiles)).
-2. Download cache in `tile_cache_dir` (default `$HOME/.cache/sondechase/tiles`), original server PNGs, recoloured
+2. Download cache in `tile_cache_dir` (default `<data_dir>/tiles`, `data_dir` = `$HOME/sondechase`), original server PNGs, recoloured
    when loaded into RAM.
 3. Missing and `tile_online = 1`: download only the tiles the Map screen shows, at most two at a time, with a
    User-Agent from `tile_user_agent`. A failed tile is not retried for 30 s.
 
 Rules:
 - Nothing is prefetched. Bulk downloading for offline use is not implemented.
-- The cache is capped by `tile_cache_mb` (default 200). Above the cap the oldest downloaded tiles are removed.
+- The cache is capped by `tile_cache_mb` (default 1000). Above the cap the oldest downloaded tiles are removed.
 - Failure reasons (`TF_WHY_*`) set the Map status text:
 
 | Status | Cause |
@@ -303,9 +303,9 @@ Map centre when neither this device nor a sonde has a position: `map_lat` / `map
 
 | Path | When | Format |
 |---|---|---|
-| `$log_dir/sondechase.csv` (default `$HOME`) | Every valid sonde frame | One header per file, then `unix,id,frame,lat,lon,alt,vel_v,vel_h,heading,freq_hz,own_lat,own_lon,pred_lat,pred_lon` |
-| `$log_dir/sondechase/log/YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log` | Every valid sonde frame | radiosonde_auto_rx sonde-log columns (`timestamp,serial,frame,lat,lon,alt,...,aux_data`). Time is the sonde's own GPS time in UTC; the system clock is used only when the sonde sends none. SNR, frequency error and burst timer are written as `-1` where not measured |
-| `$HOME/.cache/sondechase/tiles/` | Map downloads | `z/x/y.png` |
+| `<data_dir>/sondechase.csv` (default `$HOME/sondechase`) | Every valid sonde frame | One header per file, then `unix,id,frame,lat,lon,alt,vel_v,vel_h,heading,freq_hz,own_lat,own_lon,pred_lat,pred_lon` |
+| `<data_dir>/log/YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log` | Every valid sonde frame | radiosonde_auto_rx sonde-log columns (`timestamp,serial,frame,lat,lon,alt,...,aux_data`). Time is the sonde's own GPS time in UTC; the system clock is used only when the sonde sends none. SNR, frequency error and burst timer are written as `-1` where not measured |
+| `<data_dir>/tiles/` | Map downloads, kept for offline use | `z/x/y.png` |
 
 The app has no RTC; the auto_rx-format file name and timestamps therefore come from the sonde's GPS, not from the clock.
 

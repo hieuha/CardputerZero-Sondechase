@@ -13,7 +13,7 @@
 RS41 radiosonde receiver, decoder and chase aid for the M5Stack CardputerZero (Raspberry Pi CM0, 320×170 LCD,
 46-key keyboard), with an RTL-SDR and an optional GPS.
 
-Version 0.5.0. Tested on a real CardputerZero with an RTL-SDR Blog V4: scanning and decoding were checked with a live
+Version 0.5.1. Tested on a real CardputerZero with an RTL-SDR Blog V4: scanning and decoding were checked with a live
 RS41 (Y0532351). GPS chasing in the field has not been tried yet; see [Known limitations](#known-limitations).
 
 | | |
@@ -53,11 +53,11 @@ Without GPS the sonde is still decoded and its telemetry shown; the beeper stays
 
 ## Install
 
-Download `sondechase_0.5.0-rev1_arm64.deb` from the [latest release](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest),
+Download `sondechase_0.5.1-rev1_arm64.deb` from the [latest release](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest),
 copy it to the device, and install it:
 
 ```sh
-sudo apt install --no-install-recommends ./sondechase_0.5.0-rev1_arm64.deb
+sudo apt install --no-install-recommends ./sondechase_0.5.1-rev1_arm64.deb
 ```
 
 Open **SondeChase** from APPLaunch. The package includes the RS41 decoders (`fsk_demod` and `rs41mod`, from
@@ -124,7 +124,7 @@ sdr_check = 1            # require the RTL-SDR on USB
 gpsd_port = 2947         # gpsd (0 disables GPS)
 burst_alt = 30000        # assumed burst altitude while ascending, m
 tile_online = 1          # download the map tiles that are on screen
-tile_cache_mb = 200      # tile cache size limit
+tile_cache_mb = 1000     # tile cache size limit, MB (viewed tiles stay for offline use)
 map_simple = 1           # simple map style (V toggles it on the Map)
 demo = 0                 # 1 = simulated flight, no hardware needed
 ```
@@ -134,14 +134,23 @@ Full key reference, defaults, packaging and map tile packs: [deployment guide](d
 Demo mode (`demo = 1`) plays a simulated flight through the same code path, which is useful to see every screen
 without a dongle.
 
-## Logs
+## Data and map cache
 
-- `~/sondechase.csv`: one line per valid sonde frame, appended across sessions.
-- `~/sondechase/log/YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log`: one file per sonde in radiosonde_auto_rx's log
-  format. Times are UTC from the sonde's own GPS time, so they are right in the field with no network. SNR and
-  frequency error are written as `-1`.
+Everything the app keeps is in one folder, `data_dir` (default `~/sondechase`):
 
-Directory: `log_dir` (default `$HOME`).
+```
+~/sondechase/
+├── sondechase.csv   # every valid sonde frame, appended across sessions
+├── log/             # one radiosonde_auto_rx-format log per sonde
+└── tiles/           # map tiles downloaded so far (offline map)
+```
+
+- `log/YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log`: times are UTC from the sonde's own GPS time, so they are right
+  in the field with no network. SNR and frequency error are written as `-1`.
+- `tiles/`: every tile the Map has shown is kept, and is used before the network, so an area seen once works offline.
+  Before a chase, look over the area at the zoom levels you need while on Wi-Fi. The cache keeps up to
+  `tile_cache_mb` (1000 MB) and then drops the oldest tiles.
+- Files from before 0.5.1 (`~/sondechase.csv`, `~/.cache/sondechase/tiles`) are moved in on the first start.
 
 ## Documentation
 
@@ -156,7 +165,7 @@ Directory: `log_dir` (default `$HOME`).
 
 ## Test status
 
-`tests/test_core.c`: 4315 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
+`tests/test_core.c`: 4322 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
 arm64 package build on Debian 13. A fake `librtlsdr` and a fake decoder run scanning and decoding end to end without
 a dongle. Details and the device measurements: [deployment guide](docs/deployment-guide.md#tests).
 

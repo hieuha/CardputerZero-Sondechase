@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Last updated: 2026-11-19 (version 0.5.0).
+Last updated: 2026-11-20 (version 0.5.1).
 
 Covers building the CardputerZero `.deb`, running the tests, installing and configuring the app on the device, and
 the release steps. Commands are taken from `CMakePresets.json`, `.github/workflows/` and the CMake files in `cmake/`.
@@ -30,7 +30,7 @@ the release steps. Commands are taken from `CMakePresets.json`, `.github/workflo
 | `render` | Headless screenshot tool (`SC_RENDER=ON`) | `render-rel` | none |
 
 Workflow presets: `cp0-native-package` (configure, build, package on the device) and `cp0-cross-package`.
-Package output goes to `dist/`, named `sondechase_<version>-rev1_arm64.deb` (for example `sondechase_0.5.0-rev1_arm64.deb`).
+Package output goes to `dist/`, named `sondechase_<version>-rev1_arm64.deb` (for example `sondechase_0.5.1-rev1_arm64.deb`).
 
 Options in `CMakeLists.txt`:
 
@@ -47,7 +47,7 @@ Requires Debian 13 arm64 on the CardputerZero (or any aarch64 Debian 13 host):
 ```sh
 sudo apt install cmake ninja-build build-essential git
 cmake --workflow --preset cp0-native-package
-sudo apt install --no-install-recommends ./dist/sondechase_0.5.0-rev1_arm64.deb
+sudo apt install --no-install-recommends ./dist/sondechase_0.5.1-rev1_arm64.deb
 ```
 
 The first build fetches LVGL v9.5.0 (git) and the `radiosonde_auto_rx` v1.9.0 release tarball (SHA-256 pinned in
@@ -81,7 +81,7 @@ ctest --test-dir build --output-on-failure
 Notes:
 - `keys.c` and the tests include `<linux/input.h>`. The build fails on macOS; use a Debian or Ubuntu host or a
   Linux container.
-- Verified on 2026-11-19 in `debian:trixie` (GCC 14.2.0): `test_core` reports **4315 checks, 0 failed**.
+- Verified on 2026-11-19 in `debian:trixie` (GCC 14.2.0): `test_core` reports **4322 checks, 0 failed**.
 - The same build prints five `-Wformat-truncation` warnings (four sites in `src/app.c` and `src/tiles.c`). They are
   listed in the [roadmap](./project-roadmap.md#known-gaps).
 - What the tests cover is listed in [system architecture](./system-architecture.md) by module. Test names are
@@ -90,7 +90,7 @@ Notes:
 ## Install and run
 
 ```sh
-sudo apt install --no-install-recommends ./sondechase_0.5.0-rev1_arm64.deb
+sudo apt install --no-install-recommends ./sondechase_0.5.1-rev1_arm64.deb
 ```
 
 Installed files:
@@ -159,16 +159,16 @@ Syntax rules, from `src/base.c`:
 | `tile_url` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | Tile template |
 | `tile_user_agent` | `SondeChase/<version> (CardputerZero app; github.com/hieuha)` | User-Agent sent with each tile request |
 | `tile_fetch_cmd` | `curl -fsS --max-time 20 -A '{ua}' -o '{out}' '{url}'` | Download command; must write `{out}` and exit 0 |
-| `tile_cache_dir` | `$HOME/.cache/sondechase/tiles` | Download cache |
-| `tile_cache_mb` | `200` | Cache size limit, MB; oldest downloads are removed |
+| `tile_cache_dir` | `<data_dir>/tiles` | Download cache (offline map) |
+| `tile_cache_mb` | `1000` | Cache size limit, MB; oldest downloads are removed |
 | `tile_dir` | `/usr/share/sondechase/tiles` | Preloaded tile pack (`<z>/<x>/<y>.png`), used before the cache |
-| `zoom_min`, `zoom_max` | `8`, `16` | Zoom range of the Map |
+| `zoom_min`, `zoom_max` | `6`, `18` | Zoom range of the Map |
 | `map_lat`, `map_lon` | `21.0285`, `105.8542` | Map centre while no position is known |
 | `map_simple` | `1` | Start-up map style: `1` simple (water and roads), `0` detailed. `V` toggles |
 | `font_dir` | `/usr/share/sondechase/fonts` | Folder with `Orbitron-Bold.ttf` and `Rajdhani-SemiBold.ttf` |
 | `fb_dev` | `/dev/fb0` | Framebuffer |
 | `kbd_dev` | auto | evdev keyboard. Empty: first device with Q, Enter and 1 keys |
-| `log_dir` | `$HOME` | Parent of `sondechase.csv` and `sondechase/log/` |
+| `data_dir` | `$HOME/sondechase` | App data: `sondechase.csv`, `log/`, `tiles/`. Files from before 0.5.1 are moved in on first start |
 | `demo` | `0` | `1` simulated flight, see [Demo mode](#demo-mode) |
 | `demo_speed` | `30` | Simulated seconds per real second in demo mode |
 
@@ -220,7 +220,7 @@ cmake --build build/render -j
 
 ## Release procedure
 
-Steps used for 0.4.0, 0.4.1 and 0.5.0. Keep the version identical in all places; the CMake configure step fails if
+Steps used for 0.4.0 to 0.5.1. Keep the version identical in all places; the CMake configure step fails if
 `CMakeLists.txt` and `app-builder.json` differ.
 
 1. Set the version in `CMakeLists.txt` (`project(sondechase VERSION x.y.z ...)`) and in `app-builder.json`
@@ -238,8 +238,6 @@ Steps used for 0.4.0, 0.4.1 and 0.5.0. Keep the version identical in all places;
 8. Submit `app-builder.json` and the screenshots to the CardputerZero store (developer portal). The manifest rules
    are checked by `tools/validate_app_builder.py`.
 
-The working copy currently lists only the `v0.5.0` tag locally (`git tag -l`); the 0.4.0 and 0.4.1 releases exist on
-GitHub.
 
 ## CI workflows
 

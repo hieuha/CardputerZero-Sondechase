@@ -1,6 +1,6 @@
 # Code Standards
 
-Last updated: 2026-11-19 (version 0.5.0). Describes the conventions the code already follows, so new code matches.
+Last updated: 2026-11-20 (version 0.5.1). Describes the conventions the code already follows, so new code matches.
 
 ## Contents
 - [Language and build](#language-and-build)
@@ -73,7 +73,7 @@ conf/           sondechase.conf, installed as /etc/sondechase.conf
 | Structs, enums | Enum constants with a module prefix | `ST_DECODE`, `PH_ASCENT`, `DEMOD_NFM`, `HDG_GPS`, `TF_WHY_DNS_BLOCKED` |
 | Macros and constants | `UPPER_SNAKE` with a module prefix and unit in the name where useful | `DDC_RATE`, `SWEEP_KEEP`, `HUNT_TRY_S`, `TF_RETRY_S`, `RS41_TUNE_OFFSET_HZ`, `ESC_QUIT_S` |
 | Frequencies and times | Suffix `_hz`, `_s`, `_m`, `_db` on the field or macro | `freq_hz`, `scan_lo_hz`, `stale_s`, `prox_radius_m`, `db` |
-| Config fields | Same name as the config key | `cfg.tile_cache_mb` ↔ `tile_cache_mb = 200` |
+| Config fields | Same name as the config key | `cfg.tile_cache_mb` ↔ `tile_cache_mb = 1000` |
 | Local variables | Short lowercase names are normal in the DSP and geodesy code (`lat`, `lon`, `dh`) | `dt`, `xe`, `xn` |
 
 - Function and variable names keep the case of the protocol they read: JSON keys in `sonde_parse` are the

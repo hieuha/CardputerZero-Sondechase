@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* ---------------- IQ ring ---------------- */
 int iqring_init(iqring_t *r, size_t size)
@@ -186,7 +187,12 @@ fail:
 void sdr_pause(sdr_t *s)
 {
     if (!s->have_thread) return;
-    s->api.cancel_async(s->dev);
+    /* A cancel that lands before the thread has entered read_async is ignored (librtlsdr returns -2 while
+     * the stream is not running), and a single attempt would then leave the join waiting forever. */
+    while (atomic_load(&s->alive)) {
+        s->api.cancel_async(s->dev);
+        usleep(1000);
+    }
     pthread_join(s->thread, NULL);
     s->have_thread = 0;
     iqring_flush(&s->ring);

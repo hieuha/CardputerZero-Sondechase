@@ -115,6 +115,9 @@ int main(int argc, char **argv)
     place_me(10380.0, 90.0);
     ui_key('4'); shot("01_track");
     ui_key('5'); shot("02_map");
+    ui_key('+'); ui_key('+'); ui_key('+'); shot("02_map_zoom"); /* two-digit zoom, chip layout */
+    ui_key(K_RIGHT); shot("02_map_pan");
+    ui_key('c');
     ui_key('6'); shot("03_graph_skewt");
     ui_key(K_RIGHT); shot("03_graph_flight");
     ui_key(K_LEFT);

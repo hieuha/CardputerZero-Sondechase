@@ -485,6 +485,7 @@ static const lv_image_dsc_t *tile_get(int z, int x, int y)
 }
 
 static double m_cx, m_cy; /* map centre in world pixels at the current zoom */
+static double m_clat, m_clon, pan_lat, pan_lon; /* centre drawn last; centre while panned (map_follow == 3) */
 static int m_z;
 
 static void m_xy(double lat, double lon, double *x, double *y)
@@ -501,9 +502,10 @@ static void p_map(void)
     const sonde_t *s = &A->sonde;
     int have_me = gps_ok(g, sc_now()), have_s = A->have_sonde, i, tx, ty, any = 0, missing = 0, loading = 0;
     double clat, clon, x, y, x2, y2, tfx, tfy;
-    static const char *fm[] = {"both", "device", "sonde"};
+    static const char *fm[] = {"both", "device", "sonde", "free"};
 
-    if (have_me && (map_follow == 1 || !have_s)) { clat = g->lat; clon = g->lon; }
+    if (map_follow == 3) { clat = pan_lat; clon = pan_lon; } /* panned by hand */
+    else if (have_me && (map_follow == 1 || !have_s)) { clat = g->lat; clon = g->lon; }
     else if (have_s && (map_follow == 2 || !have_me)) { clat = s->lat; clon = s->lon; }
     else if (have_me && have_s) { clat = (g->lat + s->lat) / 2; clon = (g->lon + s->lon) / 2; }
     else { clat = A->cfg.map_lat; clon = A->cfg.map_lon; } /* no position yet: still show the map */
@@ -511,6 +513,8 @@ static void p_map(void)
         : (have_me && have_s && map_follow == 0)
               ? tile_fit_zoom(g->lat, g->lon, s->lat, s->lon, 260, 100, A->cfg.zoom_min, A->cfg.zoom_max)
               : (A->cfg.zoom_max < 13 ? A->cfg.zoom_max : 13);
+    m_clat = clat;
+    m_clon = clon;
     tile_frac(clat, clon, m_z, &tfx, &tfy);
     m_cx = tfx * TILE_PX;
     m_cy = tfy * TILE_PX;
@@ -591,11 +595,11 @@ static void p_map(void)
     }
 
     top_bar("Map", C_CY, have_me || have_s ? NULL : "No position yet: default area");
-    box(4, 20, 96, 16, C_L, C_P);
-    txt(9, 21, 40, F_S, C_TX, AL_L, "Zoom %d%s", m_z, map_zoom < 0 ? "" : "*");
-    txt(49, 21, 46, F_S, C_DIM, AL_R, "%s", fm[map_follow]);
-    box(104, 20, 52, 16, C_L, C_P);
-    txt(108, 21, 44, F_S, C_DIM, AL_C, "%s", A->cfg.map_simple ? "simple" : "detailed");
+    box(4, 20, 112, 16, C_L, C_P); /* "Zoom 14*" needs ~50 px */
+    txt(9, 21, 56, F_S, C_TX, AL_L, "Zoom %d%s", m_z, map_zoom < 0 ? "" : "*");
+    txt(66, 21, 46, F_S, C_DIM, AL_R, "%s", fm[map_follow]);
+    box(120, 20, 56, 16, C_L, C_P);
+    txt(124, 21, 48, F_S, C_DIM, AL_C, "%s", A->cfg.map_simple ? "simple" : "detailed");
     if (missing) { /* say why part of the map is empty */
         const char *why = loading ? "Loading map" : !A->cfg.tile_online ? "No map stored for this area"
                         : (A->tf.failed && A->tf.t_last_fail >= A->tf.t_last_ok) ? "No network: stored map only" : "Loading map";
@@ -1115,6 +1119,26 @@ int ui_should_quit(void)
     return quit;
 }
 
+/* Arrow keys on the Map: move the centre a quarter of the screen, and stop following (C follows again).
+ * The zoom stays where it was, so the view only slides. */
+static void map_pan(int k)
+{
+    double n = TILE_PX * (double)(1 << m_z), px, py;
+    if (map_follow != 3) {
+        pan_lat = m_clat;
+        pan_lon = m_clon;
+        map_follow = 3;
+    }
+    if (map_zoom < 0) map_zoom = m_z;
+    tile_frac(pan_lat, pan_lon, m_z, &px, &py);
+    px = px * TILE_PX + (k == K_RIGHT ? 80 : (k == K_LEFT ? -80 : 0));
+    py = py * TILE_PX + (k == K_DOWN ? 40 : (k == K_UP ? -40 : 0));
+    if (py < 0) py = 0;
+    if (py > n) py = n;
+    pan_lon = fmod(px / n * 360.0 + 540.0, 360.0) - 180.0; /* inverse Web Mercator */
+    pan_lat = atan(sinh(M_PI * (1.0 - 2.0 * py / n))) * 180.0 / M_PI;
+}
+
 /* Left/Right: one RS41 channel (10 kHz); Up/Down: 100 kHz. */
 static long tune_step(int k)
 {
@@ -1124,8 +1148,8 @@ static long tune_step(int k)
 
 void ui_key(int k)
 {
-    if (k & K_REPEAT) { /* a held arrow keeps tuning on the spectrum; elsewhere it acts once */
-        if (page != PG_RADIO || entry || A->burst_alert) return;
+    if (k & K_REPEAT) { /* a held arrow keeps tuning the spectrum or panning the map; elsewhere it acts once */
+        if ((page != PG_RADIO && page != PG_MAP) || entry || A->burst_alert) return;
         k &= ~K_REPEAT;
     }
     if (!A->sdr_ok) { /* blocking error screen */
@@ -1166,13 +1190,17 @@ void ui_key(int k)
         else app_listen(A, A->cursor_hz);
     }
     else if (page == PG_GRAPH && (k == K_LEFT || k == K_RIGHT)) gpage ^= 1;
-    else if (page == PG_MAP && (k == K_UP || k == '+' || k == '=')) {
+    else if (page == PG_MAP && (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN)) map_pan(k);
+    else if (page == PG_MAP && (k == '+' || k == '=')) {
         if (map_zoom < 0) map_zoom = m_z;
         if (map_zoom < A->cfg.zoom_max) map_zoom++;
-    } else if (page == PG_MAP && (k == K_DOWN || k == '-')) {
+    } else if (page == PG_MAP && k == '-') {
         if (map_zoom < 0) map_zoom = m_z;
         if (map_zoom > A->cfg.zoom_min) map_zoom--;
-    } else if (page == PG_MAP && k == 'c') { map_follow = (map_follow + 1) % 3; map_zoom = -1; }
+    } else if (page == PG_MAP && k == 'c') { /* follow again: both -> device -> sonde (from free: both) */
+        map_follow = map_follow == 3 ? 0 : (map_follow + 1) % 3;
+        map_zoom = -1;
+    }
     else if (page == PG_MAP && k == 'v') { /* simple <-> detailed: tiles are recoloured again as they are drawn */
         int i;
         A->cfg.map_simple = !A->cfg.map_simple;

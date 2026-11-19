@@ -456,7 +456,8 @@ static const lv_image_dsc_t *tile_get(int z, int x, int y)
         if (kind == 2) unlink(path); /* damaged download: fetch it again */
         return NULL;
     }
-    if (kind == 2) tile_recolor(rgb, TILE_PX * TILE_PX); /* downloaded tiles keep the server's light colours on disk */
+    if (kind == 2) /* downloaded tiles keep the server's light colours on disk */
+        tile_recolor(rgb, TILE_PX * TILE_PX, A->cfg.map_simple);
     for (i = 0; i < TC_N; i++) {
         if (!tc[i].valid) { slot = i; break; }
         if (tc[i].stamp < tc[slot].stamp) slot = i;
@@ -593,6 +594,8 @@ static void p_map(void)
     box(4, 20, 96, 16, C_L, C_P);
     txt(9, 21, 40, F_S, C_TX, AL_L, "Zoom %d%s", m_z, map_zoom < 0 ? "" : "*");
     txt(49, 21, 46, F_S, C_DIM, AL_R, "%s", fm[map_follow]);
+    box(104, 20, 52, 16, C_L, C_P);
+    txt(108, 21, 44, F_S, C_DIM, AL_C, "%s", A->cfg.map_simple ? "simple" : "detailed");
     if (missing) { /* say why part of the map is empty */
         const char *why = loading ? "Loading map" : !A->cfg.tile_online ? "No map stored for this area"
                         : (A->tf.failed && A->tf.t_last_fail >= A->tf.t_last_ok) ? "No network: stored map only" : "Loading map";
@@ -1170,6 +1173,11 @@ void ui_key(int k)
         if (map_zoom < 0) map_zoom = m_z;
         if (map_zoom > A->cfg.zoom_min) map_zoom--;
     } else if (page == PG_MAP && k == 'c') { map_follow = (map_follow + 1) % 3; map_zoom = -1; }
+    else if (page == PG_MAP && k == 'v') { /* simple <-> detailed: tiles are recoloured again as they are drawn */
+        int i;
+        A->cfg.map_simple = !A->cfg.map_simple;
+        for (i = 0; i < TC_N; i++) tc[i].valid = 0;
+    }
     A->radio_audio = page == PG_RADIO; /* the tuned frequency is heard while its spectrum is on screen */
     if (root) lv_obj_invalidate(root);
 }

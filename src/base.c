@@ -47,6 +47,7 @@ void cfg_defaults(cfg_t *c)
              " --client-name=SondeChase 2>/dev/null");
     snprintf(c->tile_dir, sizeof c->tile_dir, "/usr/share/sondechase/tiles");
     c->map_lat = 21.0285; /* Hanoi */
+    c->map_simple = 1;
     c->map_lon = 105.8542;
     c->zoom_min = 8;
     c->zoom_max = 16;
@@ -75,7 +76,7 @@ static const cfg_ent ents[] = {
     E(declination, 'd'),  E(stale_s, 'd'),      E(log_dir, 's'),      E(kbd_dev, 's'),
     E(fb_dev, 's'),       E(prox_radius_m, 'd'), E(prox_hyst_m, 'd'), E(audio_enable, 'i'),
     E(audio_cmd, 's'),    E(tile_dir, 's'),     E(zoom_min, 'i'),     E(zoom_max, 'i'),
-    E(map_lat, 'd'),      E(map_lon, 'd'),
+    E(map_lat, 'd'),      E(map_lon, 'd'),      E(map_simple, 'i'),
     E(font_dir, 's'),     E(sdr_check, 'i'),    E(demo, 'i'),         E(demo_speed, 'd'),
     E(decoder_feed_cmd, 's'),
     E(tile_online, 'i'),  E(tile_url, 's'),     E(tile_user_agent, 's'), E(tile_fetch_cmd, 's'),

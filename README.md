@@ -65,7 +65,7 @@ If `librtlsdr0` is missing or the dongle is busy, the reason shows on the status
 | Key | Function |
 |---|---|
 | `4` Track | HUD compass, distance, bearing, elevation, predicted landing point; sonde serial, frame and battery while its GPS has no fix |
-| `5` Map | Tiles, device position, sonde, flight track, landing point. `Up/Down` zoom, `C` cycles follow mode (both / device / sonde). With no position yet: centred on `map_lat` / `map_lon` |
+| `5` Map | Tiles, device position, sonde, flight track, landing point. `Up/Down` zoom, `C` cycles follow mode (both / device / sonde), `V` simple / detailed map. With no position yet: centred on `map_lat` / `map_lon` |
 | `6` Graph | `Left/Right` switch page: Skew-T log-P, altitude + vertical speed over time |
 | `7` Radio | Spectrum, like an SDR app, with the tuned frequency's audio: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` decode here. `S` band overview: the same keys move a cursor, `Enter` listens there. Holding an arrow key keeps tuning (after 0.4 s, 12 steps a second). `D` mode (NFM / AM / USB / LSB), `B` channel width |
 | `8` Info | Sonde, reception, device, one pair of target coordinates |
@@ -163,9 +163,14 @@ The Map screen looks up each tile in this order:
 - The cache is capped by `tile_cache_mb` (default 200 MB); when exceeded, the oldest tiles are deleted.
 - Missing tiles show an empty grid with a status: `Loading map`, `No network: stored map only`,
   or `No map stored for this area` (when `tile_online = 0`).
-- Recoloring (`tile_recolor` in `src/tiles.c`): the most frequent color of a tile is treated as land background;
-  output brightness is proportional to color distance from that background, so roads, labels and borders become
-  bright strokes on a dark background; bluish pixels become water.
+- Recoloring (`tile_recolor` in `src/tiles.c`), two styles from the same OpenStreetMap tiles (`V` on the Map
+  switches, `map_simple` sets the start-up one):
+  - **simple** (default): only water and roads. Main roads (drawn in light red, orange and yellow by the OSM style)
+    become bright, minor roads (white) dim; labels, buildings and landuse go to the background. Keyless simple
+    styles (CARTO, Stamen, Thunderforest) now need an API key, so the app simplifies the standard tiles itself.
+  - **detailed**: the most frequent color of a tile is treated as land background; output brightness is
+    proportional to color distance from that background, so roads, labels and borders become bright strokes on a
+    dark background; bluish pixels become water.
 - `tools/prep_tiles.py` can still preload an area from an MBTiles file or a `z/x/y.png` directory that you are
   allowed to use offline. It does not download tiles.
 

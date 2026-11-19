@@ -65,7 +65,7 @@ hoặc dongle đang bị chương trình khác giữ, lý do hiện trên dòng 
 | Phím | Chức năng |
 |---|---|
 | `4` Track | La bàn HUD, khoảng cách, bearing, elevation, điểm rơi dự đoán; số hiệu, frame và pin của sonde khi GPS của nó chưa fix |
-| `5` Map | Tile, vị trí máy, sonde, vệt bay, điểm rơi. `Up/Down` zoom, `C` đổi chế độ bám (both / device / sonde). Khi chưa có vị trí nào: căn giữa theo `map_lat` / `map_lon` |
+| `5` Map | Tile, vị trí máy, sonde, vệt bay, điểm rơi. `Up/Down` zoom, `C` đổi chế độ bám (both / device / sonde), `V` đổi bản đồ đơn giản / chi tiết. Khi chưa có vị trí nào: căn giữa theo `map_lat` / `map_lon` |
 | `6` Graph | `Left/Right` đổi trang: Skew-T log-P, độ cao + tốc độ đứng theo thời gian |
 | `7` Radio | Phổ kiểu app SDR, kèm audio của tần số đang thu: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` để giải mã tại đó. `S` tổng quan dải: cùng các phím di chuyển con trỏ, `Enter` để nghe tại đó. Giữ phím mũi tên thì tần số tự chạy (sau 0,4 s, 12 bước mỗi giây). `D` đổi kiểu điều chế (NFM / AM / USB / LSB), `B` đổi độ rộng kênh |
 | `8` Info | Sonde, thu nhận, thiết bị, một cặp tọa độ đích |
@@ -161,9 +161,13 @@ Màn hình Map tìm mỗi ô tile theo thứ tự:
 - Cache giới hạn bởi `tile_cache_mb` (mặc định 200 MB); khi vượt, các ô cũ nhất bị xóa.
 - Ô chưa có hiện lưới trống, kèm trạng thái: `Loading map`, `No network: stored map only`,
   hoặc `No map stored for this area` (khi `tile_online = 0`).
-- Đổi màu (`tile_recolor` trong `src/tiles.c`): màu xuất hiện nhiều nhất của ô được coi là nền đất; độ sáng
-  đầu ra tỉ lệ với khoảng cách màu so với nền, nên đường, nhãn và ranh giới thành nét sáng trên nền tối;
-  pixel thiên xanh dương thành màu nước.
+- Đổi màu (`tile_recolor` trong `src/tiles.c`), hai kiểu từ cùng tile OpenStreetMap (`V` trên màn Map để đổi,
+  `map_simple` chọn kiểu lúc mở app):
+  - **simple** (mặc định): chỉ còn nước và đường. Đường chính (kiểu OSM tô đỏ nhạt, cam, vàng) thành nét sáng, đường
+    nhỏ (trắng) thành nét mờ; nhãn, nhà và vùng đất về màu nền. Các kiểu bản đồ đơn giản (CARTO, Stamen,
+    Thunderforest) giờ đều cần API key, nên app tự rút gọn tile chuẩn.
+  - **detailed**: màu xuất hiện nhiều nhất của ô được coi là nền đất; độ sáng đầu ra tỉ lệ với khoảng cách màu so
+    với nền, nên đường, nhãn và ranh giới thành nét sáng trên nền tối; pixel thiên xanh dương thành màu nước.
 - `tools/prep_tiles.py` vẫn dùng được để nạp sẵn một vùng từ file MBTiles hoặc thư mục `z/x/y.png` có quyền
   dùng offline. Công cụ này không tải tile.
 

@@ -826,11 +826,24 @@ static void t_tiles(void)
         memcpy(&img[0], &px[3], 3);
         memcpy(&img[3], &px[6], 3);
         memcpy(&img[6], &px[9], 3);
-        tile_recolor(img, 256);
+        tile_recolor(img, 256, 0);
         CHECK(img[9] < 20 && img[10] < 16 && img[11] < 30);          /* land is near the UI ground colour */
         CHECK(img[0] > 110 && img[2] > 150);                         /* road */
         CHECK(img[3] == 31 && img[4] == 47 && img[5] == 122);        /* water */
         CHECK(img[6] == 167 && img[8] == 209);                       /* label */
+    }
+    { /* simple: main roads and water kept, labels, buildings and land gone */
+        static const unsigned char in[] = {242, 239, 233, 255, 255, 255, 170, 211, 223, 40, 40, 40, 232, 146, 162,
+                                           252, 214, 164, 179, 0, 0, 217, 208, 201, 0, 90, 160};
+        unsigned char img[sizeof in];
+        memcpy(img, in, sizeof in);
+        tile_recolor(img, (int)sizeof in / 3, 1);
+        CHECK(img[0] == 10 && img[1] == 6 && img[2] == 20);     /* land -> ground */
+        CHECK(img[3] == 40 && img[5] == 72);                    /* minor road -> dim */
+        CHECK(img[6] == 31 && img[8] == 122);                   /* water */
+        CHECK(img[9] == 10);                                    /* dark label -> ground */
+        CHECK(img[12] == 167 && img[15] == 167);                /* motorway, primary -> bright */
+        CHECK(img[18] == 10 && img[21] == 10 && img[24] == 10); /* red label, building, blue label -> ground */
     }
 }
 

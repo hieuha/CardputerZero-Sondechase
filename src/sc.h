@@ -31,6 +31,7 @@ typedef struct {
     int mag_flip_y;
     double declination;      /* magnetic declination, degrees east positive */
     double map_lat, map_lon; /* Map centre while neither this device nor a sonde has a position */
+    int map_simple;          /* 1: downloaded tiles show only water and roads (V on the Map toggles) */
     double stale_s;          /* telemetry older than this is marked stale */
     char log_dir[160];       /* "" = $HOME */
     char kbd_dev[64];        /* "" = auto-detect evdev keyboard */
@@ -341,7 +342,7 @@ int tf_poll(tilefetch_t *t, const cfg_t *c, double now);                        
 long tf_sweep(const tilefetch_t *t, long max_bytes);                             /* bytes left in the cache */
 void tf_close(tilefetch_t *t);
 /* Light street-map colours -> UI palette, in place on an RGB888 buffer. */
-void tile_recolor(unsigned char *rgb, int npix);
+void tile_recolor(unsigned char *rgb, int npix, int simple); /* simple: only water and roads */
 
 /* ---------------- application state ---------------- */
 enum { ST_IDLE, ST_DECODE, ST_SCAN, ST_LISTEN }; /* LISTEN: tuned, spectrum and audio, no decoder */

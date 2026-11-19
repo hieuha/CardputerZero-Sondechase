@@ -191,14 +191,37 @@ long tf_sweep(const tilefetch_t *t, long max_bytes)
 }
 
 /* ---- recolouring ----
- * The most frequent colour of the tile is taken as "land". Output brightness follows the
+ * Detailed: the most frequent colour of the tile is taken as "land". Output brightness follows the
  * colour distance from it, so roads, labels and boundaries become light lines on the dark
- * ground; blue-dominant pixels become water; near-white pixels (road fill) are lifted. */
-void tile_recolor(unsigned char *rgb, int npix)
+ * ground; blue-dominant pixels become water; near-white pixels (road fill) are lifted.
+ * Simple: only water and roads survive. The OpenStreetMap style draws main roads in light red, orange and
+ * yellow and minor roads in white; labels are dark or strongly saturated, landuse and buildings pale. */
+static const int G[3] = {10, 6, 20}, L[3] = {58, 36, 102}, H[3] = {167, 155, 209}, W[3] = {31, 47, 122};
+static const int MINOR[3] = {40, 26, 72};
+
+static const int *simple_colour(int r, int g, int b)
+{
+    int mx = r > g ? (r > b ? r : b) : (g > b ? g : b), mn = r < g ? (r < b ? r : b) : (g < b ? g : b);
+    double s = mx ? (double)(mx - mn) / mx : 0, h = 0;
+    if (b > r + 18 && b > g + 6 && mx >= 191) return W; /* water fill (light blue); blue labels are darker */
+    if (mx == r && mx > mn) h = (double)(g - b) / (mx - mn) / 6.0; /* hue 0..1 with red at 0 */
+    if (h < 0) h += 1.0;
+    if (mx == r && mx > 216 && s > 0.2 && s < 0.8 && (h < 0.18 || h > 0.9)) return H; /* main roads */
+    if (r >= 250 && g >= 250 && b >= 250) return MINOR;
+    return G;
+}
+
+void tile_recolor(unsigned char *rgb, int npix, int simple)
 {
     static unsigned short hist[32768];
-    static const int G[3] = {10, 6, 20}, L[3] = {58, 36, 102}, H[3] = {167, 155, 209}, W[3] = {31, 47, 122};
     int i, k, best = 0, land[3];
+    if (simple) {
+        for (i = 0; i < npix; i++) {
+            const int *c = simple_colour(rgb[3 * i], rgb[3 * i + 1], rgb[3 * i + 2]);
+            for (k = 0; k < 3; k++) rgb[3 * i + k] = (unsigned char)c[k];
+        }
+        return;
+    }
     memset(hist, 0, sizeof hist);
     for (i = 0; i < npix; i++) {
         int q = ((rgb[3 * i] >> 3) << 10) | ((rgb[3 * i + 1] >> 3) << 5) | (rgb[3 * i + 2] >> 3);

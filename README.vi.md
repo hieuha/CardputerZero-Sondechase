@@ -286,7 +286,7 @@ màu so với màu nền chiếm đa số; cần chỉnh lại nếu style tile 
 
 ## Trạng thái kiểm thử
 
-`tests/test_core.c`: 4304 phép kiểm đạt trên Debian 13 arm64 và, trong CI, trên Ubuntu x86-64 (`-Wall -Wextra`). Một `librtlsdr` giả
+`tests/test_core.c`: 4308 phép kiểm đạt trên Debian 13 arm64 và, trong CI, trên Ubuntu x86-64 (`-Wall -Wextra`). Một `librtlsdr` giả
 (`tests/fake_rtlsdr.c`, phát sóng mang 403,000 MHz ở bất kỳ tần số nào đang đặt) cho phép chạy trọn quét và giải mã
 mà không cần dongle. Phạm vi: geodesy, ISA, dew point, dự đoán
 điểm rơi, parser JSON rs41mod (kể cả một frame thật chưa có fix) và gpsd, heading, ô phổ và giữ đỉnh, ring IQ, FFT,
@@ -322,7 +322,8 @@ hoặc bộ thu giả: audio AM / SSB với tín hiệu thật, bản đồ ki�
 - Lịch sử bay giữ 2048 mẫu (5 s/mẫu, tự giảm độ phân giải khi đầy); không khôi phục sau khi khởi động lại app.
   Log CSV đầy đủ ghi tại `~/sondechase.csv`,
   và mỗi sonde có thêm một file theo định dạng sonde log của radiosonde_auto_rx trong `~/sondechase/log/`
-  (`YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log`, giờ UTC; SNR và lệch tần ghi -1).
+  (`YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log`, giờ UTC lấy từ GPS của chính sonde như auto_rx, nên vẫn
+  đúng ngoài thực địa khi không có mạng; SNR và lệch tần ghi -1).
 
 ## Giấy phép
 

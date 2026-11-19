@@ -195,5 +195,8 @@ int sonde_parse(const char *line, sonde_t *s)
         s->pres_est = 1;
     }
     js_str(line, "subtype", s->subtype, sizeof s->subtype);
+    if (!js_str(line, "datetime", s->datetime, sizeof s->datetime) || strlen(s->datetime) < 19 ||
+        s->datetime[4] != '-' || s->datetime[10] != 'T')
+        s->datetime[0] = 0;
     return 1;
 }

@@ -117,6 +117,7 @@ typedef struct {
     double pressure;  /* hPa; when the sonde has no sensor: ISA value from altitude */
     int pres_est;     /* 1 = pressure is the ISA estimate */
     char subtype[16];
+    char datetime[32]; /* the sonde's GPS time, "YYYY-MM-DDTHH:MM:SS[.fff]Z"; "" = not reported */
     double t_rx;
 } sonde_t;
 /* 1 = valid position frame; 2 = telemetry decoded but the sonde has no GPS solution yet

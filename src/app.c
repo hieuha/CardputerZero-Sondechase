@@ -335,33 +335,43 @@ static void known_set(app_t *a, long f_hz, const char *id)
 }
 
 /* One file per sonde in radiosonde_auto_rx's sonde log format, for the tools that read those logs:
- * <dir>/sondechase/log/YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log, times in UTC. SNR and frequency
- * error are not measured here and a missing sensor or burst timer is written as -1, like auto_rx does. */
+ * <dir>/sondechase/log/YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log, times in UTC. Like auto_rx, times are
+ * the sonde's own GPS time: the CardputerZero has no RTC, so its clock is wrong in the field without
+ * network; the system clock is used only when the sonde sent none. SNR and frequency error are not
+ * measured here and a missing sensor or burst timer is written as -1, like auto_rx does. */
 static void log_autorx(app_t *a, const char *dir)
 {
     const sonde_t *s = &a->sonde;
-    struct timespec ts;
-    struct tm tm;
     char t[32];
-    clock_gettime(CLOCK_REALTIME, &ts);
-    gmtime_r(&ts.tv_sec, &tm);
+    if (s->datetime[0]) {
+        const char *ms = s->datetime[19] == '.' ? s->datetime + 20 : "000";
+        snprintf(t, sizeof t, "%.19s.%.3sZ", s->datetime, ms);
+    } else {
+        struct timespec ts;
+        struct tm tm;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        gmtime_r(&ts.tv_sec, &tm);
+        strftime(t, sizeof t, "%Y-%m-%dT%H:%M:%S", &tm);
+        snprintf(t + 19, sizeof t - 19, ".%03ldZ", ts.tv_nsec / 1000000);
+    }
     if (a->rlog && strcmp(a->rlog_id, s->id)) { /* another sonde: its own file */
         fclose(a->rlog);
         a->rlog = NULL;
     }
     if (!a->rlog) {
         char p[320];
-        strftime(t, sizeof t, "%Y%m%d-%H%M%S", &tm);
-        snprintf(p, sizeof p, "%s/sondechase/log/%s_%s_RS41_%.3f_sonde.log", dir, t, s->id, a->freq_hz / 1e6);
+        snprintf(p, sizeof p, "%s/sondechase/log/%.4s%.2s%.2s-%.2s%.2s%.2s_%s_RS41_%.3f_sonde.log", dir, t, t + 5,
+                 t + 8, t + 11, t + 14, t + 17, s->id, a->freq_hz / 1e6);
         mkdirs(p);
         if (!(a->rlog = fopen(p, "a"))) return;
         snprintf(a->rlog_id, sizeof a->rlog_id, "%s", s->id);
-        fprintf(a->rlog, "timestamp,serial,frame,lat,lon,alt,vel_v,vel_h,heading,temp,humidity,pressure,type,"
-                         "freq_mhz,snr,f_error_hz,sats,batt_v,burst_timer,aux_data\n");
+        fseek(a->rlog, 0, SEEK_END);
+        if (ftell(a->rlog) == 0) /* reopened in the same second: keep the one header */
+            fprintf(a->rlog, "timestamp,serial,frame,lat,lon,alt,vel_v,vel_h,heading,temp,humidity,pressure,type,"
+                             "freq_mhz,snr,f_error_hz,sats,batt_v,burst_timer,aux_data\n");
     }
-    strftime(t, sizeof t, "%Y-%m-%dT%H:%M:%S", &tm);
-    fprintf(a->rlog, "%s.%03ldZ,%s,%d,%.5f,%.5f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%s,%.3f,-1.0,-1,%d,%.1f,%d,-1\n",
-            t, ts.tv_nsec / 1000000, s->id, s->frame, s->lat, s->lon, s->alt, s->vel_v, s->vel_h, s->heading,
+    fprintf(a->rlog, "%s,%s,%d,%.5f,%.5f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%s,%.3f,-1.0,-1,%d,%.1f,%d,-1\n",
+            t, s->id, s->frame, s->lat, s->lon, s->alt, s->vel_v, s->vel_h, s->heading,
             s->temp, s->humidity, s->pres_est ? -1.0 : s->pressure, s->subtype[0] ? s->subtype : "RS41",
             a->freq_hz / 1e6, s->sats, s->batt, s->bt >= 0 && s->bt < 65535 ? s->bt : -1);
     fflush(a->rlog);
@@ -378,8 +388,10 @@ static void log_frame(app_t *a)
         snprintf(a->log_path, sizeof a->log_path, "%s/sondechase.csv", dir);
         a->log = fopen(a->log_path, "a");
         if (!a->log) return;
-        fprintf(a->log, "unix,id,frame,lat,lon,alt,vel_v,vel_h,heading,freq_hz,"
-                        "own_lat,own_lon,pred_lat,pred_lon\n");
+        fseek(a->log, 0, SEEK_END);
+        if (ftell(a->log) == 0) /* header once: the file collects every session */
+            fprintf(a->log, "unix,id,frame,lat,lon,alt,vel_v,vel_h,heading,freq_hz,"
+                            "own_lat,own_lon,pred_lat,pred_lon\n");
     }
     fprintf(a->log, "%ld,%s,%d,%.6f,%.6f,%.1f,%.2f,%.2f,%.1f,%ld,", (long)time(NULL), s->id, s->frame,
             s->lat, s->lon, s->alt, s->vel_v, s->vel_h, s->heading, a->freq_hz);

@@ -286,7 +286,7 @@ distance from the dominant background color; it needs tuning if the tile style d
 
 ## Test status
 
-`tests/test_core.c`: 4304 checks pass on Debian 13 arm64 and, in CI, on Ubuntu x86-64 (`-Wall -Wextra`). A fake `librtlsdr`
+`tests/test_core.c`: 4308 checks pass on Debian 13 arm64 and, in CI, on Ubuntu x86-64 (`-Wall -Wextra`). A fake `librtlsdr`
 (`tests/fake_rtlsdr.c`, a 403.000 MHz carrier wherever it is tuned) runs scanning and decoding end to end without a
 dongle. Covered: geodesy, ISA,
 dew point, landing prediction, rs41mod JSON (including a real no-fix frame) and gpsd parsers, heading, spectrum
@@ -322,7 +322,8 @@ and map panning on the device.
 - Flight history keeps 2048 samples (5 s/sample, downsampled automatically when full); not restored after an app
   restart. The full CSV log is written to `~/sondechase.csv`,
   and each sonde also gets a file in radiosonde_auto_rx's sonde log format under `~/sondechase/log/`
-  (`YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log`, UTC; SNR and frequency error are written as -1).
+  (`YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log`, UTC from the sonde's own GPS time like auto_rx, so it is
+  right in the field without network; SNR and frequency error are written as -1).
 
 ## License
 

@@ -507,6 +507,7 @@ static void t_frames(void)
     const char *nofix = "{\"id\":\"Y0532351\",\"frame\":10,\"lat\":7.8,\"lon\":112.8,\"alt\":398,\"sats\":0,\"batt\":3.0}";
     const char *fix = "{\"id\":\"Y0532351\",\"frame\":12,\"lat\":21.03,\"lon\":105.85,\"alt\":40,\"sats\":9,\"batt\":3.0}";
     rx_logs("/tmp", NULL, 0, 1);
+    unlink("/tmp/sondechase.csv"); /* left by an earlier run */
     app_init(&a, NULL);
     snprintf(a.cfg.log_dir, sizeof a.cfg.log_dir, "/tmp");
     a.freq_hz = 403000000L;
@@ -553,8 +554,28 @@ static void t_frames(void)
         CHECK(a.led.t_off == 0);
     }
     app_free(&a);
+    { /* a second session appends to sondechase.csv without a second header; no datetime: system clock */
+        char l[512], path[512];
+        int heads = 0, rows = 0;
+        FILE *f;
+        app_init(&a, NULL);
+        snprintf(a.cfg.log_dir, sizeof a.cfg.log_dir, "/tmp");
+        app_on_frame(&a, fix, 9.0);
+        app_free(&a);
+        CHECK((f = fopen("/tmp/sondechase.csv", "r")) != NULL);
+        while (f && fgets(l, sizeof l, f)) {
+            if (!strncmp(l, "unix,", 5)) heads++;
+            else rows++;
+        }
+        if (f) fclose(f);
+        CHECK(heads == 1 && rows == 5);
+        CHECK(rx_logs("/tmp", path, sizeof path, 0) >= 1 && (f = fopen(path, "r")) != NULL);
+        if (f && fgets(l, sizeof l, f) && fgets(l, sizeof l, f))
+            CHECK(strlen(l) > 24 && l[4] == '-' && l[10] == 'T' && l[19] == '.' && l[23] == 'Z' && l[24] == ',');
+        if (f) fclose(f);
+    }
     unlink("/tmp/sondechase.csv");
-    CHECK(rx_logs("/tmp", NULL, 0, 1) == 1); /* auto_rx format: only the sonde with a position has a file */
+    CHECK(rx_logs("/tmp", NULL, 0, 1) >= 1); /* auto_rx format: only the sonde with a position has a file */
 }
 
 /* Number of processes (zombies included) in process group pg. */
@@ -671,13 +692,12 @@ static void t_app(const char *fake, const char *fakelib)
         int rows = 0;
         FILE *f;
         CHECK(rx_logs("/tmp", path, sizeof path, 0) == 1);
-        CHECK(strstr(path, "_S4430329_RS41_403.500_sonde.log") != NULL);
+        CHECK(strstr(path, "/sondechase/log/20261118-003100_S4430329_RS41_403.500_sonde.log") != NULL); /* sonde's time */
         CHECK((f = fopen(path, "r")) != NULL);
         while (f && fgets(l, sizeof l, f)) {
             if (rows == 0) CHECK(!strncmp(l, "timestamp,serial,frame,lat,lon,alt,vel_v,", 41));
-            if (rows == 3) /* the third frame: 2966 m, RS41-SG without pressure sensor, burst timer 1200 s */
-                CHECK(strlen(l) > 25 && l[4] == '-' && l[10] == 'T' && l[23] == 'Z' &&
-                      !strcmp(l + 24, ",S4430329,5392,21.03000,105.95000,2976.0,-12.0,8.0,90.0,12.5,-1.0,-1.0,"
+            if (rows == 3) /* the third frame: its GPS time, no pressure sensor, burst timer 1200 s */
+                CHECK(!strcmp(l, "2026-11-18T00:31:02.000Z,S4430329,5392,21.03000,105.95000,2976.0,-12.0,8.0,90.0,12.5,-1.0,-1.0,"
                                       "RS41-SGP,403.500,-1.0,-1,9,2.7,1200,-1\n"));
             rows++;
         }

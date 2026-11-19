@@ -3,9 +3,12 @@
 #define _GNU_SOURCE
 #include "lvgl.h"
 #include "ui.h"
+#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 #define W 320
 #define H 170
@@ -36,6 +39,12 @@ static void shot(const char *name)
     app_poll(&app);
     lv_obj_invalidate(lv_screen_active());
     lv_refr_now(disp);
+    for (i = 0; app.cfg.tile_online && i < 40; i++) { /* two downloads at a time: let all be listed */
+        usleep(20000);
+        app_poll(&app);
+        lv_obj_invalidate(lv_screen_active());
+        lv_refr_now(disp);
+    }
     snprintf(p, sizeof p, "%s/%s.ppm", out_dir, name);
     f = fopen(p, "wb");
     if (!f) return;
@@ -47,6 +56,24 @@ static void shot(const char *name)
     }
     fclose(f);
     printf("%s\n", p);
+}
+
+/* The Radio screen's spectrum around f_hz, made up (no dongle here): noise, the sonde at f_hz and a weaker
+ * carrier 215 kHz above. */
+static void mock_live(long f_hz)
+{
+    long centre = f_hz - RS41_TUNE_OFFSET_HZ + DDC_RATE / 4;
+    unsigned r = 777u;
+    int i;
+    spec_reset(&app.live, centre - DDC_RATE / 2, centre + DDC_RATE / 2, DDC_RATE / SWEEP_FFT);
+    for (i = 0; i < app.live.n; i++) {
+        double f = (double)app.live.f0 + (double)i * (double)app.live.step, db;
+        r = r * 1103515245u + 12345u;
+        db = -50.0 + ((r >> 16) & 0xff) / 255.0 * 4.0;
+        db += 30.0 * exp(-pow((f - f_hz) / 4500.0, 2)) + 9.0 * exp(-pow((f - f_hz - 215000.0) / 3000.0, 2));
+        app.live.db[i] = (float)db;
+        app.live.ok[i] = 1;
+    }
 }
 
 /* Place this device d metres from the sonde so that the bearing to the sonde is brg. */
@@ -72,6 +99,10 @@ int main(int argc, char **argv)
     snprintf(app.cfg.font_dir, sizeof app.cfg.font_dir, "%s", argv[2]);
     snprintf(app.cfg.tile_dir, sizeof app.cfg.tile_dir, "%s", argv[3]);
     app.cfg.tile_online = 0; /* the tool never touches the network */
+    if (getenv("SC_RENDER_MISSING") && *getenv("SC_RENDER_MISSING")) { /* list the tiles the shots need, to fetch them separately */
+        app.cfg.tile_online = 1;
+        snprintf(app.cfg.tile_fetch_cmd, sizeof app.cfg.tile_fetch_cmd, "echo '{url}' >> '%s'; exit 1", getenv("SC_RENDER_MISSING"));
+    }
     if (argc > 4) snprintf(app.cfg.tile_cache_dir, sizeof app.cfg.tile_cache_dir, "%s", argv[4]);
     tf_init(&app.tf, &app.cfg);
     app.cfg.zoom_min = 9;
@@ -122,6 +153,15 @@ int main(int argc, char **argv)
     ui_key(K_RIGHT); shot("03_graph_flight");
     ui_key(K_LEFT);
     ui_key('8'); shot("05_info");
+
+    /* Radio screen tuned to the sonde. demo mode never reads from dsdr; the UI only needs it set. */
+    mock_live(app.freq_hz);
+    app.dsdr = (sdr_t *)&app;
+    app.state = ST_LISTEN;
+    ui_key('7'); shot("04_radio_listen");
+    app.state = ST_DECODE;
+    shot("04_radio_decode");
+    app.dsdr = NULL;
     place_me(2400.0, 60.0); /* inside the beeper radius, sonde ahead-right */
     ui_key('4'); shot("01_track_near");
 

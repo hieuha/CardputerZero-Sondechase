@@ -10,15 +10,26 @@ device with a live RS41 (Y0532351). GPS chasing in the field has not been tried 
 
 | | |
 |---|---|
-| ![Spectrum, tuned view: listening on 100.000 MHz](screenshots/device/scan-tuned.png) | ![Spectrum, band overview with the cursor on 403.120 MHz](screenshots/device/scan-band-overview.png) |
-| **Spectrum, tuned**: listening, Enter starts the decoder (a broadcast FM station here, to show a real signal) | **Spectrum, band overview** (`S`): a free cursor, Enter listens there |
-| ![Track screen: sonde telemetry before its GPS has a fix](screenshots/device/track-sonde-no-gps-fix.png) | ![Map screen with OpenStreetMap tiles](screenshots/device/map-default-area.png) |
-| **Track**: sonde Y0532351 still waiting for its GPS fix | **Map**: OpenStreetMap tiles, recolored |
-| ![Holding Esc: quit countdown](screenshots/device/hold-esc-to-quit.png) | ![SondeChase in the APPLaunch launcher](screenshots/device/launcher.png) |
-| **Hold `Esc`** to quit | **APPLaunch** launcher entry |
+| ![Track screen: compass, distance and bearing to the sonde](screenshots/mockup/track.png) | ![Map screen, simple style: water and roads only](screenshots/mockup/map.png) |
+| **Track**: distance, bearing and elevation to the sonde, landing prediction | **Map**: simple style (water and roads), flight track, landing point |
+| ![Radio screen decoding an RS41](screenshots/mockup/radio-decoding.png) | ![Radio screen, band overview with a free cursor](screenshots/mockup/band-overview.png) |
+| **Radio**: tuned spectrum, NFM audio, `Enter` decodes | **Radio, band overview** (`S`): arrow keys move the cursor, `Enter` listens |
+| ![Skew-T log-P diagram of the sounding](screenshots/mockup/skew-t.png) | ![Altitude and vertical speed over time](screenshots/mockup/flight.png) |
+| **Graph**: Skew-T log-P of the sounding | **Graph**: altitude and vertical speed, burst marked |
+| ![Info screen: sonde, reception, this device](screenshots/mockup/info.png) | ![Balloon burst alert](screenshots/mockup/burst.png) |
+| **Info**: sonde, reception, this device, landing coordinates | **Burst alert**: falling speed, time and distance to landing |
 
-Screenshots are read from `/dev/fb0` of a running CardputerZero, shown at 2×. The spectrum captures were taken with
-the RTL-SDR Blog V4 and no sonde in the air.
+These are mockups: the app's own UI code (`tools/render.c`) drawing a simulated flight, the radio spectrum made up,
+the map from OpenStreetMap tiles. Shown at 2×.
+
+On the device (framebuffer captures, 2×):
+
+| | |
+|---|---|
+| ![Track screen: sonde telemetry before its GPS has a fix](screenshots/device/track-sonde-no-gps-fix.png) | ![SondeChase in the APPLaunch launcher](screenshots/device/launcher.png) |
+| **Track**: a real RS41 (Y0532351) still waiting for its GPS fix | **APPLaunch** launcher entry |
+| ![Holding Esc: quit countdown](screenshots/device/hold-esc-to-quit.png) | ![Radio screen listening to a broadcast FM station](screenshots/device/scan-tuned.png) |
+| **Hold `Esc`** to quit | **Radio** with a real RTL-SDR Blog V4, on a broadcast FM station (no sonde in the air) |
 
 ## Architecture
 
@@ -235,8 +246,10 @@ cmake -S . -B build-render -DSC_RENDER=ON && cmake --build build-render -j
 ./build-render/sc_render <output dir> assets/fonts <tile dir>     # writes .ppm files
 ```
 
-The images directly in `screenshots/` (used by `app-builder.json`) come from this tool with demo data; the map
-background there is synthetic. `screenshots/device/` holds the framebuffer captures from the real device shown above.
+The images directly in `screenshots/` (used by `app-builder.json`) and the 2× mockups in `screenshots/mockup/`
+come from this tool with demo data. Map tiles come from the download cache passed as the fourth argument;
+`SC_RENDER_MISSING=<file>` lists the tiles the shots need instead of drawing an empty grid.
+`screenshots/device/` holds the framebuffer captures from the real device shown above.
 
 PC build for interacting with the UI: `cmake -S . -B build-sim -DSC_SIM=ON` (needs `libsdl2-dev`; untested).
 Core only, with tests: `cmake -S . -B build -DSC_BUILD_UI=OFF && cmake --build build && ctest --test-dir build`.

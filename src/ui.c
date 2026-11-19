@@ -850,9 +850,9 @@ static void p_scan_live(void)
     lo = sp->floor_db - 4;
     hi = sp->max_db > sp->floor_db + 26 ? sp->max_db + 4 : sp->floor_db + 30;
     if (A->state == ST_LISTEN)
-        snprintf(mid, sizeof mid, "%.3f MHz   %s", A->freq_hz / 1e6, kn ? "listening, RS41 seen here" : "listening");
+        snprintf(mid, sizeof mid, "%.3f MHz   listening", A->freq_hz / 1e6); /* a known sonde has its label below */
     else if (kn && sc_now() - kn->t <= A->cfg.stale_s)
-        snprintf(mid, sizeof mid, "%.3f MHz   RS41 %s   receiving", A->freq_hz / 1e6, kn->id);
+        snprintf(mid, sizeof mid, "%.3f MHz   RS41 %s", A->freq_hz / 1e6, kn->id); /* RX n s on the right */
     else
         snprintf(mid, sizeof mid, "%.3f MHz   decoding", A->freq_hz / 1e6);
     top_bar("Radio", C_CY, mid);

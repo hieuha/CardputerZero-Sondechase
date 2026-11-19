@@ -10,15 +10,26 @@ với một sonde RS41 đang phát (Y0532351). Chưa thử chase ngoài thực �
 
 | | |
 |---|---|
-| ![Phổ, đang nghe tại 100,000 MHz](screenshots/device/scan-tuned.png) | ![Phổ, tổng quan dải với con trỏ ở 403,120 MHz](screenshots/device/scan-band-overview.png) |
-| **Phổ, đang thu**: đang nghe, Enter để bắt đầu giải mã (ở đây là một đài FM phát thanh, để có tín hiệu thật) | **Phổ, tổng quan dải** (`S`): con trỏ tự do, Enter để nghe tại đó |
-| ![Màn Track: telemetry của sonde khi GPS của nó chưa fix](screenshots/device/track-sonde-no-gps-fix.png) | ![Màn Map với tile OpenStreetMap](screenshots/device/map-default-area.png) |
-| **Track**: sonde Y0532351 đang chờ GPS fix | **Map**: tile OpenStreetMap, đã đổi màu |
-| ![Giữ Esc: đếm ngược để thoát](screenshots/device/hold-esc-to-quit.png) | ![SondeChase trong launcher APPLaunch](screenshots/device/launcher.png) |
-| **Giữ `Esc`** để thoát | Mục trong launcher **APPLaunch** |
+| ![Màn Track: la bàn, khoảng cách và hướng tới sonde](screenshots/mockup/track.png) | ![Màn Map, kiểu simple: chỉ nước và đường](screenshots/mockup/map.png) |
+| **Track**: khoảng cách, hướng, góc ngẩng tới sonde, dự đoán điểm rơi | **Map**: kiểu simple (nước và đường), vệt bay, điểm rơi |
+| ![Màn Radio đang giải mã một RS41](screenshots/mockup/radio-decoding.png) | ![Màn Radio, tổng quan dải với con trỏ tự do](screenshots/mockup/band-overview.png) |
+| **Radio**: phổ đang thu, audio NFM, `Enter` để giải mã | **Radio, tổng quan dải** (`S`): phím mũi tên di chuyển con trỏ, `Enter` để nghe |
+| ![Biểu đồ Skew-T log-P của chuyến bay](screenshots/mockup/skew-t.png) | ![Độ cao và tốc độ đứng theo thời gian](screenshots/mockup/flight.png) |
+| **Graph**: Skew-T log-P của chuyến thám không | **Graph**: độ cao và tốc độ đứng, có đánh dấu điểm nổ |
+| ![Màn Info: sonde, thu nhận, thiết bị](screenshots/mockup/info.png) | ![Cảnh báo bóng nổ](screenshots/mockup/burst.png) |
+| **Info**: sonde, thu nhận, thiết bị, tọa độ điểm rơi | **Cảnh báo nổ**: tốc độ rơi, thời gian và khoảng cách tới điểm rơi |
 
-Ảnh chụp đọc từ `/dev/fb0` của CardputerZero đang chạy, phóng 2×. Các ảnh phổ chụp với RTL-SDR Blog V4 thật,
-lúc không có sonde nào đang bay.
+Đây là ảnh mockup: chính mã UI của app (`tools/render.c`) vẽ một chuyến bay mô phỏng, phổ radio là dữ liệu dựng, bản
+đồ từ tile OpenStreetMap. Phóng 2×.
+
+Trên máy thật (chụp framebuffer, phóng 2×):
+
+| | |
+|---|---|
+| ![Màn Track: telemetry của sonde khi GPS của nó chưa fix](screenshots/device/track-sonde-no-gps-fix.png) | ![SondeChase trong launcher APPLaunch](screenshots/device/launcher.png) |
+| **Track**: một sonde RS41 thật (Y0532351) đang chờ GPS fix | Mục trong launcher **APPLaunch** |
+| ![Giữ Esc: đếm ngược để thoát](screenshots/device/hold-esc-to-quit.png) | ![Màn Radio đang nghe một đài FM phát thanh](screenshots/device/scan-tuned.png) |
+| **Giữ `Esc`** để thoát | **Radio** với RTL-SDR Blog V4 thật, đang nghe một đài FM phát thanh (lúc không có sonde) |
 
 ## Kiến trúc
 
@@ -232,8 +243,10 @@ cmake -S . -B build-render -DSC_RENDER=ON && cmake --build build-render -j
 ./build-render/sc_render <thư mục ra> assets/fonts <thư mục tile>     # ghi các file .ppm
 ```
 
-Các ảnh nằm trực tiếp trong `screenshots/` (dùng cho `app-builder.json`) sinh từ công cụ này với dữ liệu demo; nền
-bản đồ trong đó là tile tổng hợp. `screenshots/device/` chứa các ảnh chụp framebuffer từ máy thật ở đầu trang.
+Các ảnh nằm trực tiếp trong `screenshots/` (dùng cho `app-builder.json`) và ảnh mockup 2× trong `screenshots/mockup/`
+sinh từ công cụ này với dữ liệu demo. Tile bản đồ lấy từ thư mục cache truyền ở tham số thứ tư;
+`SC_RENDER_MISSING=<file>` liệt kê các tile mà ảnh cần thay vì vẽ lưới trống.
+`screenshots/device/` chứa các ảnh chụp framebuffer từ máy thật ở đầu trang.
 
 Build trên PC để thao tác với UI: `cmake -S . -B build-sim -DSC_SIM=ON` (cần `libsdl2-dev`; chưa thử).
 Chỉ build phần lõi và chạy test: `cmake -S . -B build -DSC_BUILD_UI=OFF && cmake --build build && ctest --test-dir build`.

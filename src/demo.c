@@ -94,7 +94,7 @@ static void demo_scan(app_t *a)
         double f = (double)s->f0 + (double)i * (double)s->step, db;
         r = r * 1103515245u + 12345u;
         db = -42.0 + ((r >> 16) & 0xff) / 255.0 * 3.0;
-        db += 20.0 * exp(-pow((f - 403.5e6) / 9000.0, 2)) + 11.0 * exp(-pow((f - 401.1e6) / 9000.0, 2));
+        db += 20.0 * exp(-pow((f - 403.0e6) / 9000.0, 2)) + 11.0 * exp(-pow((f - 401.1e6) / 9000.0, 2)); /* sonde, other */
         s->db[i] = (float)db;
         s->ok[i] = 1;
     }

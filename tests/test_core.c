@@ -167,12 +167,16 @@ static void t_cfg(void)
 {
     cfg_t c;
     FILE *f = fopen("/tmp/sc_test.conf", "w");
-    fprintf(f, "# comment\nfreq_hz = 403500000\n gain=38.6 \nground_alt = 12.5\nlog_dir = /tmp\nbogus = 1\n");
+    fprintf(f, "# comment\nfreq_hz = 403500000\n gain=38.6 \nground_alt = 12.5\nlog_dir = /tmp\nbogus = 1\n"
+               "tile_dir = /usr/share/sondechase/tiles   # optional pack\ntile_url = https://t.example/{z}#x\n");
     fclose(f);
     cfg_defaults(&c);
     CHECK(cfg_load(&c, "/tmp/sc_test.conf") == 0);
     CHECK(c.freq_hz == 403500000 && !strcmp(c.gain, "38.6") && c.ground_alt == 12.5);
     CHECK(c.gpsd_port == 2947);
+    CHECK(!strcmp(c.tile_dir, "/usr/share/sondechase/tiles"));  /* inline comment dropped */
+    CHECK(!strcmp(c.tile_url, "https://t.example/{z}#x"));      /* a # inside a value stays */
+    CHECK(strstr(c.tile_user_agent, "SondeChase/" SC_VERSION " ") == c.tile_user_agent);
     CHECK(cfg_load(&c, "/nonexistent/x.conf") == -1);
 }
 
@@ -364,6 +368,10 @@ static void t_keys(void)
     CHECK(keys_read(p[0]) == 's');
     CHECK(KEV(KEY_TAB, 1));
     CHECK(keys_read(p[0]) == K_TAB);
+    CHECK(KEV(KEY_LEFTALT, 1) && KEV(KEY_LEFTALT, 0) && KEV(KEY_Z, 1)); /* Sym, then Z (printed +): zoom in */
+    CHECK(keys_read(p[0]) == '+');
+    CHECK(KEV(KEY_KPMINUS, 1));
+    CHECK(keys_read(p[0]) == '-');
     usleep(500000);
     CHECK(keys_read(p[0]) == 0);
 #undef KEV

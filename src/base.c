@@ -56,7 +56,7 @@ void cfg_defaults(cfg_t *c)
     snprintf(c->led_path, sizeof c->led_path, "/sys/class/leds/ACT/brightness");
     c->tile_online = 1;
     snprintf(c->tile_url, sizeof c->tile_url, "https://tile.openstreetmap.org/{z}/{x}/{y}.png");
-    snprintf(c->tile_user_agent, sizeof c->tile_user_agent, "SondeChase/0.3 (CardputerZero app; github.com/hieuha)");
+    snprintf(c->tile_user_agent, sizeof c->tile_user_agent, "SondeChase/" SC_VERSION " (CardputerZero app; github.com/hieuha)");
     snprintf(c->tile_fetch_cmd, sizeof c->tile_fetch_cmd, "curl -fsS --max-time 20 -A '{ua}' -o '{out}' '{url}'");
     c->tile_cache_mb = 200;
     c->demo_speed = 30.0;
@@ -104,8 +104,14 @@ int cfg_load(cfg_t *c, const char *path)
         char *eq = strchr(s, '=');
         if (!eq) continue;
         *eq = 0;
-        char *k = trim(s), *v = trim(eq + 1);
+        char *k = trim(s), *v = eq + 1, *h;
         size_t i, n = sizeof ents / sizeof ents[0];
+        for (h = v; (h = strchr(h, '#')) != NULL; h++) /* "value   # comment": a # after a space ends the value */
+            if (h > v && isspace((unsigned char)h[-1])) {
+                *h = 0;
+                break;
+            }
+        v = trim(v);
         for (i = 0; i < n; i++) {
             if (strcmp(k, ents[i].k)) continue;
             char *p = (char *)c + ents[i].off;

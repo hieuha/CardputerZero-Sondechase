@@ -5,7 +5,7 @@
 RS41 radiosonde receiver, decoder and chase aid for the M5Stack CardputerZero
 (Raspberry Pi CM0, 320×170 LCD, 46-key keyboard) with an RTL-SDR v4 and GPS.
 
-Version 0.3.0. Runs on a real CardputerZero with an RTL-SDR Blog V4: scanning and decoding were checked on the
+Version 0.4.0. Runs on a real CardputerZero with an RTL-SDR Blog V4: scanning and decoding were checked on the
 device with a live RS41 (Y0532351). GPS chasing in the field has not been tried yet; see "Test status".
 
 | | |
@@ -167,14 +167,14 @@ Install layout and `.deb` packaging follow the CardputerZero Template contract (
 ```sh
 # Build on the device itself (Debian 13; needs cmake, ninja-build, build-essential). ~10 min the first time.
 cmake --workflow --preset cp0-native-package
-# -> dist/SondeChase_0.3.0_rev1_arm64.deb
+# -> dist/sondechase_0.4.0-rev1_arm64.deb
 
 # Or cross build on a Debian/Ubuntu PC (needs crossbuild-essential-arm64, ninja-build, cmake >= 3.25).
 # The first run downloads the CardputerZero BSP sysroot and LVGL v9.5.0.
 cmake --workflow --preset cp0-cross-package
 
 # Install on the CardputerZero:
-sudo apt install --no-install-recommends ./SondeChase_0.3.0_rev1_arm64.deb
+sudo apt install --no-install-recommends ./sondechase_0.4.0-rev1_arm64.deb
 ```
 
 Package contents:
@@ -187,12 +187,13 @@ Package contents:
 | `/usr/share/sondechase/tiles/` | directory for a preloaded map pack (empty) |
 | `/usr/share/APPLaunch/applications/sondechase.desktop` | launcher entry |
 | `/usr/share/APPLaunch/share/images/sondechase.png` | 100×100 icon |
+| `/usr/lib/sondechase/fsk_demod`, `/usr/lib/sondechase/rs41mod` | decoders, built from `radiosonde_auto_rx` v1.9.0 sources during the build |
 
 `Depends: libc6, curl, librtlsdr0 (>= 2.0.2)` (Debian 13's librtlsdr0 drives the RTL-SDR Blog V4; it is loaded at
-run time, not linked). Needed at run time and **not in the package**:
-
-- `fsk_demod` and `rs41mod`, built from `radiosonde_auto_rx` v1.9.0: `./scripts/install_decoders.sh`
-- `gpsd` for this device's position, `pacat` (`pulseaudio-utils`) for the beeper (both in `Recommends`)
+run time, not linked). The build downloads the `radiosonde_auto_rx` v1.9.0 release tarball (SHA-256 pinned) and
+compiles `fsk_demod` and `rs41mod` with the flags of its Makefiles; their licenses go to `/usr/share/doc/sondechase/`.
+Optional at run time: `gpsd` for this device's position, `pacat` (`pulseaudio-utils`) for the beeper (both in
+`Recommends`).
 
 The package installs no systemd service: the app is opened from APPLaunch and runs as the launcher's user.
 That user needs read/write access to `/dev/fb0`, `/dev/input/event*`, the RTL-SDR and PipeWire (groups

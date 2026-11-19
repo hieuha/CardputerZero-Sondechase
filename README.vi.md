@@ -5,7 +5,7 @@
 Ứng dụng thu, giải mã radiosonde RS41 và hỗ trợ chase trên M5Stack CardputerZero
 (Raspberry Pi CM0, LCD 320×170, bàn phím 46 phím) với RTL-SDR v4 và GPS.
 
-Phiên bản 0.3.0. Đã chạy trên CardputerZero thật với RTL-SDR Blog V4: phần quét và giải mã đã được kiểm trên máy
+Phiên bản 0.4.0. Đã chạy trên CardputerZero thật với RTL-SDR Blog V4: phần quét và giải mã đã được kiểm trên máy
 với một sonde RS41 đang phát (Y0532351). Chưa thử chase ngoài thực địa có GPS; xem mục "Trạng thái kiểm thử".
 
 | | |
@@ -165,14 +165,14 @@ Bố cục cài đặt và gói `.deb` theo đúng hợp đồng của Cardputer
 ```sh
 # Build ngay trên máy (Debian 13; cần cmake, ninja-build, build-essential). Lần đầu mất khoảng 10 phút.
 cmake --workflow --preset cp0-native-package
-# -> dist/SondeChase_0.3.0_rev1_arm64.deb
+# -> dist/sondechase_0.4.0-rev1_arm64.deb
 
 # Hoặc cross build trên PC Debian/Ubuntu (cần crossbuild-essential-arm64, ninja-build, cmake >= 3.25).
 # Lần đầu tự tải BSP sysroot của CardputerZero và LVGL v9.5.0.
 cmake --workflow --preset cp0-cross-package
 
 # Cài trên CardputerZero:
-sudo apt install --no-install-recommends ./SondeChase_0.3.0_rev1_arm64.deb
+sudo apt install --no-install-recommends ./sondechase_0.4.0-rev1_arm64.deb
 ```
 
 Nội dung gói:
@@ -185,12 +185,13 @@ Nội dung gói:
 | `/usr/share/sondechase/tiles/` | thư mục cho gói bản đồ nạp sẵn (trống) |
 | `/usr/share/APPLaunch/applications/sondechase.desktop` | mục trong launcher |
 | `/usr/share/APPLaunch/share/images/sondechase.png` | icon 100×100 |
+| `/usr/lib/sondechase/fsk_demod`, `/usr/lib/sondechase/rs41mod` | decoder, build từ mã nguồn `radiosonde_auto_rx` v1.9.0 trong lúc build |
 
 `Depends: libc6, curl, librtlsdr0 (>= 2.0.2)` (librtlsdr0 của Debian 13 chạy được RTL-SDR Blog V4; app nạp nó lúc
-chạy chứ không link). Cần lúc chạy và **không nằm trong gói**:
-
-- `fsk_demod` và `rs41mod`, build từ `radiosonde_auto_rx` v1.9.0: `./scripts/install_decoders.sh`
-- `gpsd` cho vị trí của máy, `pacat` (`pulseaudio-utils`) cho beeper (cả hai nằm trong `Recommends`)
+chạy chứ không link). Lúc build, CMake tải bản phát hành `radiosonde_auto_rx` v1.9.0 (đã ghim SHA-256) và biên dịch
+`fsk_demod`, `rs41mod` với đúng cờ trong Makefile của nó; giấy phép của chúng nằm ở `/usr/share/doc/sondechase/`.
+Tùy chọn lúc chạy: `gpsd` cho vị trí của máy, `pacat` (`pulseaudio-utils`) cho beeper (cả hai nằm trong
+`Recommends`).
 
 Gói không cài systemd service: app được mở từ APPLaunch và chạy với user của launcher. User đó cần quyền
 đọc/ghi `/dev/fb0`, `/dev/input/event*`, RTL-SDR và PipeWire (các group `video`, `input`, `plugdev`, `audio`).

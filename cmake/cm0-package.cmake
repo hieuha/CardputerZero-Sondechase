@@ -63,10 +63,10 @@ set(CPACK_PACKAGE_VENDOR "${APP_MAINTAINER}")
 set(CPACK_PACKAGE_CONTACT "${APP_MAINTAINER}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${APP_PACKAGE_DESCRIPTION}")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-set(CPACK_PACKAGE_FILE_NAME "${APP_DISPLAY_NAME}_${PROJECT_VERSION}_${APP_DEBIAN_REVISION}_${APP_DEBIAN_ARCHITECTURE}")
-
 string(TOLOWER "${APP_DISPLAY_NAME}" APP_DEBIAN_PACKAGE_NAME)
 string(REGEX REPLACE "[^a-z0-9+.-]" "-" APP_DEBIAN_PACKAGE_NAME "${APP_DEBIAN_PACKAGE_NAME}")
+# packagename_version-revision_arm64.deb, the file name the CardputerZero store expects
+set(CPACK_PACKAGE_FILE_NAME "${APP_DEBIAN_PACKAGE_NAME}_${PROJECT_VERSION}-${APP_DEBIAN_REVISION}_${APP_DEBIAN_ARCHITECTURE}")
 set(CPACK_DEBIAN_PACKAGE_NAME "${APP_DEBIAN_PACKAGE_NAME}")
 set(CPACK_DEBIAN_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_DEBIAN_PACKAGE_RELEASE "${APP_DEBIAN_REVISION}")
@@ -75,8 +75,8 @@ set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${APP_MAINTAINER}")
 set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 # librtlsdr0 is loaded with dlopen at run time; 2.0.2 is the first Debian version that drives the
-# RTL-SDR Blog V4. curl: map tile download. Not shipped in this package: fsk_demod + rs41mod
-# (scripts/install_decoders.sh), gpsd, pacat (pulseaudio-utils).
+# RTL-SDR Blog V4. curl: map tile download. fsk_demod + rs41mod ship in /usr/lib/sondechase
+# (cmake/radiosonde-decoders.cmake); gpsd and pacat (pulseaudio-utils) are optional.
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, curl, librtlsdr0 (>= 2.0.2)")
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "gpsd, pulseaudio-utils, coreutils")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)

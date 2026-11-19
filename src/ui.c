@@ -940,6 +940,7 @@ static void p_info(void)
     kv(169, 76, 140, "Correction", C_TX, "%d ppm", A->cfg.ppm);
     box(162, 91, 154, 42, C_CY, C_P);
     txt(169, 93, 100, F_S, C_CY, AL_L, "This device");
+    txt(169, 93, 140, F_S, C_DIM, AL_R, "v" SC_VERSION);
     kv(169, 105, 140, "GPS", C_TX, "%s", gps_ok(&A->gps, sc_now()) ? (A->gps.mode == 3 ? "3D fix" : "2D fix") : "no fix");
     if (A->hdg.src != HDG_NONE) kv(169, 117, 140, "Heading", C_TX, "%03.0f° %s", A->hdg.deg, src[A->hdg.src]);
     else kv(169, 117, 140, "Heading", C_DIM, "unknown");

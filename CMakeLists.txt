@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
-project(sondechase VERSION 0.3.0 LANGUAGES C)
+project(sondechase VERSION 0.4.0 LANGUAGES C)
+# The store reads the version from app-builder.json and the package from this project; keep them equal.
+if(NOT CMAKE_VERSION VERSION_LESS 3.19)
+  file(READ "${CMAKE_SOURCE_DIR}/app-builder.json" SC_APP_BUILDER)
+  string(JSON SC_STORE_VERSION GET "${SC_APP_BUILDER}" version)
+  if(NOT SC_STORE_VERSION STREQUAL PROJECT_VERSION)
+    message(FATAL_ERROR "app-builder.json version ${SC_STORE_VERSION} != project version ${PROJECT_VERSION}")
+  endif()
+endif()
 set(CMAKE_C_STANDARD 11)
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
@@ -11,6 +19,8 @@ option(SC_SIM "Desktop build: SDL2 window instead of /dev/fb0 + evdev" OFF)
 # Core: no LVGL dependency, unit-tested on any Linux host.
 add_library(sc_core STATIC src/base.c src/geo.c src/io.c src/track.c src/app.c src/demo.c src/tiles.c src/sdr.c src/dsp.c)
 target_include_directories(sc_core PUBLIC src)
+target_compile_definitions(sc_core PUBLIC SC_VERSION="${PROJECT_VERSION}"
+  SC_DECODER_DIR="/usr/lib/${PROJECT_NAME}") # where the package installs fsk_demod and rs41mod
 target_compile_options(sc_core PRIVATE -Wall -Wextra)
 find_package(Threads REQUIRED)
 target_link_libraries(sc_core PUBLIC m Threads::Threads ${CMAKE_DL_LIBS}) # sdr.c: USB thread, dlopen(librtlsdr)
@@ -67,6 +77,9 @@ if(SC_BUILD_UI)
   if(SC_SIM)
     find_package(SDL2 REQUIRED)
     target_link_libraries(lvgl PUBLIC SDL2::SDL2)
+  endif()
+  if(NOT SC_SIM)
+    include(cmake/radiosonde-decoders.cmake) # fsk_demod + rs41mod, shipped in the package
   endif()
 
   include(cmake/cm0-package.cmake) # install layout and .deb packaging (CardputerZero Template contract)

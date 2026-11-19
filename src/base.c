@@ -22,8 +22,9 @@ double sc_now(void)
 void cfg_defaults(cfg_t *c)
 {
     memset(c, 0, sizeof *c);
+    /* the decoders shipped in the package come first; a build elsewhere on PATH still works */
     snprintf(c->decoder_feed_cmd, sizeof c->decoder_feed_cmd,
-             "fsk_demod --cs16 -b 1200 -u 22800 -s 2 48000 4800 - - 2>/dev/null"
+             "PATH=" SC_DECODER_DIR ":$PATH; fsk_demod --cs16 -b 1200 -u 22800 -s 2 48000 4800 - - 2>/dev/null"
              " | stdbuf -oL rs41mod --ptu2 --json --softin -i --jsn_cfq {f_hz} 2>/dev/null");
     c->scan_lo_hz = 400000000L;
     c->scan_hi_hz = 406000000L;

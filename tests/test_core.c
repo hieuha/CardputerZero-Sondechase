@@ -151,6 +151,7 @@ static void t_subst(void)
     CHECK(!strcmp(out, "a 403500000 {nope}"));
     CHECK(sc_subst(out, sizeof out, c.decoder_feed_cmd, 403500000) == 0);
     CHECK(strstr(out, "fsk_demod --cs16") && strstr(out, "--jsn_cfq 403500000"));
+    CHECK(!strncmp(out, "PATH=" SC_DECODER_DIR ":", strlen("PATH=" SC_DECODER_DIR ":")));
     CHECK(sc_subst(out, 8, "0123456789", 0) == -1);
 }
 

@@ -4,7 +4,9 @@
 #include "ui.h"
 #include <signal.h>
 #include <sys/prctl.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -39,6 +41,11 @@ int main(int argc, char **argv)
 {
     const char *cfg = argc > 1 ? argv[1] : "/etc/sondechase.conf";
     int kfd = -1;
+
+    if (argc > 1 && strcmp(argv[1], "--version") == 0) {
+        printf("sondechase " SC_VERSION "\n");
+        return 0;
+    }
 
     signal(SIGINT, on_sig);
     signal(SIGTERM, on_sig);

@@ -535,6 +535,7 @@ static void t_app(const char *fake, const char *fakelib)
     a.cfg.mag_enable = 0;
     a.cfg.audio_enable = 0;
     a.cfg.sdr_check = 0; /* no USB receiver in the test environment */
+    CHECK(strlen(fakelib) < sizeof a.cfg.rtlsdr_lib); /* a cut path would fail every receiver test below */
     snprintf(a.cfg.rtlsdr_lib, sizeof a.cfg.rtlsdr_lib, "%s", fakelib); /* librtlsdr stand-in, 403.000 MHz carrier */
     a.sdr_ok = 1;
     a.cfg.ground_alt = 10;

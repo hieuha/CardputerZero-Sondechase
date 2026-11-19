@@ -17,7 +17,7 @@ typedef struct {
     char gain[12];           /* "" = tuner AGC, else dB value e.g. "38.6" */
     int rtl_dev;             /* rtl-sdr device index */
     int bias_tee;            /* 1 = power an LNA through the bias-T */
-    char rtlsdr_lib[96];     /* librtlsdr to dlopen; "" = librtlsdr.so.0 (tests point it at a fake) */
+    char rtlsdr_lib[256];    /* librtlsdr to dlopen; "" = librtlsdr.so.0 (tests point it at a fake) */
     char decoder_feed_cmd[400]; /* reads 48 kHz cs16 IQ on stdin, prints rs41mod JSON */
     long scan_lo_hz, scan_hi_hz, scan_step_hz;
     char gpsd_host[64];

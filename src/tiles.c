@@ -28,10 +28,9 @@ void mkdirs(const char *file_path)
 
 void tf_init(tilefetch_t *t, const cfg_t *c)
 {
-    const char *home = getenv("HOME");
     memset(t, 0, sizeof *t);
     if (c->tile_cache_dir[0]) snprintf(t->cache_dir, sizeof t->cache_dir, "%s", c->tile_cache_dir);
-    else snprintf(t->cache_dir, sizeof t->cache_dir, "%s/.cache/sondechase/tiles", home ? home : "/tmp");
+    else snprintf(t->cache_dir, sizeof t->cache_dir, "%s/tiles", c->data_dir[0] ? c->data_dir : "/tmp/sondechase");
 }
 
 int tf_find(const tilefetch_t *t, const cfg_t *c, int z, int x, int y, char *path, size_t n)

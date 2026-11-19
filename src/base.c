@@ -49,8 +49,8 @@ void cfg_defaults(cfg_t *c)
     c->map_lat = 21.0285; /* Hanoi */
     c->map_simple = 1;
     c->map_lon = 105.8542;
-    c->zoom_min = 8;
-    c->zoom_max = 16;
+    c->zoom_min = 6;
+    c->zoom_max = 18;
     snprintf(c->font_dir, sizeof c->font_dir, "/usr/share/sondechase/fonts");
     c->sdr_check = 1;
     snprintf(c->led_path, sizeof c->led_path, "/sys/class/leds/ACT/brightness");
@@ -58,7 +58,7 @@ void cfg_defaults(cfg_t *c)
     snprintf(c->tile_url, sizeof c->tile_url, "https://tile.openstreetmap.org/{z}/{x}/{y}.png");
     snprintf(c->tile_user_agent, sizeof c->tile_user_agent, "SondeChase/" SC_VERSION " (CardputerZero app; github.com/hieuha)");
     snprintf(c->tile_fetch_cmd, sizeof c->tile_fetch_cmd, "curl -fsS --max-time 20 -A '{ua}' -o '{out}' '{url}'");
-    c->tile_cache_mb = 200;
+    c->tile_cache_mb = 1000;
     c->demo_speed = 30.0;
 }
 
@@ -74,7 +74,7 @@ static const cfg_ent ents[] = {
     E(scan_step_hz, 'l'), E(gpsd_host, 's'),    E(gpsd_port, 'i'),    E(ground_alt, 'd'),
     E(burst_alt, 'd'),    E(descent_v0, 'd'),   E(cog_min_speed, 'd'), E(mag_enable, 'i'),
     E(mag_off_x, 'd'),    E(mag_off_y, 'd'),    E(mag_rot_deg, 'd'),  E(mag_flip_y, 'i'),
-    E(declination, 'd'),  E(stale_s, 'd'),      E(log_dir, 's'),      E(kbd_dev, 's'),
+    E(declination, 'd'),  E(stale_s, 'd'),      E(data_dir, 's'),     E(kbd_dev, 's'),
     E(fb_dev, 's'),       E(prox_radius_m, 'd'), E(prox_hyst_m, 'd'), E(audio_enable, 'i'),
     E(led_path, 's'),
     E(audio_cmd, 's'),    E(tile_dir, 's'),     E(zoom_min, 'i'),     E(zoom_max, 'i'),

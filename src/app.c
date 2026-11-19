@@ -4,10 +4,35 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 static void set_status(app_t *a, const char *s)
 {
     snprintf(a->status, sizeof a->status, "%s", s);
+}
+
+/* Everything the app keeps goes under one folder, data_dir (default ~/sondechase). Versions before 0.5.1 wrote
+ * ~/sondechase.csv and cached tiles in ~/.cache/sondechase/tiles: those are moved in once, if the new ones are
+ * not there yet, so the recorded flights and the downloaded map stay usable offline. */
+static void data_paths(cfg_t *c)
+{
+    const char *home = getenv("HOME");
+    char from[320], to[320];
+    if (!c->data_dir[0]) snprintf(c->data_dir, sizeof c->data_dir, "%s/sondechase", home ? home : "/tmp");
+    if (!home) return;
+    snprintf(from, sizeof from, "%s/sondechase.csv", home);
+    snprintf(to, sizeof to, "%s/sondechase.csv", c->data_dir);
+    if (access(from, F_OK) == 0 && access(to, F_OK) != 0) {
+        mkdirs(to);
+        rename(from, to);
+    }
+    if (c->tile_cache_dir[0]) return; /* a cache placed by hand stays where it is */
+    snprintf(from, sizeof from, "%s/.cache/sondechase/tiles", home);
+    snprintf(to, sizeof to, "%s/tiles", c->data_dir);
+    if (access(from, F_OK) == 0 && access(to, F_OK) != 0) {
+        mkdirs(to);
+        rename(from, to);
+    }
 }
 
 void app_init(app_t *a, const char *cfg_path)
@@ -15,6 +40,7 @@ void app_init(app_t *a, const char *cfg_path)
     memset(a, 0, sizeof *a);
     cfg_defaults(&a->cfg);
     if (cfg_path) cfg_load(&a->cfg, cfg_path);
+    data_paths(&a->cfg);
     proc_init(&a->proc);
     gps_init(&a->gps);
     heading_init(&a->hdg, &a->cfg);
@@ -335,7 +361,7 @@ static void known_set(app_t *a, long f_hz, const char *id)
 }
 
 /* One file per sonde in radiosonde_auto_rx's sonde log format, for the tools that read those logs:
- * <dir>/sondechase/log/YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log, times in UTC. Like auto_rx, times are
+ * <data_dir>/log/YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log, times in UTC. Like auto_rx, times are
  * the sonde's own GPS time: the CardputerZero has no RTC, so its clock is wrong in the field without
  * network; the system clock is used only when the sonde sent none. SNR and frequency error are not
  * measured here and a missing sensor or burst timer is written as -1, like auto_rx does. */
@@ -360,7 +386,7 @@ static void log_autorx(app_t *a, const char *dir)
     }
     if (!a->rlog) {
         char p[320];
-        snprintf(p, sizeof p, "%s/sondechase/log/%.4s%.2s%.2s-%.2s%.2s%.2s_%s_RS41_%.3f_sonde.log", dir, t, t + 5,
+        snprintf(p, sizeof p, "%s/log/%.4s%.2s%.2s-%.2s%.2s%.2s_%s_RS41_%.3f_sonde.log", dir, t, t + 5,
                  t + 8, t + 11, t + 14, t + 17, s->id, a->freq_hz / 1e6);
         mkdirs(p);
         if (!(a->rlog = fopen(p, "a"))) return;
@@ -380,12 +406,12 @@ static void log_autorx(app_t *a, const char *dir)
 static void log_frame(app_t *a)
 {
     const sonde_t *s = &a->sonde;
-    const char *dir = a->cfg.log_dir[0] ? a->cfg.log_dir : getenv("HOME");
+    const char *dir = a->cfg.data_dir;
     if (a->cfg.demo) return;
-    if (!dir) dir = "/tmp";
     log_autorx(a, dir);
     if (!a->log) {
         snprintf(a->log_path, sizeof a->log_path, "%s/sondechase.csv", dir);
+        mkdirs(a->log_path);
         a->log = fopen(a->log_path, "a");
         if (!a->log) return;
         fseek(a->log, 0, SEEK_END);

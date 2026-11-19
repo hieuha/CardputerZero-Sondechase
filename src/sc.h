@@ -33,7 +33,7 @@ typedef struct {
     double map_lat, map_lon; /* Map centre while neither this device nor a sonde has a position */
     int map_simple;          /* 1: downloaded tiles show only water and roads (V on the Map toggles) */
     double stale_s;          /* telemetry older than this is marked stale */
-    char log_dir[160];       /* "" = $HOME */
+    char data_dir[160];      /* "" = $HOME/sondechase: sondechase.csv, log/ (auto_rx format), tiles/ (map cache) */
     char kbd_dev[64];        /* "" = auto-detect evdev keyboard */
     char fb_dev[64];
     double prox_radius_m;    /* proximity beeper starts inside this ground distance */
@@ -49,7 +49,7 @@ typedef struct {
     char tile_url[200];      /* {z} {x} {y} template */
     char tile_user_agent[120];
     char tile_fetch_cmd[240]; /* {ua} {url} {out}; must write the tile to {out} and exit 0 */
-    char tile_cache_dir[200]; /* "" = $HOME/.cache/sondechase/tiles */
+    char tile_cache_dir[200]; /* "" = <data_dir>/tiles */
     int tile_cache_mb;       /* downloaded tiles above this total are removed, oldest first */
     int demo;                /* 1 = simulated flight: no SDR, GPS or decoder needed */
     double demo_speed;       /* simulated seconds per real second */

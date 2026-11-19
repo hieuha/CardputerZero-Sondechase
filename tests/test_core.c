@@ -167,7 +167,7 @@ static void t_cfg(void)
 {
     cfg_t c;
     FILE *f = fopen("/tmp/sc_test.conf", "w");
-    fprintf(f, "# comment\nfreq_hz = 403500000\n gain=38.6 \nground_alt = 12.5\nlog_dir = /tmp\nbogus = 1\n"
+    fprintf(f, "# comment\nfreq_hz = 403500000\n gain=38.6 \nground_alt = 12.5\ndata_dir = /tmp/sc_data\nbogus = 1\n"
                "tile_dir = /usr/share/sondechase/tiles   # optional pack\ntile_url = https://t.example/{z}#x\n");
     fclose(f);
     cfg_defaults(&c);
@@ -490,14 +490,14 @@ static int live_in_group(pid_t pg)
 }
 
 /* Frames from a sonde without a GPS fix are counted and kept apart; the count carries on once it locks. */
-/* auto_rx-format logs under <dir>/sondechase/log: count them (first one's path to *first), remove them if asked */
+/* auto_rx-format logs under <data_dir>/log: count them (first one's path to *first), remove them if asked */
 static int rx_logs(const char *dir, char *first, size_t n, int remove)
 {
     char d[256], p[512];
     struct dirent *e;
     DIR *dp;
     int k = 0;
-    snprintf(d, sizeof d, "%s/sondechase/log", dir);
+    snprintf(d, sizeof d, "%s/log", dir);
     if (!(dp = opendir(d))) return 0;
     while ((e = readdir(dp)))
         if (e->d_name[0] != '.') {
@@ -509,15 +509,36 @@ static int rx_logs(const char *dir, char *first, size_t n, int remove)
     return k;
 }
 
+/* Data folder: defaults under $HOME/sondechase; files from before 0.5.1 are moved in once */
+static void t_data_paths(void)
+{
+    static app_t a;
+    const char *home = getenv("HOME");
+    char keep[256];
+    FILE *f;
+    snprintf(keep, sizeof keep, "%s", home ? home : "/root");
+    CHECK(system("rm -rf /tmp/sc_home && mkdir -p /tmp/sc_home/.cache/sondechase/tiles/8/1") == 0);
+    CHECK((f = fopen("/tmp/sc_home/sondechase.csv", "w")) && fputs("unix,id\n1,A\n", f) >= 0 && fclose(f) == 0);
+    CHECK((f = fopen("/tmp/sc_home/.cache/sondechase/tiles/8/1/2.png", "w")) && fclose(f) == 0);
+    setenv("HOME", "/tmp/sc_home", 1);
+    app_init(&a, NULL);
+    CHECK(!strcmp(a.cfg.data_dir, "/tmp/sc_home/sondechase") && !strcmp(a.tf.cache_dir, "/tmp/sc_home/sondechase/tiles"));
+    CHECK(access("/tmp/sc_home/sondechase/sondechase.csv", R_OK) == 0 && access("/tmp/sc_home/sondechase.csv", F_OK) != 0);
+    CHECK(access("/tmp/sc_home/sondechase/tiles/8/1/2.png", R_OK) == 0 && access("/tmp/sc_home/.cache/sondechase/tiles", F_OK) != 0);
+    app_free(&a);
+    setenv("HOME", keep, 1);
+    CHECK(system("rm -rf /tmp/sc_home") == 0);
+}
+
 static void t_frames(void)
 {
     static app_t a;
     const char *nofix = "{\"id\":\"Y0532351\",\"frame\":10,\"lat\":7.8,\"lon\":112.8,\"alt\":398,\"sats\":0,\"batt\":3.0}";
     const char *fix = "{\"id\":\"Y0532351\",\"frame\":12,\"lat\":21.03,\"lon\":105.85,\"alt\":40,\"sats\":9,\"batt\":3.0}";
-    rx_logs("/tmp", NULL, 0, 1);
-    unlink("/tmp/sondechase.csv"); /* left by an earlier run */
+    rx_logs("/tmp/sc_data", NULL, 0, 1);
+    unlink("/tmp/sc_data/sondechase.csv"); /* left by an earlier run */
     app_init(&a, NULL);
-    snprintf(a.cfg.log_dir, sizeof a.cfg.log_dir, "/tmp");
+    snprintf(a.cfg.data_dir, sizeof a.cfg.data_dir, "/tmp/sc_data");
     a.freq_hz = 403000000L;
     CHECK(app_known(&a, 403000000L) == NULL);
     app_on_frame(&a, nofix, 1.0);
@@ -567,23 +588,23 @@ static void t_frames(void)
         int heads = 0, rows = 0;
         FILE *f;
         app_init(&a, NULL);
-        snprintf(a.cfg.log_dir, sizeof a.cfg.log_dir, "/tmp");
+        snprintf(a.cfg.data_dir, sizeof a.cfg.data_dir, "/tmp/sc_data");
         app_on_frame(&a, fix, 9.0);
         app_free(&a);
-        CHECK((f = fopen("/tmp/sondechase.csv", "r")) != NULL);
+        CHECK((f = fopen("/tmp/sc_data/sondechase.csv", "r")) != NULL);
         while (f && fgets(l, sizeof l, f)) {
             if (!strncmp(l, "unix,", 5)) heads++;
             else rows++;
         }
         if (f) fclose(f);
         CHECK(heads == 1 && rows == 5);
-        CHECK(rx_logs("/tmp", path, sizeof path, 0) >= 1 && (f = fopen(path, "r")) != NULL);
+        CHECK(rx_logs("/tmp/sc_data", path, sizeof path, 0) >= 1 && (f = fopen(path, "r")) != NULL);
         if (f && fgets(l, sizeof l, f) && fgets(l, sizeof l, f))
             CHECK(strlen(l) > 24 && l[4] == '-' && l[10] == 'T' && l[19] == '.' && l[23] == 'Z' && l[24] == ',');
         if (f) fclose(f);
     }
-    unlink("/tmp/sondechase.csv");
-    CHECK(rx_logs("/tmp", NULL, 0, 1) >= 1); /* auto_rx format: only the sonde with a position has a file */
+    unlink("/tmp/sc_data/sondechase.csv");
+    CHECK(rx_logs("/tmp/sc_data", NULL, 0, 1) >= 1); /* auto_rx format: only the sonde with a position has a file */
 }
 
 /* Number of processes (zombies included) in process group pg. */
@@ -652,10 +673,10 @@ static void t_app(const char *fake, const char *fakelib)
     snprintf(a.cfg.rtlsdr_lib, sizeof a.cfg.rtlsdr_lib, "%s", fakelib); /* librtlsdr stand-in, 403.000 MHz carrier */
     a.sdr_ok = 1;
     a.cfg.ground_alt = 10;
-    snprintf(a.cfg.log_dir, sizeof a.cfg.log_dir, "/tmp");
+    snprintf(a.cfg.data_dir, sizeof a.cfg.data_dir, "/tmp/sc_data");
     snprintf(a.cfg.decoder_feed_cmd, sizeof a.cfg.decoder_feed_cmd, "sh %s {f_hz}", fake);
-    unlink("/tmp/sondechase.csv");
-    rx_logs("/tmp", NULL, 0, 1);
+    unlink("/tmp/sc_data/sondechase.csv");
+    rx_logs("/tmp/sc_data", NULL, 0, 1);
     a.gps.mode = 3; a.gps.lat = 21.03; a.gps.lon = 105.85; a.gps.alt = 10;
     app_tune(&a, 403500000);
     CHECK(a.state == ST_DECODE && a.proc.pid > 0);
@@ -687,7 +708,7 @@ static void t_app(const char *fake, const char *fakelib)
         CHECK(gone); /* whole pipeline (incl. "sleep 30") is gone */
     }
     {
-        FILE *f = fopen("/tmp/sondechase.csv", "r");
+        FILE *f = fopen("/tmp/sc_data/sondechase.csv", "r");
         char l[512];
         int rows = 0;
         CHECK(f != NULL);
@@ -699,8 +720,8 @@ static void t_app(const char *fake, const char *fakelib)
         char path[512], l[512];
         int rows = 0;
         FILE *f;
-        CHECK(rx_logs("/tmp", path, sizeof path, 0) == 1);
-        CHECK(strstr(path, "/sondechase/log/20261118-003100_S4430329_RS41_403.500_sonde.log") != NULL); /* sonde's time */
+        CHECK(rx_logs("/tmp/sc_data", path, sizeof path, 0) == 1);
+        CHECK(strstr(path, "/sc_data/log/20261118-003100_S4430329_RS41_403.500_sonde.log") != NULL); /* sonde's time */
         CHECK((f = fopen(path, "r")) != NULL);
         while (f && fgets(l, sizeof l, f)) {
             if (rows == 0) CHECK(!strncmp(l, "timestamp,serial,frame,lat,lon,alt,vel_v,", 41));
@@ -711,7 +732,7 @@ static void t_app(const char *fake, const char *fakelib)
         }
         if (f) fclose(f);
         CHECK(rows == 4);
-        rx_logs("/tmp", NULL, 0, 1);
+        rx_logs("/tmp/sc_data", NULL, 0, 1);
     }
     /* Decoder that exits immediately: the app schedules a restart instead of going idle. */
     snprintf(a.cfg.decoder_feed_cmd, sizeof a.cfg.decoder_feed_cmd, "true");
@@ -1050,6 +1071,7 @@ int main(int argc, char **argv)
     t_dsp();
     t_radio();
     t_keys();
+    t_data_paths();
     t_frames();
     t_feed();
     t_track();

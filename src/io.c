@@ -51,7 +51,16 @@ int gps_parse(gps_t *g, const char *line, double now)
 {
     char cls[16];
     double v;
-    if (!js_str(line, "class", cls, sizeof cls) || strcmp(cls, "TPV")) return 0;
+    if (!js_str(line, "class", cls, sizeof cls)) return 0;
+    if (!strcmp(cls, "SKY")) { /* gpsd 3.20+ puts the counts at the top; older ones only list satellites */
+        if (js_num(line, "nSat", &v)) {
+            g->n_sat = (int)v;
+            g->n_used = js_num(line, "uSat", &v) ? (int)v : 0;
+            g->t_sky = now;
+        }
+        return 0;
+    }
+    if (strcmp(cls, "TPV")) return 0;
     g->mode = js_num(line, "mode", &v) ? (int)v : 0;
     if (g->mode >= 2 && js_num(line, "lat", &g->lat) && js_num(line, "lon", &g->lon)) {
         g->t_fix = now;
@@ -81,6 +90,11 @@ void gps_poll(gps_t *g, const cfg_t *c)
 int gps_ok(const gps_t *g, double now)
 {
     return g->mode >= 2 && now - g->t_fix < 5.0;
+}
+
+int gps_sky(const gps_t *g, double now)
+{
+    return g->t_sky > 0 && now - g->t_sky < 10.0;
 }
 
 /* ---------------- heading ---------------- */

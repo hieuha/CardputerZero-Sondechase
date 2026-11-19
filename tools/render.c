@@ -172,6 +172,7 @@ int main(int argc, char **argv)
         lv_obj_invalidate(lv_screen_active());
         app.cfg.demo = 0; app.cfg.gpsd_port = 0; app.cfg.mag_enable = 0; /* stop demo_poll refreshing the fix */
         app.gps.t_fix = sc_now() - 35.0;
+        app.gps.n_used = 0; app.gps.n_sat = 3; app.gps.t_sky = sc_now(); /* receiver still talking, no fix */
         shot("01_track_nogps");
         ui_key('5'); shot("02_map_nogps");
         app.cfg.demo = 1;

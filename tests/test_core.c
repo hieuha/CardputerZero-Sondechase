@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "../src/sc.h"
 #include "../src/ui.h"
+#include <dirent.h>
 #include <fcntl.h>
 #include <linux/input.h>
 #include <math.h>
@@ -110,7 +111,11 @@ static void t_parse(void)
     CHECK(js_str(l, "subtype", buf, sizeof buf) && !strcmp(buf, "RS41-SGP"));
 
     gps_init(&g);
-    CHECK(gps_parse(&g, "{\"class\":\"SKY\",\"nSat\":12}", 1.0) == 0);
+    CHECK(!gps_sky(&g, 1.0));
+    CHECK(gps_parse(&g, "{\"class\":\"SKY\",\"device\":\"/dev/ttyACM0\",\"nSat\":2,\"uSat\":0,"
+                        "\"satellites\":[{\"PRN\":4,\"used\":false}]}", 1.0) == 0);
+    CHECK(g.n_sat == 2 && g.n_used == 0 && gps_sky(&g, 5.0) && !gps_sky(&g, 12.0) && !gps_ok(&g, 1.0));
+    CHECK(gps_parse(&g, "{\"class\":\"SKY\",\"nSat\":12,\"uSat\":9}", 1.5) == 0 && g.n_sat == 12 && g.n_used == 9);
     CHECK(gps_parse(&g, "{\"class\":\"TPV\",\"device\":\"/dev/ttyACM0\",\"mode\":3,\"lat\":21.0285,"
                         "\"lon\":105.8542,\"altHAE\":-10.1,\"altMSL\":18.2,\"speed\":13.9,\"track\":271.5}", 2.0) == 1);
     CHECK(g.mode == 3 && gps_ok(&g, 3.0) && !gps_ok(&g, 10.0));
@@ -477,11 +482,31 @@ static int live_in_group(pid_t pg)
 }
 
 /* Frames from a sonde without a GPS fix are counted and kept apart; the count carries on once it locks. */
+/* auto_rx-format logs under <dir>/sondechase/log: count them (first one's path to *first), remove them if asked */
+static int rx_logs(const char *dir, char *first, size_t n, int remove)
+{
+    char d[256], p[512];
+    struct dirent *e;
+    DIR *dp;
+    int k = 0;
+    snprintf(d, sizeof d, "%s/sondechase/log", dir);
+    if (!(dp = opendir(d))) return 0;
+    while ((e = readdir(dp)))
+        if (e->d_name[0] != '.') {
+            snprintf(p, sizeof p, "%s/%s", d, e->d_name);
+            if (k++ == 0 && first) snprintf(first, n, "%s", p);
+            if (remove) unlink(p);
+        }
+    closedir(dp);
+    return k;
+}
+
 static void t_frames(void)
 {
     static app_t a;
     const char *nofix = "{\"id\":\"Y0532351\",\"frame\":10,\"lat\":7.8,\"lon\":112.8,\"alt\":398,\"sats\":0,\"batt\":3.0}";
     const char *fix = "{\"id\":\"Y0532351\",\"frame\":12,\"lat\":21.03,\"lon\":105.85,\"alt\":40,\"sats\":9,\"batt\":3.0}";
+    rx_logs("/tmp", NULL, 0, 1);
     app_init(&a, NULL);
     snprintf(a.cfg.log_dir, sizeof a.cfg.log_dir, "/tmp");
     a.freq_hz = 403000000L;
@@ -496,8 +521,40 @@ static void t_frames(void)
     CHECK(a.have_sonde && a.frames == 3 && a.sonde.frame == 12);
     app_on_frame(&a, "{\"id\":\"S1111111\",\"frame\":1,\"lat\":0.5,\"lon\":100,\"alt\":5,\"sats\":0}", 4.0);
     CHECK(a.frames == 1 && !strcmp(a.nofix.id, "S1111111")); /* a different sonde starts over */
+    { /* on the Track screen each frame ticks and blinks the LED away from its resting state; M silences the tick */
+        const char *led = "/tmp/sondechase_test_led";
+        char v = 0;
+        FILE *f = fopen(led, "w");
+        fputs("255\n", f);
+        fclose(f);
+        led_close(&a.led);
+        led_open(&a.led, led);
+        CHECK(a.led.fd >= 0 && a.led.rest == '1');
+        a.audio.nseg = 0;
+        app_on_frame(&a, fix, 5.0); /* not on the Track screen: neither */
+        CHECK(a.audio.nseg == 0 && a.led.t_off == 0);
+        a.frame_cue = 1;
+        app_on_frame(&a, fix, 6.0);
+        CHECK(a.audio.nseg == 1 && a.audio.seg[0].freq == 1500 && a.led.t_off > 6.0);
+        CHECK(pread(a.led.fd, &v, 1, 0) == 1 && v == '0');
+        led_poll(&a.led, 6.2);
+        CHECK(a.led.t_off == 0 && pread(a.led.fd, &v, 1, 0) == 1 && v == '1');
+        a.prox.muted = 1;
+        a.audio.nseg = 0;
+        app_on_frame(&a, fix, 7.0);
+        CHECK(a.audio.nseg == 0 && a.led.t_off > 7.0);
+        led_close(&a.led); /* put back to rest when closed mid-blink */
+        CHECK((f = fopen(led, "r")) && fgetc(f) == '1');
+        fclose(f);
+        unlink(led);
+        led_open(&a.led, ""); /* no LED configured */
+        CHECK(a.led.fd < 0);
+        led_blink(&a.led, 8.0, 0.08);
+        CHECK(a.led.t_off == 0);
+    }
     app_free(&a);
     unlink("/tmp/sondechase.csv");
+    CHECK(rx_logs("/tmp", NULL, 0, 1) == 1); /* auto_rx format: only the sonde with a position has a file */
 }
 
 /* Number of processes (zombies included) in process group pg. */
@@ -569,6 +626,7 @@ static void t_app(const char *fake, const char *fakelib)
     snprintf(a.cfg.log_dir, sizeof a.cfg.log_dir, "/tmp");
     snprintf(a.cfg.decoder_feed_cmd, sizeof a.cfg.decoder_feed_cmd, "sh %s {f_hz}", fake);
     unlink("/tmp/sondechase.csv");
+    rx_logs("/tmp", NULL, 0, 1);
     a.gps.mode = 3; a.gps.lat = 21.03; a.gps.lon = 105.85; a.gps.alt = 10;
     app_tune(&a, 403500000);
     CHECK(a.state == ST_DECODE && a.proc.pid > 0);
@@ -607,6 +665,25 @@ static void t_app(const char *fake, const char *fakelib)
         while (f && fgets(l, sizeof l, f)) rows++;
         if (f) fclose(f);
         CHECK(rows == 4); /* header + 3 frames */
+    }
+    { /* and the same frames in auto_rx's format, in a file named after the sonde */
+        char path[512], l[512];
+        int rows = 0;
+        FILE *f;
+        CHECK(rx_logs("/tmp", path, sizeof path, 0) == 1);
+        CHECK(strstr(path, "_S4430329_RS41_403.500_sonde.log") != NULL);
+        CHECK((f = fopen(path, "r")) != NULL);
+        while (f && fgets(l, sizeof l, f)) {
+            if (rows == 0) CHECK(!strncmp(l, "timestamp,serial,frame,lat,lon,alt,vel_v,", 41));
+            if (rows == 3) /* the third frame: 2966 m, RS41-SG without pressure sensor, burst timer 1200 s */
+                CHECK(strlen(l) > 25 && l[4] == '-' && l[10] == 'T' && l[23] == 'Z' &&
+                      !strcmp(l + 24, ",S4430329,5392,21.03000,105.95000,2976.0,-12.0,8.0,90.0,12.5,-1.0,-1.0,"
+                                      "RS41-SGP,403.500,-1.0,-1,9,2.7,1200,-1\n"));
+            rows++;
+        }
+        if (f) fclose(f);
+        CHECK(rows == 4);
+        rx_logs("/tmp", NULL, 0, 1);
     }
     /* Decoder that exits immediately: the app schedules a restart instead of going idle. */
     snprintf(a.cfg.decoder_feed_cmd, sizeof a.cfg.decoder_feed_cmd, "true");

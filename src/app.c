@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 
 static void set_status(app_t *a, const char *s)
@@ -23,6 +24,7 @@ void app_init(app_t *a, const char *cfg_path)
     hist_reset(&a->hist);
     flight_reset(&a->flight);
     audio_init(&a->audio);
+    led_open(&a->led, a->cfg.led_path);
     radio_init(&a->radio, DEMOD_NFM, radio_default_bw(DEMOD_NFM));
     tf_init(&a->tf, &a->cfg);
     a->freq_hz = a->cfg.freq_hz;
@@ -333,13 +335,51 @@ static void known_set(app_t *a, long f_hz, const char *id)
     a->known[slot].t = sc_now();
 }
 
+/* One file per sonde in radiosonde_auto_rx's sonde log format, for the tools that read those logs:
+ * <dir>/sondechase/log/YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log, times in UTC. SNR and frequency
+ * error are not measured here and a missing sensor or burst timer is written as -1, like auto_rx does. */
+static void log_autorx(app_t *a, const char *dir)
+{
+    const sonde_t *s = &a->sonde;
+    struct timespec ts;
+    struct tm tm;
+    char t[32];
+    clock_gettime(CLOCK_REALTIME, &ts);
+    gmtime_r(&ts.tv_sec, &tm);
+    if (a->rlog && strcmp(a->rlog_id, s->id)) { /* another sonde: its own file */
+        fclose(a->rlog);
+        a->rlog = NULL;
+    }
+    if (!a->rlog) {
+        char p[320];
+        snprintf(p, sizeof p, "%s/sondechase", dir);
+        mkdir(p, 0755);
+        snprintf(p, sizeof p, "%s/sondechase/log", dir);
+        mkdir(p, 0755);
+        strftime(t, sizeof t, "%Y%m%d-%H%M%S", &tm);
+        snprintf(p + strlen(p), sizeof p - strlen(p), "/%s_%s_RS41_%.3f_sonde.log", t, s->id, a->freq_hz / 1e6);
+        if (!(a->rlog = fopen(p, "a"))) return;
+        snprintf(a->rlog_id, sizeof a->rlog_id, "%s", s->id);
+        fprintf(a->rlog, "timestamp,serial,frame,lat,lon,alt,vel_v,vel_h,heading,temp,humidity,pressure,type,"
+                         "freq_mhz,snr,f_error_hz,sats,batt_v,burst_timer,aux_data\n");
+    }
+    strftime(t, sizeof t, "%Y-%m-%dT%H:%M:%S", &tm);
+    fprintf(a->rlog, "%s.%03ldZ,%s,%d,%.5f,%.5f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%s,%.3f,-1.0,-1,%d,%.1f,%d,-1\n",
+            t, ts.tv_nsec / 1000000, s->id, s->frame, s->lat, s->lon, s->alt, s->vel_v, s->vel_h, s->heading,
+            s->temp, s->humidity, s->pres_est ? -1.0 : s->pressure, s->subtype[0] ? s->subtype : "RS41",
+            a->freq_hz / 1e6, s->sats, s->batt, s->bt >= 0 && s->bt < 65535 ? s->bt : -1);
+    fflush(a->rlog);
+}
+
 static void log_frame(app_t *a)
 {
     const sonde_t *s = &a->sonde;
+    const char *dir = a->cfg.log_dir[0] ? a->cfg.log_dir : getenv("HOME");
     if (a->cfg.demo) return;
+    if (!dir) dir = "/tmp";
+    log_autorx(a, dir);
     if (!a->log) {
-        const char *dir = a->cfg.log_dir[0] ? a->cfg.log_dir : getenv("HOME");
-        snprintf(a->log_path, sizeof a->log_path, "%s/sondechase.csv", dir ? dir : "/tmp");
+        snprintf(a->log_path, sizeof a->log_path, "%s/sondechase.csv", dir);
         a->log = fopen(a->log_path, "a");
         if (!a->log) return;
         fprintf(a->log, "unix,id,frame,lat,lon,alt,vel_v,vel_h,heading,freq_hz,"
@@ -362,6 +402,10 @@ void app_on_frame(app_t *a, const char *line, double now)
     if (!r) return;
     s.t_rx = now;
     known_set(a, a->freq_hz, s.id);
+    if (a->frame_cue) { /* on Track or Map: a short tick and a blink of the LED; M silences only the tick */
+        if (!a->prox.muted) audio_tone(&a->audio, 1500, 0.03, 0.5);
+        led_blink(&a->led, now, 0.08);
+    }
     if (r == 2) { /* telemetry without a position: shown, but kept out of track, history and prediction */
         if (strcmp(s.id, a->have_sonde ? a->sonde.id : a->nofix.id)) a->frames = 0;
         a->nofix = s;
@@ -494,6 +538,7 @@ derived:
         audio_tone(&a->audio, stale ? 1100 : 2200, 0.06, prox_volume(a->dist));
     }
     audio_poll(&a->audio, &a->cfg, now);
+    led_poll(&a->led, now);
     tf_poll(&a->tf, &a->cfg, now);
 }
 
@@ -506,7 +551,10 @@ void app_free(app_t *a)
     proc_stop(&a->proc);
     gps_close(&a->gps);
     audio_close(&a->audio);
+    led_close(&a->led);
     tf_close(&a->tf);
     if (a->log) fclose(a->log);
     a->log = NULL;
+    if (a->rlog) fclose(a->rlog);
+    a->rlog = NULL;
 }

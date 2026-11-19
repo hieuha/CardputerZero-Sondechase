@@ -230,10 +230,13 @@ static void top_bar(const char *name, uint32_t chip, const char *mid)
         txt(196, 0, 44, F_S, C_YL, AL_R, A->hunt ? "try" : "decode");
     }
     if (gps_ok(&A->gps, now)) {
-        txt(244, 0, 40, F_S, C_TX, AL_R, A->gps.mode == 3 ? "GPS 3D" : "GPS 2D");
+        if (gps_sky(&A->gps, now)) txt(244, 0, 40, F_S, C_TX, AL_R, "%dD %d/%d", A->gps.mode, A->gps.n_used, A->gps.n_sat);
+        else txt(244, 0, 40, F_S, C_TX, AL_R, A->gps.mode == 3 ? "GPS 3D" : "GPS 2D");
     } else { /* decoding continues; only distance, bearing and the beeper need this fix */
         fill(243, 1, 42, 13, C_RD);
-        txt(243, 0, 42, F_S, C_G, AL_C, A->gps.t_fix > 0 ? "GPS lost" : "No GPS");
+        if (gps_sky(&A->gps, now)) /* receiver plugged in, no fix yet: satellites used / in view */
+            txt(243, 0, 42, F_S, C_G, AL_C, "GPS %d/%d", A->gps.n_used, A->gps.n_sat);
+        else txt(243, 0, 42, F_S, C_G, AL_C, A->gps.t_fix > 0 ? "GPS lost" : "No GPS");
     }
     if (A->prox.muted) txt(286, 0, 30, F_S, C_RD, AL_R, "mute");
     else if (batt_pct >= 0) txt(286, 0, 30, F_S, C_DIM, AL_R, "%d%%", batt_pct);
@@ -252,7 +255,10 @@ static void nav_bar(int active)
 }
 
 /* ---------------- 4 Track ---------------- */
-static void compass(double hdg, int have_rel, double rel, uint32_t col, int dashed, int have_land, double land_rel)
+#define ON_COURSE_DEG 15.0 /* the arrow within this of straight ahead: the ring turns green */
+
+static void compass(double hdg, int have_rel, double rel, uint32_t col, int dashed, int have_land, double land_rel,
+                    uint32_t ring)
 {
     const double cx = 68, cy = 86;
     double x0, y0, x1, y1, tx, ty, bx, by, hx, hy, lx, ly, rx, ry;
@@ -261,7 +267,7 @@ static void compass(double hdg, int have_rel, double rel, uint32_t col, int dash
     for (k = 0; k < 72; k++) { /* outer ring as a 72-gon */
         pol(cx, cy, 54, k * 5, &x0, &y0);
         pol(cx, cy, 54, k * 5 + 5, &x1, &y1);
-        ln(x0, y0, x1, y1, C_L, 2);
+        ln(x0, y0, x1, y1, ring, 2);
     }
     for (k = 0; k < 36; k++) {
         int major = k % 9 == 0, mid = k % 3 == 0;
@@ -383,7 +389,9 @@ static void p_track(void)
         nav_bar(PG_TRACK);
         return;
     }
-    compass(hdg, A->have_geo, A->rel, col, !ok, A->have_land && ok, norm180(A->land_brg - hdg));
+    /* heading towards the sonde (the arrow points at the index on top): green ring, so it shows at a glance */
+    compass(hdg, A->have_geo, A->rel, col, !ok, A->have_land && ok, norm180(A->land_brg - hdg),
+            have_h && A->have_geo && fabs(A->rel) <= ON_COURSE_DEG ? C_GN : C_L);
     if (!A->have_sonde && A->nofix.t_rx > 0 && sc_now() - A->nofix.t_rx < 10.0) {
         txt(140, 44, 174, F_M, C_CY, AL_L, "%s", A->nofix.id);
         txt(140, 60, 174, F_M, C_TX, AL_L, "Frame %d   batt %.1f V", A->nofix.frame, A->nofix.batt);
@@ -732,7 +740,6 @@ static void p_skewt(void)
         if (isob[i] != 850) txt(0, (int)sk_y(isob[i]) - (i == 0 ? 10 : 6), SK_X0 - 3, F_S, C_DIM, AL_R, "%d", isob[i]);
     for (t = -20; t <= 40; t += 20) txt((int)sk_x(t, 1050) - 12, 144, 24, F_S, C_DIM, AL_C, t ? "%+d" : "%d", t);
     txt(226, 144, 29, F_S, C_GN, AL_R, "m/s");
-    txt(SK_X0, 18, 100, F_M, C_TX, AL_L, "Skew-T log-P");
     txt(SK_X1 - 30, 19, 30, F_S, C_DIM, AL_R, "1/2");
 
     if (A->have_sonde) {
@@ -988,7 +995,11 @@ static void p_info(void)
     box(162, 91, 154, 42, C_CY, C_P);
     txt(169, 93, 100, F_S, C_CY, AL_L, "This device");
     txt(169, 93, 140, F_S, C_DIM, AL_R, "v" SC_VERSION);
-    kv(169, 105, 140, "GPS", C_TX, "%s", gps_ok(&A->gps, sc_now()) ? (A->gps.mode == 3 ? "3D fix" : "2D fix") : "no fix");
+    {
+        const char *fix = gps_ok(&A->gps, sc_now()) ? (A->gps.mode == 3 ? "3D fix" : "2D fix") : "no fix";
+        if (gps_sky(&A->gps, sc_now())) kv(169, 105, 140, "GPS", C_TX, "%s, %d/%d sats", fix, A->gps.n_used, A->gps.n_sat);
+        else kv(169, 105, 140, "GPS", C_TX, "%s", fix);
+    }
     if (A->hdg.src != HDG_NONE) kv(169, 117, 140, "Heading", C_TX, "%03.0f° %s", A->hdg.deg, src[A->hdg.src]);
     else kv(169, 117, 140, "Heading", C_DIM, "unknown");
     if (A->have_sonde) {
@@ -1154,6 +1165,7 @@ void ui_init(app_t *a)
         else app_listen(a, (a->cfg.scan_lo_hz + a->cfg.scan_hi_hz) / 2 / TUNE_STEP_HZ * TUNE_STEP_HZ);
     }
     a->radio_audio = page == PG_RADIO;
+    a->frame_cue = page == PG_TRACK || page == PG_MAP;
 }
 
 int ui_should_quit(void)
@@ -1262,5 +1274,6 @@ void ui_key(int k)
         for (i = 0; i < TC_N; i++) tc[i].valid = 0;
     }
     A->radio_audio = page == PG_RADIO; /* the tuned frequency is heard while its spectrum is on screen */
+    A->frame_cue = page == PG_TRACK || page == PG_MAP; /* the screens used while chasing */
     if (root) lv_obj_invalidate(root);
 }

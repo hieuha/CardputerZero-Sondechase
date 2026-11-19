@@ -84,14 +84,14 @@ hoặc dongle đang bị chương trình khác giữ, lý do hiện trên dòng 
 
 | Phím | Chức năng |
 |---|---|
-| `4` Track | La bàn HUD, khoảng cách, bearing, elevation, điểm rơi dự đoán; số hiệu, frame và pin của sonde khi GPS của nó chưa fix |
+| `4` Track | La bàn HUD, khoảng cách, bearing, elevation, điểm rơi dự đoán; số hiệu, frame và pin của sonde khi GPS của nó chưa fix. Mỗi frame nhận được kêu một tiếng tít và nháy đèn đỏ. Vòng la bàn chuyển xanh khi mũi tên lệch không quá 15° so với hướng đang đi |
 | `5` Map | Tile, vị trí máy, sonde, vệt bay, điểm rơi. Phím mũi tên để pan (giữ phím thì chạy liên tục; bản đồ thôi bám, hiện `free`), `+` / `-` để zoom, `C` bám lại như trước khi pan, còn lại thì đổi both / device / sonde, `V` đổi bản đồ đơn giản / chi tiết. Khi chưa có vị trí nào: căn giữa theo `map_lat` / `map_lon` |
 | `6` Graph | `Left/Right` đổi trang: Skew-T log-P, độ cao + tốc độ đứng theo thời gian |
 | `7` Radio | Phổ kiểu app SDR, kèm audio của tần số đang thu: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` để giải mã tại đó. `S` Scan: quét dải và thử giải mã từng đỉnh sóng cho tới khi gặp RS41 (xem bên dưới); `Esc` để quay lại. Giữ phím mũi tên thì tần số tự chạy (sau 0,4 s, 12 bước mỗi giây). `D` đổi kiểu điều chế (NFM / AM / USB / LSB / WFM cho đài phát thanh FM), `B` đổi độ rộng kênh, hiện bằng dải tô màu quanh tần số đang thu |
 | `8` Info | Sonde, thu nhận, thiết bị, một cặp tọa độ đích |
 | `Tab` | Sang màn kế tiếp (Track → Map → Graph → Radio → Info → Track) |
 | `F` | Nhập tần số (kHz) |
-| `M` | Tắt / bật tiếng beeper và audio radio |
+| `M` | Tắt / bật tiếng beeper, tiếng tít mỗi frame và audio radio (đèn vẫn nháy) |
 | `R` / `X` | Khởi động lại decoder / dừng |
 | `Q`, hoặc giữ `Esc` 3 s | Thoát (giữ `Esc` sẽ hiện đếm ngược) |
 
@@ -118,8 +118,9 @@ Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` mở Map, bấ
 
 - Không có SDR trên USB (VID:PID `0bda:2838` hoặc `0bda:2832`): màn hình chặn "No SDR device found".
   App kiểm tra lại USB mỗi 2 s và tự tiếp tục giải mã khi thiết bị xuất hiện. Tắt kiểm tra: `sdr_check = 0`.
-- Máy chưa có GPS fix: việc giải mã sonde không bị ảnh hưởng. Thanh trên cùng hiện `GPS lost` (đã từng có fix)
-  hoặc `No GPS`. Màn hình Track thay khoảng cách, bearing, elevation bằng độ cao và tọa độ tuyệt đối của
+- Máy chưa có GPS fix: việc giải mã sonde không bị ảnh hưởng. Thanh trên cùng hiện `GPS 0/3` màu đỏ khi GPS đã
+  cắm nhưng chưa fix (số vệ tinh đang dùng / thấy được), nếu không thì `GPS lost` (đã từng có fix) hoặc `No GPS`.
+  Khi có fix thì hiện `3D 9/12`. GPS USB có thể rút ra cắm lại khi app đang chạy (gpsd tự nhận). Màn hình Track thay khoảng cách, bearing, elevation bằng độ cao và tọa độ tuyệt đối của
   sonde và của điểm rơi dự đoán. Map bám theo sonde. Beeper không kêu.
 - Sonde chưa có GPS fix (còn dưới đất, `sats < 4`): frame của nó mang vị trí vô nghĩa, nên Track và Info chỉ hiện số
   hiệu, frame, số vệ tinh và pin, và không có gì đưa vào vệt bay, lịch sử hay dự đoán.
@@ -167,6 +168,11 @@ mất tín hiệu).
 - Bật khi d ≤ 10 km, tắt khi d > 10,5 km.
 - Chu kỳ `T = 0,12 + 1,88 · (d / 10 km)^0,6` giây; mỗi tiếng 60 ms.
 - Âm lượng `V = 1 − 0,35 · log10(d / 100 m)`, giới hạn 0,3–1,0.
+
+**Tín hiệu mỗi frame** (`track.c`): khi đang ở màn Track hoặc Map, mỗi frame giải mã được phát một tiếng tít
+1500 Hz dài 30 ms và nháy đèn đỏ ACT 80 ms (`led_path`, mặc định `/sys/class/leds/ACT/brightness`, nhóm
+`input` ghi được). Đèn được đảo khỏi trạng thái nghỉ rồi trả lại; ghi 0 cũng tắt trigger hoạt động của
+kernel cho tới lần khởi động lại.
 - 2200 Hz khi telemetry đang cập nhật, 1100 Hz khi mất tín hiệu.
 - Phát qua PipeWire bằng `pacat` (`audio_cmd`): PipeWire giữ codec ES8389, nên `aplay` trực tiếp không mở được.
 
@@ -280,7 +286,7 @@ màu so với màu nền chiếm đa số; cần chỉnh lại nếu style tile 
 
 ## Trạng thái kiểm thử
 
-`tests/test_core.c`: 4285 phép kiểm đạt trên Debian 13 arm64 và, trong CI, trên Ubuntu x86-64 (`-Wall -Wextra`). Một `librtlsdr` giả
+`tests/test_core.c`: 4304 phép kiểm đạt trên Debian 13 arm64 và, trong CI, trên Ubuntu x86-64 (`-Wall -Wextra`). Một `librtlsdr` giả
 (`tests/fake_rtlsdr.c`, phát sóng mang 403,000 MHz ở bất kỳ tần số nào đang đặt) cho phép chạy trọn quét và giải mã
 mà không cần dongle. Phạm vi: geodesy, ISA, dew point, dự đoán
 điểm rơi, parser JSON rs41mod (kể cả một frame thật chưa có fix) và gpsd, heading, ô phổ và giữ đỉnh, ring IQ, FFT,
@@ -314,7 +320,9 @@ hoặc bộ thu giả: audio AM / SSB với tín hiệu thật, bản đồ ki�
 - Dự đoán điểm rơi khi sonde còn đang lên phụ thuộc `burst_alt` giả định và không có gió phía trên
   độ cao hiện tại.
 - Lịch sử bay giữ 2048 mẫu (5 s/mẫu, tự giảm độ phân giải khi đầy); không khôi phục sau khi khởi động lại app.
-  Log CSV đầy đủ ghi tại `~/sondechase.csv`.
+  Log CSV đầy đủ ghi tại `~/sondechase.csv`,
+  và mỗi sonde có thêm một file theo định dạng sonde log của radiosonde_auto_rx trong `~/sondechase/log/`
+  (`YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log`, giờ UTC; SNR và lệch tần ghi -1).
 
 ## Giấy phép
 

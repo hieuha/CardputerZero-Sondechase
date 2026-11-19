@@ -1,10 +1,11 @@
-/* Flight history, burst detection, proximity beeper, PCM audio stream, slippy-map tile maths. */
+/* Flight history, burst detection, proximity beeper, PCM audio stream, frame LED, slippy-map tile maths. */
 #define _GNU_SOURCE
 #include "sc.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
 #include <signal.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -233,6 +234,53 @@ void audio_poll(audio_t *a, const cfg_t *c, double now)
     if (write(a->fd, buf, (size_t)n * sizeof buf[0]) < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
         audio_close(a); /* player exited: reopen after t_retry */
     }
+}
+
+/* ---------------- frame LED ---------------- */
+/* The CardputerZero's red ACT LED: its brightness file is writable by the input group. Writing 0 also drops
+ * the kernel's activity trigger, so after the first blink the LED keeps the resting state put back here. */
+static void led_set(led_t *l, char v)
+{
+    if (l->fd >= 0 && pwrite(l->fd, &v, 1, 0) != 1) { /* not writable after all: stop trying */
+        close(l->fd);
+        l->fd = -1;
+    }
+}
+
+void led_open(led_t *l, const char *path)
+{
+    char b[8] = {0};
+    l->t_off = 0;
+    l->fd = path[0] ? open(path, O_RDWR | O_CLOEXEC) : -1;
+    if (l->fd < 0) return;
+    if (pread(l->fd, b, sizeof b - 1, 0) <= 0) {
+        close(l->fd);
+        l->fd = -1;
+        return;
+    }
+    l->rest = atoi(b) > 0 ? '1' : '0';
+}
+
+void led_blink(led_t *l, double now, double dur_s)
+{
+    if (l->fd < 0) return;
+    if (l->t_off == 0) led_set(l, l->rest == '1' ? '0' : '1');
+    l->t_off = now + dur_s;
+}
+
+void led_poll(led_t *l, double now)
+{
+    if (l->t_off == 0 || now < l->t_off) return;
+    l->t_off = 0;
+    led_set(l, l->rest);
+}
+
+void led_close(led_t *l)
+{
+    if (l->fd < 0) return;
+    if (l->t_off) led_set(l, l->rest);
+    if (l->fd >= 0) close(l->fd);
+    l->fd = -1;
 }
 
 /* ---------------- slippy-map tiles (Web Mercator) ---------------- */

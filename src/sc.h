@@ -39,6 +39,7 @@ typedef struct {
     double prox_radius_m;    /* proximity beeper starts inside this ground distance */
     double prox_hyst_m;      /* ...and stops beyond radius + hysteresis */
     int audio_enable;
+    char led_path[96];       /* LED brightness file blinked on each frame on the Track and Map screens; "" = none */
     char audio_cmd[200];     /* reads raw S16_LE mono 16 kHz PCM on stdin */
     char tile_dir[160];      /* preloaded map tiles: <tile_dir>/<z>/<x>/<y>.png */
     int zoom_min, zoom_max;  /* zoom levels present in tile_dir */
@@ -136,11 +137,14 @@ typedef struct {
     double lat, lon, alt, speed, track;
     int has_track;
     double t_fix;
+    int n_sat, n_used; /* gpsd SKY: satellites in view / used in the fix */
+    double t_sky;      /* last SKY report: the receiver is plugged in and talking even without a fix */
 } gps_t;
 void gps_init(gps_t *g);
 void gps_poll(gps_t *g, const cfg_t *c);
 int gps_parse(gps_t *g, const char *line, double now); /* 1 = TPV consumed */
 int gps_ok(const gps_t *g, double now);
+int gps_sky(const gps_t *g, double now); /* 1 = satellite counts are current */
 void gps_close(gps_t *g);
 
 enum { HDG_NONE, HDG_GPS, HDG_MAG, HDG_HOLD };
@@ -326,6 +330,17 @@ void audio_radio_clear(audio_t *a);
 void audio_poll(audio_t *a, const cfg_t *c, double now);               /* keep the PCM stream fed */
 void audio_close(audio_t *a);
 
+/* A sysfs LED blinked once per received frame: driven to the opposite of its resting state, then back. */
+typedef struct {
+    int fd;            /* -1: no LED (missing or not writable) */
+    char rest;         /* '0' or '1': its state when opened, put back after each blink and on close */
+    double t_off;      /* end of the current blink (0: none) */
+} led_t;
+void led_open(led_t *l, const char *path);
+void led_blink(led_t *l, double now, double dur_s);
+void led_poll(led_t *l, double now);
+void led_close(led_t *l);
+
 #define TILE_PX 256
 void tile_frac(double lat, double lon, int z, double *tx, double *ty); /* fractional slippy-map tile coords */
 double tile_mpp(double lat, int z);                                    /* metres per pixel */
@@ -442,11 +457,15 @@ typedef struct {
     double land_dist, land_brg;
     FILE *log;
     char log_path[256];
+    FILE *rlog;              /* this sonde's auto_rx-format log */
+    char rlog_id[20];
     char status[80];
     hist_t hist;
     flight_t flight;
     prox_t prox;
     audio_t audio;
+    led_t led;
+    int frame_cue;   /* set by the UI on the Track and Map screens: each frame ticks (unless muted) and blinks the LED */
     int burst_alert; /* set when a burst is detected; the UI clears it on dismiss */
     int sdr_ok;      /* receiver present on USB; decoding and scanning wait while 0 */
     double t_sdr;

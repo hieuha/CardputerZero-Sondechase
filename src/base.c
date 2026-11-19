@@ -53,6 +53,7 @@ void cfg_defaults(cfg_t *c)
     c->zoom_max = 16;
     snprintf(c->font_dir, sizeof c->font_dir, "/usr/share/sondechase/fonts");
     c->sdr_check = 1;
+    snprintf(c->led_path, sizeof c->led_path, "/sys/class/leds/ACT/brightness");
     c->tile_online = 1;
     snprintf(c->tile_url, sizeof c->tile_url, "https://tile.openstreetmap.org/{z}/{x}/{y}.png");
     snprintf(c->tile_user_agent, sizeof c->tile_user_agent, "SondeChase/0.3 (CardputerZero app; github.com/hieuha)");
@@ -75,6 +76,7 @@ static const cfg_ent ents[] = {
     E(mag_off_x, 'd'),    E(mag_off_y, 'd'),    E(mag_rot_deg, 'd'),  E(mag_flip_y, 'i'),
     E(declination, 'd'),  E(stale_s, 'd'),      E(log_dir, 's'),      E(kbd_dev, 's'),
     E(fb_dev, 's'),       E(prox_radius_m, 'd'), E(prox_hyst_m, 'd'), E(audio_enable, 'i'),
+    E(led_path, 's'),
     E(audio_cmd, 's'),    E(tile_dir, 's'),     E(zoom_min, 'i'),     E(zoom_max, 'i'),
     E(map_lat, 'd'),      E(map_lon, 'd'),      E(map_simple, 'i'),
     E(font_dir, 's'),     E(sdr_check, 'i'),    E(demo, 'i'),         E(demo_speed, 'd'),

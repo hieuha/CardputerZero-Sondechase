@@ -121,6 +121,9 @@ void demo_poll(app_t *a, double now)
     a->gps.track = 52.0;
     a->gps.has_track = 1;
     a->gps.t_fix = now;
+    a->gps.n_sat = 12;
+    a->gps.n_used = 9;
+    a->gps.t_sky = now;
     a->hdg.deg = 52.0;
     a->hdg.src = HDG_GPS;
     if (a->state == ST_SCAN && now >= a->t_restart) demo_scan(a);

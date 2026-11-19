@@ -83,14 +83,14 @@ If `librtlsdr0` is missing or the dongle is busy, the reason shows on the status
 
 | Key | Function |
 |---|---|
-| `4` Track | HUD compass, distance, bearing, elevation, predicted landing point; sonde serial, frame and battery while its GPS has no fix |
+| `4` Track | HUD compass, distance, bearing, elevation, predicted landing point; sonde serial, frame and battery while its GPS has no fix. Each frame received ticks and blinks the red LED. The ring turns green while the arrow is within 15° of straight ahead |
 | `5` Map | Tiles, device position, sonde, flight track, landing point. Arrow keys pan (hold to keep moving; the map stops following, `free`), `+` / `-` zoom, `C` follows again as before panning, and otherwise cycles both / device / sonde, `V` simple / detailed map. With no position yet: centred on `map_lat` / `map_lon` |
 | `6` Graph | `Left/Right` switch page: Skew-T log-P, altitude + vertical speed over time |
 | `7` Radio | Spectrum, like an SDR app, with the tuned frequency's audio: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` decode here. `S` Scan: sweeps the band and tries each peak on the decoder until an RS41 answers (below); `Esc` goes back. Holding an arrow key keeps tuning (after 0.4 s, 12 steps a second). `D` mode (NFM / AM / USB / LSB / WFM for broadcast FM), `B` channel width, shown as the shaded band around the tuned frequency |
 | `8` Info | Sonde, reception, device, one pair of target coordinates |
 | `Tab` | Next screen (Track → Map → Graph → Radio → Info → Track) |
 | `F` | Enter frequency (kHz) |
-| `M` | Mute / unmute beeper and radio audio |
+| `M` | Mute / unmute beeper, frame tick and radio audio (the LED still blinks) |
 | `R` / `X` | Restart decoder / stop |
 | `Q`, or hold `Esc` 3 s | Quit (holding `Esc` shows a countdown) |
 
@@ -118,8 +118,9 @@ The burst alert overlays every screen: `Enter` opens Map, a short `Esc` dismisse
 
 - No SDR on USB (VID:PID `0bda:2838` or `0bda:2832`): a blocking "No SDR device found" screen.
   The app rechecks USB every 2 s and resumes decoding when the device appears. Disable the check: `sdr_check = 0`.
-- No GPS fix on this device: sonde decoding is unaffected. The top bar shows `GPS lost` (had a fix before)
-  or `No GPS`. The Track screen replaces distance, bearing and elevation with the absolute altitude and
+- No GPS fix on this device: sonde decoding is unaffected. The top bar shows `GPS 0/3` in red while the receiver
+  is plugged in without a fix (satellites used / in view), else `GPS lost` (had a fix before) or `No GPS`. With a
+  fix it shows `3D 9/12`. A USB GPS can be unplugged and plugged back in while the app runs (gpsd picks it up). The Track screen replaces distance, bearing and elevation with the absolute altitude and
   coordinates of the sonde and of the predicted landing point. Map follows the sonde. The beeper stays silent.
 - Sonde without a GPS fix (still on the ground, `sats < 4`): its frames carry a meaningless position, so Track and
   Info show serial, frame, satellites and battery only, and nothing enters the track, history or prediction.
@@ -166,6 +167,11 @@ after signal loss).
 - On when d ≤ 10 km, off when d > 10.5 km.
 - Period `T = 0.12 + 1.88 · (d / 10 km)^0.6` s; each beep 60 ms.
 - Volume `V = 1 − 0.35 · log10(d / 100 m)`, clamped to 0.3–1.0.
+
+**Frame cue** (`track.c`): on the Track and Map screens, each decoded frame plays a 30 ms 1500 Hz tick
+and blinks the red ACT LED for 80 ms (`led_path`, default `/sys/class/leds/ACT/brightness`, writable by the
+`input` group). The blink drives the LED away from its resting state and back; writing 0 also drops the
+kernel's activity trigger until reboot.
 - 2200 Hz while telemetry is updating, 1100 Hz after signal loss.
 - Played through PipeWire with `pacat` (`audio_cmd`): PipeWire owns the ES8389 codec, so plain `aplay` cannot open it.
 
@@ -280,7 +286,7 @@ distance from the dominant background color; it needs tuning if the tile style d
 
 ## Test status
 
-`tests/test_core.c`: 4285 checks pass on Debian 13 arm64 and, in CI, on Ubuntu x86-64 (`-Wall -Wextra`). A fake `librtlsdr`
+`tests/test_core.c`: 4304 checks pass on Debian 13 arm64 and, in CI, on Ubuntu x86-64 (`-Wall -Wextra`). A fake `librtlsdr`
 (`tests/fake_rtlsdr.c`, a 403.000 MHz carrier wherever it is tuned) runs scanning and decoding end to end without a
 dongle. Covered: geodesy, ISA,
 dew point, landing prediction, rs41mod JSON (including a real no-fix frame) and gpsd parsers, heading, spectrum
@@ -314,7 +320,9 @@ and map panning on the device.
 - Skew-T stops at 100 hPa; moist adiabats and mixing ratio lines are not drawn yet.
 - Landing prediction during ascent depends on the assumed `burst_alt` and has no wind above the current altitude.
 - Flight history keeps 2048 samples (5 s/sample, downsampled automatically when full); not restored after an app
-  restart. The full CSV log is written to `~/sondechase.csv`.
+  restart. The full CSV log is written to `~/sondechase.csv`,
+  and each sonde also gets a file in radiosonde_auto_rx's sonde log format under `~/sondechase/log/`
+  (`YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log`, UTC; SNR and frequency error are written as -1).
 
 ## License
 

@@ -65,7 +65,7 @@ If `librtlsdr0` is missing or the dongle is busy, the reason shows on the status
 | Key | Function |
 |---|---|
 | `4` Track | HUD compass, distance, bearing, elevation, predicted landing point; sonde serial, frame and battery while its GPS has no fix |
-| `5` Map | Tiles, device position, sonde, flight track, landing point. Arrow keys pan (hold to keep moving; the map stops following, `free`), `+` / `-` zoom, `C` follows again and cycles both / device / sonde, `V` simple / detailed map. With no position yet: centred on `map_lat` / `map_lon` |
+| `5` Map | Tiles, device position, sonde, flight track, landing point. Arrow keys pan (hold to keep moving; the map stops following, `free`), `+` / `-` zoom, `C` follows again as before panning, and otherwise cycles both / device / sonde, `V` simple / detailed map. With no position yet: centred on `map_lat` / `map_lon` |
 | `6` Graph | `Left/Right` switch page: Skew-T log-P, altitude + vertical speed over time |
 | `7` Radio | Spectrum, like an SDR app, with the tuned frequency's audio: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` decode here. `S` band overview: the same keys move a cursor, `Enter` listens there. Holding an arrow key keeps tuning (after 0.4 s, 12 steps a second). `D` mode (NFM / AM / USB / LSB), `B` channel width |
 | `8` Info | Sonde, reception, device, one pair of target coordinates |

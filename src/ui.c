@@ -486,6 +486,7 @@ static const lv_image_dsc_t *tile_get(int z, int x, int y)
 
 static double m_cx, m_cy; /* map centre in world pixels at the current zoom */
 static double m_clat, m_clon, pan_lat, pan_lon; /* centre drawn last; centre while panned (map_follow == 3) */
+static int follow_before_pan; /* the follow mode C returns to */
 static int m_z;
 
 static void m_xy(double lat, double lon, double *x, double *y)
@@ -1125,6 +1126,7 @@ static void map_pan(int k)
 {
     double n = TILE_PX * (double)(1 << m_z), px, py;
     if (map_follow != 3) {
+        follow_before_pan = map_follow;
         pan_lat = m_clat;
         pan_lon = m_clon;
         map_follow = 3;
@@ -1197,8 +1199,8 @@ void ui_key(int k)
     } else if (page == PG_MAP && k == '-') {
         if (map_zoom < 0) map_zoom = m_z;
         if (map_zoom > A->cfg.zoom_min) map_zoom--;
-    } else if (page == PG_MAP && k == 'c') { /* follow again: both -> device -> sonde (from free: both) */
-        map_follow = map_follow == 3 ? 0 : (map_follow + 1) % 3;
+    } else if (page == PG_MAP && k == 'c') { /* free: follow again as before panning; else both -> device -> sonde */
+        map_follow = map_follow == 3 ? follow_before_pan : (map_follow + 1) % 3;
         map_zoom = -1;
     }
     else if (page == PG_MAP && k == 'v') { /* simple <-> detailed: tiles are recoloured again as they are drawn */

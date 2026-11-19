@@ -10,15 +10,15 @@ với một sonde RS41 đang phát (Y0532351). Chưa thử chase ngoài thực �
 
 | | |
 |---|---|
-| ![Phổ, đang thu: tín hiệu dưới con trỏ ở giữa màn](screenshots/device/scan-tuned.png) | ![Phổ, tổng quan dải với đỉnh mạnh nhất được chọn](screenshots/device/scan-band-overview.png) |
-| **Phổ, đang thu**: Left/Right ±10 kHz, Up/Down ±100 kHz | **Phổ, tổng quan dải** (`S`) |
+| ![Phổ, đang nghe tại 100,000 MHz](screenshots/device/scan-tuned.png) | ![Phổ, tổng quan dải với con trỏ ở 403,120 MHz](screenshots/device/scan-band-overview.png) |
+| **Phổ, đang thu**: đang nghe, Enter để bắt đầu giải mã (ở đây là một đài FM phát thanh, để có tín hiệu thật) | **Phổ, tổng quan dải** (`S`): con trỏ tự do, Enter để nghe tại đó |
 | ![Màn Track: telemetry của sonde khi GPS của nó chưa fix](screenshots/device/track-sonde-no-gps-fix.png) | ![Màn Map với tile OpenStreetMap](screenshots/device/map-default-area.png) |
 | **Track**: sonde Y0532351 đang chờ GPS fix | **Map**: tile OpenStreetMap, đã đổi màu |
 | ![Giữ Esc: đếm ngược để thoát](screenshots/device/hold-esc-to-quit.png) | ![SondeChase trong launcher APPLaunch](screenshots/device/launcher.png) |
 | **Giữ `Esc`** để thoát | Mục trong launcher **APPLaunch** |
 
-Ảnh chụp đọc từ `/dev/fb0` của CardputerZero đang chạy, phóng 2×. Hai ảnh phổ là sóng mang thử 403,000 MHz của
-`tests/fake_rtlsdr.c` (lúc chụp không cắm dongle).
+Ảnh chụp đọc từ `/dev/fb0` của CardputerZero đang chạy, phóng 2×. Các ảnh phổ chụp với RTL-SDR Blog V4 thật,
+lúc không có sonde nào đang bay.
 
 ## Kiến trúc
 
@@ -32,7 +32,7 @@ với một sonde RS41 đang phát (Y0532351). Chưa thử chase ngoài thực �
                     │ quét: 4 bước               │    │ dsp.c DDC (chuỗi rtl_fm -F9)     │
                     │ FFT 1024 điểm, giữ đỉnh    │    │ → cs16 48 kHz + FFT trực tiếp    │
                     └─────────────┬──────────────┘    └─────────────────┬────────────────┘
-                                  │ phổ, đỉnh                           │ stdin
+                                  │ phổ                                 │ stdin
                                   │                                     ▼
                                   │                         ┌────────────────────────┐
                                   │                         │ fsk_demod │ rs41mod    │
@@ -67,10 +67,10 @@ hoặc dongle đang bị chương trình khác giữ, lý do hiện trên dòng 
 | `4` Track | La bàn HUD, khoảng cách, bearing, elevation, điểm rơi dự đoán; số hiệu, frame và pin của sonde khi GPS của nó chưa fix |
 | `5` Map | Tile, vị trí máy, sonde, vệt bay, điểm rơi. `Up/Down` zoom, `C` đổi chế độ bám (both / device / sonde). Khi chưa có vị trí nào: căn giữa theo `map_lat` / `map_lon` |
 | `6` Graph | `Left/Right` đổi trang: Skew-T log-P, độ cao + tốc độ đứng theo thời gian |
-| `7` Scan | Phổ kiểu app SDR: tần số đang thu ở giữa, `Left/Right` ±10 kHz, `Up/Down` ±100 kHz. `S` tổng quan dải: `Left/Right` nhảy giữa các peak, `Enter` để thu |
+| `7` Scan | Phổ kiểu app SDR, kèm audio của tần số đang thu: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` để giải mã tại đó. `S` tổng quan dải: cùng các phím di chuyển con trỏ, `Enter` để nghe tại đó |
 | `8` Info | Sonde, thu nhận, thiết bị, một cặp tọa độ đích |
 | `F` | Nhập tần số (kHz) |
-| `M` | Tắt / bật tiếng beeper |
+| `M` | Tắt / bật tiếng beeper và audio radio |
 | `R` / `X` | Khởi động lại decoder / dừng |
 | `Q`, hoặc giữ `Esc` 3 s | Thoát (giữ `Esc` sẽ hiện đếm ngược) |
 
@@ -78,10 +78,12 @@ Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` mở Map, bấ
 
 **Phổ**
 
-- **Đang thu**: decoder luôn chạy ở tần số dưới con trỏ, màn hình hiện chính mẫu của nó ±384 kHz quanh con trỏ, cập
-  nhật 20 lần/s. Dò tần chỉ đổi tần dongle; decoder vẫn chạy và tự đồng bộ lại sau vài giây.
+- **Đang thu**: tần số đang thu nằm giữa màn, màn hình hiện chính mẫu của bộ thu ±384 kHz quanh nó, cập nhật 20 lần/s.
+  Audio của tần số đó phát khi đang ở màn Scan (giải điều tần FM, 16 kHz, có squelch theo mức nhiễu nên kênh trống chỉ
+  còn tiếng rì nhỏ). Dò tần chỉ để nghe; `Enter` bắt đầu giải mã ở tần số đó (thanh trên: `listening` → `decoding`),
+  dịch đi thì decoder dừng cho tới khi bấm `Enter` lại.
 - **Tổng quan dải** (`S`, và lúc mở app khi chưa đặt `freq_hz`): quét 400–406 MHz liên tục, khoảng 4 lượt mỗi giây,
-  có giữ đỉnh. Sau giây đầu con trỏ chuyển tới peak mạnh nhất; Enter để thu peak đó, `X` để dừng.
+  có giữ đỉnh. Phím mũi tên di chuyển con trỏ (cùng bước), `Enter` để nghe tại đó, `X` để dừng.
 - Mọi frame giải mã được đều ghi lại tần số kèm số hiệu sonde; phổ gắn số hiệu (`Y0532351`) tại tần số đó.
 
 **Trạng thái thiếu phần cứng**
@@ -101,14 +103,18 @@ lần đổi tần, app bỏ 15 ms dữ liệu chờ ổn định cộng một b
 và rò LO của tuner tạo peak giả trong khoảng ~50 kHz quanh tâm mỗi lần dò, nên mỗi bước bỏ qua vùng đó và cứ mỗi lượt
 thứ hai lại dịch nửa bước để đo bù; màn đang thu nội suy qua vùng này. Mỗi ô
 5 kHz giữ giá trị so với lượt trước đã giảm 3 dB, nên peak của sonde đứng yên giữa các frame và tín hiệu đã tắt mờ
-dần trong vài giây. Peak là một dải ô liên tục vượt `median + scan_snr_db`; tần số là trọng tâm theo công suất,
-làm tròn về lưới 10 kHz.
+dần trong vài giây.
 
 **Bộ hạ tần cho decoder** (`dsp.c`, port từ `rtl_fm.c`, rtl-sdr 2.0.2): cùng chuỗi xử lý với
 `rtl_fm -M raw -F9 -s 48000`. Dongle đặt ở `f − 12 kHz + 384 kHz`, phép xoay 90° đưa dải về 0 Hz (tránh gai DC),
 năm tầng half-band nhị thức giảm mẫu ÷32 và một FIR 9 tap bù độ rủ. Dòng cs16 48 kHz được ghi vào stdin của
 `fsk_demod | rs41mod` theo từng khối `PIPE_BUF`; pipe luôn ghi trọn các khối này, nên decoder chạy chậm chỉ mất
 nguyên khối (có đếm) chứ không bao giờ lệch biên mẫu.
+
+**Audio radio** (`fm.c`): cùng dòng 48 kHz, dịch −12 kHz để tần số đang thu về 0 Hz, lọc kênh ±8 kHz bằng FIR 31 tap
+(RS41 là GFSK 4800 Bd, độ di tần ±2,4 kHz), bộ phân biệt theo hiệu pha, rồi lấy trung bình 3 mẫu xuống 16 kHz.
+Squelch so trung bình bình phương đầu ra bộ phân biệt trong 20 ms với 0,3 rad² (khoảng 0,05 với RS41 sạch, 0,7 với
+nhiễu). Kết quả được trộn dưới tiếng beeper trong cùng một luồng `pacat`.
 
 **Dự đoán điểm rơi** (`geo.c`, `predict_landing`)
 
@@ -229,11 +235,11 @@ màu so với màu nền chiếm đa số; cần chỉnh lại nếu style tile 
 
 ## Trạng thái kiểm thử
 
-`tests/test_core.c`: 4218 phép kiểm đạt trên CardputerZero (`-Wall -Wextra -Werror`). Một `librtlsdr` giả
+`tests/test_core.c`: 4227 phép kiểm đạt trên Debian 13 arm64 (`-Wall -Wextra -Werror`). Một `librtlsdr` giả
 (`tests/fake_rtlsdr.c`, phát sóng mang 403,000 MHz ở bất kỳ tần số nào đang đặt) cho phép chạy trọn quét và giải mã
 mà không cần dongle. Phạm vi: geodesy, ISA, dew point, dự đoán
 điểm rơi, parser JSON rs41mod (kể cả một frame thật chưa có fix) và gpsd, heading, ô phổ và giữ đỉnh, ring IQ, FFT,
-bộ hạ tần (sonde rơi đúng +12 kHz, tần số ảnh yếu hơn ≥ 20 dB, chia mẩu cho kết quả giống từng bit), ghi stdin, thu
+bộ hạ tần (sonde rơi đúng +12 kHz, tần số ảnh yếu hơn ≥ 20 dB, chia mẩu cho kết quả giống từng bit), audio FM (khôi phục đúng tone, kênh trống bị squelch), chuyển nghe → giải mã, ghi stdin, thu
 dọn process group, lịch sử bay, tile, vòng đời pipeline con.
 
 Trên CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 ở 403,000 MHz):
@@ -244,8 +250,8 @@ Trên CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 ở 403,000 MHz)
 | CPU khi giải mã | 15,6 % một nhân cho cả app (riêng `rtl_fm` trước đây: 61,5 %) |
 | Quét | một lượt 400–406 MHz mỗi ~0,25 s, CPU 12,8 %, sonde +55 dB |
 | Mẫu bị bỏ | 0 ở ring IQ, 0 ở pipe tới decoder |
-| Tổng quan dải | 1,66 s |
 | Đổi tần (R828D, I2C) | 32,7 ms; chuyển từ quét sang giải mã 621 ms khi còn mở lại dongle (nay dongle giữ mở; chưa đo lại trên phần cứng) |
+| Đang nghe (phổ + audio FM, chưa giải mã) | 22,6 % một nhân; nghe được đài FM 100,0 MHz, kênh 403 MHz trống bị squelch xuống tiếng rì nhỏ |
 | Màn hình, bàn phím, âm thanh PipeWire, node từ kế, tải tile OSM | chạy được |
 
 Chưa kiểm: GPS (chưa có module), beeper khi chase thực địa, phát hiện bóng nổ và dự đoán điểm rơi trên chuyến bay

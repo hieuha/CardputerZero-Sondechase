@@ -127,18 +127,36 @@ void audio_tone(audio_t *a, double freq, double dur_s, double vol)
     a->nseg++;
 }
 
+void audio_radio_push(audio_t *a, const int16_t *pcm, int n)
+{
+    int i;
+    for (i = 0; i < n; i++) a->radio[a->rhead++ % AUDIO_RADIO_MAX] = pcm[i];
+    if (a->rhead - a->rtail > AUDIO_RADIO_MAX) a->rtail = a->rhead - AUDIO_RADIO_MAX;
+}
+
+void audio_radio_clear(audio_t *a)
+{
+    a->rtail = a->rhead;
+    a->rprimed = 0;
+}
+
 int audio_render(audio_t *a, short *out, int n)
 {
     int i, active = 0;
     for (i = 0; i < n; i++) {
-        short v = 0;
+        int v = 0;
+        if (!a->rprimed && a->rhead - a->rtail >= AUDIO_RADIO_PRIME) a->rprimed = 1;
+        if (a->rprimed) { /* radio under the beeps; an underrun waits for the queue to refill */
+            if (a->rhead != a->rtail) v = a->radio[a->rtail++ % AUDIO_RADIO_MAX];
+            else a->rprimed = 0;
+        }
         if (a->nseg > 0) {
             int len = a->seg[0].n, pos = a->seg_pos, edge = AUDIO_RATE / 200; /* 5 ms ramps: no clicks */
             double env = 1.0;
             if (pos < edge) env = (double)pos / edge;
             if (len - pos < edge) env = (double)(len - pos) / edge;
             if (a->seg[0].freq > 0) {
-                v = (short)(sin(a->phase) * 30000.0 * a->seg[0].vol * env);
+                v += (int)(sin(a->phase) * 30000.0 * a->seg[0].vol * env);
                 a->phase += 2.0 * M_PI * a->seg[0].freq / AUDIO_RATE;
                 if (a->phase > 2.0 * M_PI) a->phase -= 2.0 * M_PI;
             }
@@ -150,7 +168,7 @@ int audio_render(audio_t *a, short *out, int n)
                 a->phase = 0;
             }
         }
-        out[i] = v;
+        out[i] = (short)(v > 32767 ? 32767 : (v < -32767 ? -32767 : v));
     }
     return active;
 }

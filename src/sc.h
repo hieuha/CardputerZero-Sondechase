@@ -20,8 +20,6 @@ typedef struct {
     char rtlsdr_lib[96];     /* librtlsdr to dlopen; "" = librtlsdr.so.0 (tests point it at a fake) */
     char decoder_feed_cmd[400]; /* reads 48 kHz cs16 IQ on stdin, prints rs41mod JSON */
     long scan_lo_hz, scan_hi_hz, scan_step_hz;
-    double scan_snr_db;      /* peak threshold above median noise floor */
-    int auto_tune;           /* tune to strongest peak after a scan */
     char gpsd_host[64];
     int gpsd_port;           /* 0 = gpsd disabled */
     double ground_alt;       /* landing altitude AMSL; < -900 = use own GPS altitude */
@@ -189,6 +187,25 @@ void ddc_init(ddc_t *d);
  * nbytes / (2 * DDC_DECIM) + DDC_BLOCK / DDC_DECIM pairs. Returns pairs written. */
 size_t ddc_process(ddc_t *d, const unsigned char *iq, size_t nbytes, int16_t *out);
 
+/* Listening on the tuned frequency: FM demodulator over the DDC's 48 kHz output, where the tuned
+ * frequency sits at +RS41_TUNE_OFFSET_HZ. Shift it to 0 Hz, low-pass the channel, discriminate, and
+ * average down to AUDIO_RATE. A noise squelch drops the hiss of an empty channel to a murmur. */
+#define FM_TAPS 31
+typedef struct {
+    float taps[FM_TAPS];
+    float hi[2 * FM_TAPS], hq[2 * FM_TAPS]; /* channel filter history, doubled to read it without wrapping */
+    int pos;
+    unsigned phase;            /* frequency shift step (0..3) */
+    float pi, pq;              /* previous filtered sample, for the discriminator */
+    float acc;                 /* decimation by 3 */
+    int nacc;
+    float sq_sum, gain;        /* squelch: mean square of the discriminator over a window, current gain */
+    int sq_n, open;
+} fm_t;
+void fm_init(fm_t *f);
+/* npairs 48 kHz cs16 pairs in; at most npairs / 3 + 1 audio samples out (16 kHz). Returns samples written. */
+int fm_process(fm_t *f, const int16_t *iq, size_t npairs, int16_t *out);
+
 /* ---------------- in-process RTL-SDR (librtlsdr loaded at run time) ---------------- */
 /* Lock-free single-producer (USB thread) / single-consumer (main loop) ring of u8 IQ bytes.
  * When full, new data is dropped and counted: the producer never moves the consumer's tail. */
@@ -268,16 +285,23 @@ int prox_update(prox_t *p, int have_dist, double d_m, double now, double radius,
 
 #define AUDIO_RATE 16000
 #define AUDIO_SEGS 8
+#define AUDIO_RADIO_MAX 8192   /* radio audio queue, ~0.5 s */
+#define AUDIO_RADIO_PRIME 1600 /* 100 ms queued before playing: the dongle's samples arrive in bursts */
 typedef struct {
     pid_t pid;
     int fd;
     double t_last, t_retry, phase;
     int nseg, seg_pos;
     struct { float freq, vol; int n; } seg[AUDIO_SEGS];
+    int16_t radio[AUDIO_RADIO_MAX]; /* demodulated radio, mixed under the beeps */
+    unsigned rhead, rtail;          /* free-running sample counters */
+    int rprimed;
 } audio_t;
 void audio_init(audio_t *a);
 void audio_tone(audio_t *a, double freq_hz, double dur_s, double vol); /* queue a tone (freq 0 = silence) */
 int audio_render(audio_t *a, short *out, int n);                       /* fill n samples from the queue */
+void audio_radio_push(audio_t *a, const int16_t *pcm, int n); /* queue radio audio (oldest dropped when full) */
+void audio_radio_clear(audio_t *a);
 void audio_poll(audio_t *a, const cfg_t *c, double now);               /* keep the PCM stream fed */
 void audio_close(audio_t *a);
 
@@ -312,12 +336,11 @@ void tf_close(tilefetch_t *t);
 void tile_recolor(unsigned char *rgb, int npix);
 
 /* ---------------- application state ---------------- */
-enum { ST_IDLE, ST_DECODE, ST_SCAN };
+enum { ST_IDLE, ST_DECODE, ST_SCAN, ST_LISTEN }; /* LISTEN: tuned, spectrum and audio, no decoder */
 
 /* Frequencies where an RS41 has been decoded this session, with its serial (labels on the spectrum). */
 #define MAX_KNOWN 16
 #define KNOWN_MATCH_HZ 10000L /* two sondes can sit 10 kHz apart */
-#define SCAN_PASSES 4         /* band overview: after ~1 s of passes the cursor goes to the strongest peak */
 #define TUNE_STEP_HZ 10000L   /* Left/Right on the spectrum: the RS41 channel raster */
 #define TUNE_BIG_STEP_HZ 100000L /* Up/Down */
 #define LIVE_HALF_SPAN_HZ 384000L /* the tuned spectrum shows the frequency +- this */
@@ -359,8 +382,10 @@ typedef struct {
     sweep_t sw;
     known_t known[MAX_KNOWN];
     sdr_t *rx;               /* the dongle, open for the session once first used (NULL: not open) */
-    sdr_t *dsdr;             /* in-process decode: dongle at freq_hz - 12 kHz + DDC_RATE/4, NULL otherwise */
+    sdr_t *dsdr;             /* tuned receiver (listen / decode): dongle at freq_hz - 12 kHz + DDC_RATE/4, else NULL */
     ddc_t ddc;
+    fm_t fm;                 /* radio audio of the tuned frequency */
+    int radio_audio;         /* set by the UI while the spectrum is on screen */
     spectrum_t live;         /* spectrum of the decode window (+-DDC_RATE/2 around the dongle) */
     double t_live;
     double t_restart;
@@ -374,8 +399,7 @@ typedef struct {
     wind_t wind;
     pred_t pred;
     spectrum_t spec;
-    peak_t peaks[MAX_PEAKS];
-    int npeaks, sel;
+    long cursor_hz;          /* band overview cursor */
     int have_geo; /* dist/brg/elev valid */
     double dist, brg, elev, rel;
     int have_land;
@@ -401,7 +425,7 @@ void app_poll(app_t *a);
 void app_tune(app_t *a, long f_hz);
 void app_scan(app_t *a);
 void app_stop(app_t *a);
-void app_retune(app_t *a, long f_hz); /* move the decoder; keeps it running when it decodes in the app */
+void app_listen(app_t *a, long f_hz); /* tune without decoding: spectrum and radio audio; app_tune sets the decode */
 const known_t *app_known(const app_t *a, long f_hz); /* NULL: nothing known about this frequency */
 void app_free(app_t *a);
 void app_on_frame(app_t *a, const char *json_line, double now); /* one decoder output line */

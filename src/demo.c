@@ -98,8 +98,6 @@ static void demo_scan(app_t *a)
         s->db[i] = (float)db;
         s->ok[i] = 1;
     }
-    a->npeaks = spec_peaks(s, a->cfg.scan_snr_db, a->peaks, MAX_PEAKS);
-    a->sel = 0;
     a->state = ST_IDLE;
     snprintf(a->status, sizeof a->status, "scan done");
 }

@@ -10,15 +10,15 @@ device with a live RS41 (Y0532351). GPS chasing in the field has not been tried 
 
 | | |
 |---|---|
-| ![Spectrum, tuned view: the signal under the cursor in the middle](screenshots/device/scan-tuned.png) | ![Spectrum, band overview with the strongest peak selected](screenshots/device/scan-band-overview.png) |
-| **Spectrum, tuned**: Left/Right ±10 kHz, Up/Down ±100 kHz | **Spectrum, band overview** (`S`) |
+| ![Spectrum, tuned view: listening on 100.000 MHz](screenshots/device/scan-tuned.png) | ![Spectrum, band overview with the cursor on 403.120 MHz](screenshots/device/scan-band-overview.png) |
+| **Spectrum, tuned**: listening, Enter starts the decoder (a broadcast FM station here, to show a real signal) | **Spectrum, band overview** (`S`): a free cursor, Enter listens there |
 | ![Track screen: sonde telemetry before its GPS has a fix](screenshots/device/track-sonde-no-gps-fix.png) | ![Map screen with OpenStreetMap tiles](screenshots/device/map-default-area.png) |
 | **Track**: sonde Y0532351 still waiting for its GPS fix | **Map**: OpenStreetMap tiles, recolored |
 | ![Holding Esc: quit countdown](screenshots/device/hold-esc-to-quit.png) | ![SondeChase in the APPLaunch launcher](screenshots/device/launcher.png) |
 | **Hold `Esc`** to quit | **APPLaunch** launcher entry |
 
-Screenshots are read from `/dev/fb0` of a running CardputerZero, shown at 2×. The two spectrum captures show the
-403.000 MHz test carrier of `tests/fake_rtlsdr.c` (no dongle was plugged in when they were taken).
+Screenshots are read from `/dev/fb0` of a running CardputerZero, shown at 2×. The spectrum captures were taken with
+the RTL-SDR Blog V4 and no sonde in the air.
 
 ## Architecture
 
@@ -32,7 +32,7 @@ Screenshots are read from `/dev/fb0` of a running CardputerZero, shown at 2×. T
                     │ sweep: 4 steps             │    │ dsp.c DDC (rtl_fm -F9 chain)     │
                     │ 1024-pt FFT, peak hold     │    │ → 48 kHz cs16 + live FFT         │
                     └─────────────┬──────────────┘    └─────────────────┬────────────────┘
-                                  │ spectrum, peaks                     │ stdin
+                                  │ spectrum                            │ stdin
                                   │                                     ▼
                                   │                         ┌────────────────────────┐
                                   │                         │ fsk_demod │ rs41mod    │
@@ -67,10 +67,10 @@ If `librtlsdr0` is missing or the dongle is busy, the reason shows on the status
 | `4` Track | HUD compass, distance, bearing, elevation, predicted landing point; sonde serial, frame and battery while its GPS has no fix |
 | `5` Map | Tiles, device position, sonde, flight track, landing point. `Up/Down` zoom, `C` cycles follow mode (both / device / sonde). With no position yet: centred on `map_lat` / `map_lon` |
 | `6` Graph | `Left/Right` switch page: Skew-T log-P, altitude + vertical speed over time |
-| `7` Scan | Spectrum, like an SDR app: the tuned frequency in the middle, `Left/Right` ±10 kHz, `Up/Down` ±100 kHz. `S` band overview: `Left/Right` jump between peaks, `Enter` tune |
+| `7` Scan | Spectrum, like an SDR app, with the tuned frequency's audio: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` decode here. `S` band overview: the same keys move a cursor, `Enter` listens there |
 | `8` Info | Sonde, reception, device, one pair of target coordinates |
 | `F` | Enter frequency (kHz) |
-| `M` | Mute / unmute beeper |
+| `M` | Mute / unmute beeper and radio audio |
 | `R` / `X` | Restart decoder / stop |
 | `Q`, or hold `Esc` 3 s | Quit (holding `Esc` shows a countdown) |
 
@@ -78,11 +78,12 @@ The burst alert overlays every screen: `Enter` opens Map, a short `Esc` dismisse
 
 **Spectrum**
 
-- **Tuned view**: the decoder always runs at the frequency under the cursor, and the screen shows its own samples
-  ±384 kHz around it, refreshed 20 times a second. Tuning only moves the dongle; the decoder keeps running and
-  resynchronises within a few seconds.
+- **Tuned view**: the tuned frequency stays in the middle and the screen shows the receiver's own samples ±384 kHz
+  around it, refreshed 20 times a second. Its audio plays while the Scan screen is shown (FM demodulator, 16 kHz, with
+  a noise squelch that turns an empty channel down to a murmur). Tuning only listens; `Enter` starts the decoder on
+  that frequency (top bar: `listening` → `decoding`), and tuning away stops it until `Enter` again.
 - **Band overview** (`S`, and at start-up when no `freq_hz` is set): 400–406 MHz swept continuously, about 4 passes a
-  second with peak hold. After the first second the cursor moves to the strongest peak; Enter tunes it, `X` stops.
+  second with peak hold. Arrow keys move a cursor (same steps), `Enter` listens there, `X` stops.
 - Every decoded frame records its frequency with the sonde serial; the spectrum labels that frequency with the serial
   (`Y0532351`).
 
@@ -103,14 +104,18 @@ After each retune the app drops 15 ms of settling plus one 16 KiB USB transfer, 
 The tuner's DC offset and LO leakage make false peaks within ~50 kHz of each tuning centre, so each step ignores that
 zone and every other pass is shifted by half a step to measure it; the tuned view interpolates across it.
 Each 5 kHz cell holds its value against the previous pass decayed by 3 dB, so a sonde's peak stays put between frames
-and a signal that stops fades out within seconds. A peak is a contiguous run of cells above
-`median + scan_snr_db`; its frequency is the power-weighted centroid on a 10 kHz grid.
+and a signal that stops fades out within seconds.
 
 **Decoder front end** (`dsp.c`, ported from `rtl_fm.c`, rtl-sdr 2.0.2): the same chain as
 `rtl_fm -M raw -F9 -s 48000`. The dongle is tuned `f − 12 kHz + 384 kHz`, a 90° rotation brings the band to 0 Hz
 (away from the DC spike), five binomial half-band stages decimate by 32 and a 9-tap FIR compensates the droop.
 The 48 kHz cs16 stream goes to `fsk_demod | rs41mod` on stdin in `PIPE_BUF`-sized writes, which pipes deliver whole,
 so a lagging decoder loses whole chunks (counted) and never sample alignment.
+
+**Radio audio** (`fm.c`): the same 48 kHz stream, shifted by −12 kHz so the tuned frequency sits at 0 Hz, a 31-tap
+±8 kHz channel filter (an RS41 is 4800 Bd GFSK with ±2.4 kHz deviation), a phase-difference discriminator and an
+average of 3 down to 16 kHz. The squelch compares the discriminator's mean square over 20 ms with 0.3 rad² (about
+0.05 for a clean RS41, 0.7 for noise). The result is mixed under the beeper in the one `pacat` stream.
 
 **Landing prediction** (`geo.c`, `predict_landing`)
 
@@ -231,12 +236,12 @@ distance from the dominant background color; it needs tuning if the tile style d
 
 ## Test status
 
-`tests/test_core.c`: 4218 checks pass on the CardputerZero (`-Wall -Wextra -Werror`). A fake `librtlsdr`
+`tests/test_core.c`: 4227 checks pass on Debian 13 arm64 (`-Wall -Wextra -Werror`). A fake `librtlsdr`
 (`tests/fake_rtlsdr.c`, a 403.000 MHz carrier wherever it is tuned) runs scanning and decoding end to end without a
 dongle. Covered: geodesy, ISA,
 dew point, landing prediction, rs41mod JSON (including a real no-fix frame) and gpsd parsers, heading, spectrum
 cells and peak hold, IQ ring, FFT, decoder front end (sonde lands at +12 kHz, images ≥ 20 dB down, chunking
-bit-exact), stdin feeding, process-group reaping, flight history, tiles, child pipeline lifecycle.
+bit-exact), FM audio (tone recovered, empty channel squelched), listen → decode switching, stdin feeding, process-group reaping, flight history, tiles, child pipeline lifecycle.
 
 On a CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 at 403.000 MHz):
 
@@ -246,8 +251,8 @@ On a CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 at 403.000 MHz):
 | CPU while decoding | 15.6 % of one core for the whole app (`rtl_fm` alone used 61.5 %) |
 | Scan | full 400–406 MHz pass every ~0.25 s, 12.8 % CPU, sonde at +55 dB |
 | Dropped samples | 0 in the IQ ring, 0 in the decoder pipe |
-| Band overview | 1.66 s |
 | Retune (R828D, I2C) | 32.7 ms; scan → decode switch 621 ms when the dongle was reopened (it now stays open; not re-measured on hardware) |
+| Listening (spectrum + FM audio, no decoder) | 22.6 % of one core; a broadcast FM station at 100.0 MHz is heard, an empty 403 MHz channel squelched to a murmur |
 | Display, keyboard, PipeWire audio, magnetometer node, OSM tile download | working |
 
 Not yet checked: GPS (no module fitted yet), the proximity beeper in the field, burst detection and landing

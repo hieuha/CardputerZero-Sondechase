@@ -317,6 +317,37 @@ static void t_dsp(void)
     CHECK(nb == na && !memcmp(a, b, na * 2 * sizeof a[0]));
 }
 
+/* Radio audio: FM at the DDC's +12 kHz comes out as its modulating tone; an empty channel is squelched. */
+static void t_fm(void)
+{
+    enum { NP = 48000 };
+    static int16_t iq[2 * NP], pcm[NP / 3 + 1];
+    static fm_t f;
+    double ph, rs = 0, rn = 0;
+    int i, n, zc = 0, pk = 0;
+    for (i = 0; i < NP; i++) { /* RS41-like deviation (2.4 kHz) with a 1 kHz tone */
+        ph = 2.0 * M_PI * 12000.0 * i / 48000.0 + 2.4 * sin(2.0 * M_PI * 1000.0 * i / 48000.0);
+        iq[2 * i] = (int16_t)lround(1000.0 * cos(ph));
+        iq[2 * i + 1] = (int16_t)lround(1000.0 * sin(ph));
+    }
+    fm_init(&f);
+    n = fm_process(&f, iq, NP, pcm);
+    CHECK(n == NP / 3);
+    for (i = 1000; i < n; i++) { /* after the squelch has opened */
+        if ((pcm[i - 1] < 0) != (pcm[i] < 0)) zc++;
+        if (abs(pcm[i]) > pk) pk = abs(pcm[i]);
+        rs += (double)pcm[i] * pcm[i];
+    }
+    CHECK(zc > 1800 && zc < 1950); /* 1 kHz over 0.94 s: ~1875 zero crossings */
+    CHECK(pk > 7000 && pk < 11000);
+    srand(7);
+    for (i = 0; i < 2 * NP; i++) iq[i] = (int16_t)(rand() % 2001 - 1000);
+    fm_init(&f);
+    n = fm_process(&f, iq, NP, pcm);
+    for (i = 1000; i < n; i++) rn += (double)pcm[i] * pcm[i];
+    CHECK(sqrt(rn / (n - 1000)) < 2500 && sqrt(rs / (n - 1000)) > 5000);
+}
+
 /* Number of non-zombie processes in process group pg (zombies await reaping by init). */
 static int live_in_group(pid_t pg)
 {
@@ -488,27 +519,41 @@ static void t_app(const char *fake, const char *fakelib)
     }
     CHECK(a.proc.pid > 0); /* started by itself once the receiver is back */
 
-    /* Scan through the fake dongle: ~1 s of passes finds its 403.000 MHz carrier; the sweep keeps running. */
+    /* Scan through the fake dongle: its 403.000 MHz carrier shows up and the sweep keeps running. */
     app_stop(&a);
     app_scan(&a);
     CHECK(a.state == ST_SCAN && a.sw.sdr == a.rx && a.rx != NULL);
-    for (i = 0; i < 500 && a.sw.passes < SCAN_PASSES + 2; i++) {
+    for (i = 0; i < 500 && a.sw.passes < 6; i++) {
         app_poll(&a);
         usleep(10000);
     }
-    CHECK(a.state == ST_SCAN && a.sw.sdr == a.rx && a.sw.passes >= SCAN_PASSES + 2);
-    /* the fake's IQ has a DC offset (like a real tuner): no false peaks at the step centres */
-    CHECK(a.npeaks == 1 && a.peaks[0].f_hz == 403000000 && a.sel == 0);
-    /* Enter on that peak: the open dongle switches job and rate, it is not reopened */
-    t0 = sc_now();
-    app_tune(&a, a.peaks[0].f_hz);
-    CHECK(a.dsdr == a.rx && a.proc.pid > 0 && sc_now() - t0 < 0.3);
-    { /* tuning on the spectrum moves the dongle and the view, the decoder keeps running */
-        pid_t pid = a.proc.pid;
-        app_retune(&a, 403010000L);
-        CHECK(a.proc.pid == pid && a.dsdr == a.rx && a.freq_hz == 403010000L);
-        CHECK(a.live.f0 == 403010000L - RS41_TUNE_OFFSET_HZ + DDC_RATE / 4 - DDC_RATE / 2);
+    CHECK(a.state == ST_SCAN && a.sw.sdr == a.rx && a.sw.passes >= 6);
+    CHECK(a.cursor_hz == 403500000); /* on the last frequency, inside the band */
+    { /* the fake's IQ has a DC offset (like a real tuner): no false peaks at the step centres */
+        peak_t pk[MAX_PEAKS];
+        CHECK(spec_peaks(&a.spec, 8.0, pk, MAX_PEAKS) == 1 && pk[0].f_hz == 403000000);
     }
+    /* Enter on the overview: listen there; the open dongle switches job and rate, it is not reopened */
+    t0 = sc_now();
+    app_listen(&a, 403000000L);
+    CHECK(a.state == ST_LISTEN && a.dsdr == a.rx && a.proc.pid == 0 && sc_now() - t0 < 0.3);
+    a.radio_audio = 1;
+    for (i = 0; i < 50; i++) {
+        app_poll(&a);
+        usleep(10000);
+    }
+    CHECK(a.audio.rhead - a.audio.rtail > 4000); /* ~0.5 s of the carrier's audio queued (no player here) */
+    a.radio_audio = 0;
+    app_poll(&a);
+    CHECK(a.audio.rhead == a.audio.rtail);
+    /* Enter on the tuned view: the decode is set on the same receiver */
+    t0 = sc_now();
+    app_tune(&a, a.freq_hz);
+    CHECK(a.state == ST_DECODE && a.dsdr == a.rx && a.proc.pid > 0 && sc_now() - t0 < 0.3);
+    /* tuning away stops the decoder until Enter sets it again; the receiver moves and stays open */
+    app_listen(&a, 403010000L);
+    CHECK(a.state == ST_LISTEN && a.proc.pid == 0 && a.dsdr == a.rx && a.freq_hz == 403010000L);
+    CHECK(a.live.f0 == 403010000L - RS41_TUNE_OFFSET_HZ + DDC_RATE / 4 - DDC_RATE / 2);
     app_free(&a);
 
     /* librtlsdr0 missing: the reason is shown, nothing is spawned, scanning is refused the same way */
@@ -717,6 +762,7 @@ int main(int argc, char **argv)
     t_spec();
     t_ring();
     t_dsp();
+    t_fm();
     t_frames();
     t_feed();
     t_track();

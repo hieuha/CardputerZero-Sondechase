@@ -56,36 +56,50 @@ static void rx_lost(app_t *a)
     a->dsdr = NULL;
 }
 
-static void decode_stop(app_t *a)
+/* ---------------- the tuned receiver ---------------- */
+/* Listening and decoding share it: the dongle at DDC_RATE, tuned DDC_RATE/4 above the stream centre, feeds
+ * the DDC. Its 48 kHz output goes to the radio audio, and once a decode is set (Enter) also to the stdin of
+ * decoder_feed_cmd (fsk_demod | rs41mod), whose JSON lines app_poll reads. */
+static void rx_stop(app_t *a)
 {
     if (a->dsdr) sdr_pause(a->dsdr);
     a->dsdr = NULL;
 }
 
-/* The dongle, tuned DDC_RATE/4 above the stream centre, feeds the DDC; its 48 kHz output goes to the stdin of
- * decoder_feed_cmd (fsk_demod | rs41mod), whose JSON lines app_poll reads. */
+static void rx_tune(app_t *a)
+{
+    long centre = a->freq_hz - RS41_TUNE_OFFSET_HZ + DDC_RATE / 4;
+    sdr_tune(a->dsdr, centre);
+    spec_reset(&a->live, centre - DDC_RATE / 2, centre + DDC_RATE / 2, DDC_RATE / SWEEP_FFT);
+    a->t_live = 0;
+}
+
+/* 0: receiving; -1: retried from app_poll at t_restart. */
+static int rx_start(app_t *a)
+{
+    if (!a->sdr_ok) { /* the receiver is not on USB */
+        a->t_restart = sc_now() + 1.0;
+        return -1;
+    }
+    if (!(a->dsdr = rx_get(a, DDC_RATE))) {
+        a->t_restart = sc_now() + 3.0;
+        return -1;
+    }
+    ddc_init(&a->ddc);
+    fm_init(&a->fm);
+    rx_tune(a);
+    return 0;
+}
+
 static void start_decoder(app_t *a)
 {
     char cmd[1024];
-    long centre = a->freq_hz - RS41_TUNE_OFFSET_HZ + DDC_RATE / 4;
     if (a->cfg.demo) { /* frames come from demo_poll */
         set_status(a, "decoding (demo)");
         return;
     }
-    if (!a->sdr_ok) { /* retried from app_poll once the receiver is back */
-        a->t_restart = sc_now() + 1.0;
-        return;
-    }
-    if (!(a->dsdr = rx_get(a, DDC_RATE))) {
-        a->t_restart = sc_now() + 3.0;
-        return;
-    }
-    sdr_tune(a->dsdr, centre);
-    ddc_init(&a->ddc);
-    spec_reset(&a->live, centre - DDC_RATE / 2, centre + DDC_RATE / 2, DDC_RATE / SWEEP_FFT);
-    a->t_live = 0;
+    if (!a->dsdr && rx_start(a) < 0) return;
     if (sc_subst(cmd, sizeof cmd, a->cfg.decoder_feed_cmd, a->freq_hz) < 0 || proc_start_feed(&a->proc, cmd) < 0) {
-        decode_stop(a);
         set_status(a, "decoder start failed");
         a->t_restart = sc_now() + 3.0;
         return;
@@ -93,16 +107,21 @@ static void start_decoder(app_t *a)
     set_status(a, "decoding");
 }
 
-/* Feed the decoder from the dongle, and refresh the decode-window spectrum about 20 times a second. */
-static void decode_poll(app_t *a, double now)
+/* Feed the decoder (when running) and the radio audio (while the UI asks for it) from the dongle, and refresh
+ * the tuned spectrum about 20 times a second. */
+static void rx_poll(app_t *a, double now)
 {
     static unsigned char iq[65536];
     static int16_t out[2 * (sizeof iq / (2 * DDC_DECIM) + DDC_BLOCK / DDC_DECIM)];
+    static int16_t pcm[sizeof out / sizeof out[0] / 6 + 2];
     static float db[SWEEP_FFT];
     size_t k;
+    int listen = a->radio_audio && !a->prox.muted;
+    if (!listen) audio_radio_clear(&a->audio);
     while ((k = sdr_read(a->dsdr, iq, sizeof iq)) > 0) {
         size_t n = ddc_process(&a->ddc, iq, k, out);
-        if (n) proc_feed(&a->proc, out, n * 2 * sizeof out[0]);
+        if (n && a->proc.pid > 0) proc_feed(&a->proc, out, n * 2 * sizeof out[0]);
+        if (n && listen) audio_radio_push(&a->audio, pcm, fm_process(&a->fm, out, n, pcm));
         if (now - a->t_live >= 0.05 && k >= 2 * SWEEP_FFT * SWEEP_FRAMES) {
             int i, b = (int)(DC_ZONE_HZ / ((double)DDC_RATE / SWEEP_FFT)), l = SWEEP_FFT / 2 - b - 1, r = SWEEP_FFT / 2 + b + 1;
             fft_spectrum(&a->sw.fft, iq, SWEEP_FRAMES, db);
@@ -161,33 +180,51 @@ static int sweep_start(app_t *a)
 void app_stop(app_t *a)
 {
     sweep_stop(a);
-    decode_stop(a);
+    rx_stop(a);
     proc_stop(&a->proc);
     a->state = ST_IDLE;
     set_status(a, "idle");
 }
 
+/* Set the decode: the tuned receiver (kept, retuned, when already listening) and the decoder on f_hz. */
 void app_tune(app_t *a, long f_hz)
 {
-    sweep_stop(a); /* the decoder needs the dongle (an in-process decode keeps it and just retunes) */
+    sweep_stop(a);
     proc_stop(&a->proc);
     a->freq_hz = f_hz;
     a->state = ST_DECODE;
+    if (a->dsdr) rx_tune(a);
     start_decoder(a);
 }
 
-/* Band overview: continuous sweeps of scan_lo_hz..scan_hi_hz until a peak is tuned or the scan is stopped. */
+/* Tuning on the spectrum like an SDR app: spectrum and radio audio on f_hz, no decoder until it is set
+ * with app_tune. Only the dongle moves when it is already receiving. */
+void app_listen(app_t *a, long f_hz)
+{
+    sweep_stop(a);
+    proc_stop(&a->proc);
+    a->freq_hz = f_hz;
+    a->state = ST_LISTEN;
+    set_status(a, "listening");
+    if (a->cfg.demo) return;
+    if (a->dsdr) rx_tune(a);
+    else rx_start(a);
+}
+
+/* Band overview: continuous sweeps of scan_lo_hz..scan_hi_hz until a frequency is tuned or the scan is stopped.
+ * The cursor starts on the current frequency, or mid-band. */
 void app_scan(app_t *a)
 {
     if (!a->sdr_ok) {
         set_status(a, "no SDR device");
         return;
     }
-    decode_stop(a); /* one dongle: the decoder hands it over */
+    rx_stop(a); /* one dongle: the tuned receiver hands it over */
     proc_stop(&a->proc);
     spec_reset(&a->spec, a->cfg.scan_lo_hz, a->cfg.scan_hi_hz, a->cfg.scan_step_hz);
-    a->npeaks = 0;
-    a->sel = 0;
+    if (a->freq_hz >= a->cfg.scan_lo_hz && a->freq_hz <= a->cfg.scan_hi_hz) a->cursor_hz = a->freq_hz;
+    else if (a->cursor_hz < a->cfg.scan_lo_hz || a->cursor_hz > a->cfg.scan_hi_hz)
+        a->cursor_hz = (a->cfg.scan_lo_hz + a->cfg.scan_hi_hz) / 2 / TUNE_STEP_HZ * TUNE_STEP_HZ;
     if (a->cfg.demo) { /* demo_poll fills the spectrum after a simulated sweep time */
         a->state = ST_SCAN;
         a->t_restart = sc_now() + 1.5;
@@ -200,22 +237,6 @@ void app_scan(app_t *a)
     }
     a->state = ST_SCAN;
     set_status(a, "scanning");
-}
-
-/* Tuning on the spectrum like an SDR app: while decoding in the app, only the dongle moves; the decoder
- * pipeline keeps running (it needs a few seconds to resynchronise, restarting it would add to that). */
-void app_retune(app_t *a, long f_hz)
-{
-    long centre;
-    if (a->state != ST_DECODE || !a->dsdr || a->proc.pid <= 0) {
-        app_tune(a, f_hz);
-        return;
-    }
-    a->freq_hz = f_hz;
-    centre = f_hz - RS41_TUNE_OFFSET_HZ + DDC_RATE / 4;
-    sdr_tune(a->dsdr, centre);
-    spec_reset(&a->live, centre - DDC_RATE / 2, centre + DDC_RATE / 2, DDC_RATE / SWEEP_FFT);
-    set_status(a, "decoding");
 }
 
 /* ---------------- known frequencies ---------------- */
@@ -303,21 +324,6 @@ void app_on_frame(app_t *a, const char *line, double now)
     log_frame(a);
 }
 
-/* Peaks follow the spectrum after every sweep step. The selected peak stays selected while it is
- * still present (within 20 kHz), otherwise the strongest one is. */
-static void scan_refresh(app_t *a)
-{
-    long keep = a->npeaks ? a->peaks[a->sel].f_hz : 0;
-    int i;
-    a->npeaks = spec_peaks(&a->spec, a->cfg.scan_snr_db, a->peaks, MAX_PEAKS);
-    a->sel = 0;
-    for (i = 0; keep && i < a->npeaks; i++)
-        if (labs(a->peaks[i].f_hz - keep) <= 20000) {
-            a->sel = i;
-            break;
-        }
-}
-
 static void sweep_poll(app_t *a)
 {
     static unsigned char junk[SDR_USB_BUF_BYTES];
@@ -339,16 +345,9 @@ static void sweep_poll(app_t *a)
         for (i = SWEEP_FFT / 2 - dc_bins; i <= SWEEP_FFT / 2 + dc_bins; i++) w->db[i] = NAN; /* left alone */
         spec_add_bins(&a->spec, sweep_centre(w) - SWEEP_RATE / 2.0 + lo_bin * bin_hz, bin_hz, w->db + lo_bin, nbin,
                       SWEEP_DECAY_DB);
-        scan_refresh(a);
-        if (++w->step == w->nstep + (int)(w->passes & 1)) {
+        if (++w->step == w->nstep + (int)(w->passes & 1)) { /* the sweep runs on like an SDR app's spectrum */
             w->step = 0;
-            if (++w->passes == 1 && a->cfg.auto_tune && a->npeaks) {
-                app_tune(a, a->peaks[0].f_hz); /* first complete pass */
-                return;
-            }
-            /* the sweep runs on like an SDR app's spectrum; once the first passes have covered the band, the
-             * cursor goes to the strongest peak (early steps selected whatever they saw first) */
-            if (w->passes == SCAN_PASSES) a->sel = 0;
+            w->passes++;
         }
         sweep_tune(a);
     }
@@ -381,8 +380,11 @@ void app_poll(app_t *a)
         }
     }
 
+    if (a->state == ST_LISTEN || a->state == ST_DECODE) {
+        if (a->dsdr) rx_poll(a, now);
+        else if (a->state == ST_LISTEN && now >= a->t_restart) rx_start(a);
+    }
     if (a->state == ST_DECODE) {
-        if (a->dsdr && a->proc.pid > 0) decode_poll(a, now);
         if (a->proc.pid > 0) {
             while ((r = lr_readline(&a->proc.lr, line, sizeof line)) == 1)
                 if (line[0] == '{') app_on_frame(a, line, now);
@@ -428,7 +430,7 @@ derived:
 void app_free(app_t *a)
 {
     sweep_stop(a);
-    decode_stop(a);
+    rx_stop(a);
     rx_lost(a); /* closes the dongle */
     fft_free(&a->sw.fft);
     proc_stop(&a->proc);

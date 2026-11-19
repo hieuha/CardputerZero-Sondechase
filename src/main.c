@@ -31,7 +31,7 @@ static void sim_key_cb(lv_event_t *e)
 {
     uint32_t k = lv_event_get_key(e);
     int m = k == LV_KEY_UP ? K_UP : k == LV_KEY_DOWN ? K_DOWN : k == LV_KEY_LEFT ? K_LEFT : k == LV_KEY_RIGHT ? K_RIGHT
-          : k == LV_KEY_ENTER ? K_ENTER : k == LV_KEY_ESC ? K_ESC : k == LV_KEY_BACKSPACE ? K_BKSP
+          : k == LV_KEY_ENTER ? K_ENTER : k == LV_KEY_ESC ? K_ESC : k == LV_KEY_BACKSPACE ? K_BKSP : k == LV_KEY_NEXT ? K_TAB
           : (k >= 'A' && k <= 'Z') ? (int)k + 32 : (int)k;
     ui_key(m);
 }

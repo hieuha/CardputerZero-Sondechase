@@ -89,6 +89,7 @@ hoặc dongle đang bị chương trình khác giữ, lý do hiện trên dòng 
 | `6` Graph | `Left/Right` đổi trang: Skew-T log-P, độ cao + tốc độ đứng theo thời gian |
 | `7` Radio | Phổ kiểu app SDR, kèm audio của tần số đang thu: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` để giải mã tại đó. `S` tổng quan dải: cùng các phím di chuyển con trỏ, `Enter` để nghe tại đó. Giữ phím mũi tên thì tần số tự chạy (sau 0,4 s, 12 bước mỗi giây). `D` đổi kiểu điều chế (NFM / AM / USB / LSB), `B` đổi độ rộng kênh |
 | `8` Info | Sonde, thu nhận, thiết bị, một cặp tọa độ đích |
+| `Tab` | Sang màn kế tiếp (Track → Map → Graph → Radio → Info → Track) |
 | `F` | Nhập tần số (kHz) |
 | `M` | Tắt / bật tiếng beeper và audio radio |
 | `R` / `X` | Khởi động lại decoder / dừng |
@@ -271,7 +272,7 @@ màu so với màu nền chiếm đa số; cần chỉnh lại nếu style tile 
 
 ## Trạng thái kiểm thử
 
-`tests/test_core.c`: 4269 phép kiểm đạt trên Debian 13 arm64 và, trong CI, trên Ubuntu x86-64 (`-Wall -Wextra`). Một `librtlsdr` giả
+`tests/test_core.c`: 4271 phép kiểm đạt trên Debian 13 arm64 và, trong CI, trên Ubuntu x86-64 (`-Wall -Wextra`). Một `librtlsdr` giả
 (`tests/fake_rtlsdr.c`, phát sóng mang 403,000 MHz ở bất kỳ tần số nào đang đặt) cho phép chạy trọn quét và giải mã
 mà không cần dongle. Phạm vi: geodesy, ISA, dew point, dự đoán
 điểm rơi, parser JSON rs41mod (kể cả một frame thật chưa có fix) và gpsd, heading, ô phổ và giữ đỉnh, ring IQ, FFT,

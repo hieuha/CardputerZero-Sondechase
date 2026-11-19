@@ -88,6 +88,7 @@ If `librtlsdr0` is missing or the dongle is busy, the reason shows on the status
 | `6` Graph | `Left/Right` switch page: Skew-T log-P, altitude + vertical speed over time |
 | `7` Radio | Spectrum, like an SDR app, with the tuned frequency's audio: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` decode here. `S` band overview: the same keys move a cursor, `Enter` listens there. Holding an arrow key keeps tuning (after 0.4 s, 12 steps a second). `D` mode (NFM / AM / USB / LSB), `B` channel width |
 | `8` Info | Sonde, reception, device, one pair of target coordinates |
+| `Tab` | Next screen (Track → Map → Graph → Radio → Info → Track) |
 | `F` | Enter frequency (kHz) |
 | `M` | Mute / unmute beeper and radio audio |
 | `R` / `X` | Restart decoder / stop |
@@ -273,7 +274,7 @@ distance from the dominant background color; it needs tuning if the tile style d
 
 ## Test status
 
-`tests/test_core.c`: 4269 checks pass on Debian 13 arm64 and, in CI, on Ubuntu x86-64 (`-Wall -Wextra`). A fake `librtlsdr`
+`tests/test_core.c`: 4271 checks pass on Debian 13 arm64 and, in CI, on Ubuntu x86-64 (`-Wall -Wextra`). A fake `librtlsdr`
 (`tests/fake_rtlsdr.c`, a 403.000 MHz carrier wherever it is tuned) runs scanning and decoding end to end without a
 dongle. Covered: geodesy, ISA,
 dew point, landing prediction, rs41mod JSON (including a real no-fix frame) and gpsd parsers, heading, spectrum

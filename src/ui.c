@@ -1184,6 +1184,7 @@ void ui_key(int k)
             entry = 0;
         }
     } else if (k >= '4' && k <= '8') page = k - '4'; /* keys 4-8 sit right under the nav bar labels */
+    else if (k == K_TAB) page = (page + 1) % (PG_INFO + 1); /* next screen, Info wraps to Track */
     else if (k == 'q') quit = 1;
     else if (k == 'm') A->prox.muted = !A->prox.muted;
     else if (k == 's') { app_scan(A); page = PG_RADIO; }

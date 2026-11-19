@@ -349,6 +349,8 @@ static void t_keys(void)
     CHECK(keys_read(p[0]) == 0); /* released: no more repeats */
     CHECK(KEV(KEY_S, 1));
     CHECK(keys_read(p[0]) == 's');
+    CHECK(KEV(KEY_TAB, 1));
+    CHECK(keys_read(p[0]) == K_TAB);
     usleep(500000);
     CHECK(keys_read(p[0]) == 0);
 #undef KEV

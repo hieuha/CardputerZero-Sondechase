@@ -3,7 +3,7 @@
 #define UI_H
 #include "sc.h"
 
-enum { K_UP = 256, K_DOWN, K_LEFT, K_RIGHT, K_ENTER, K_ESC, K_BKSP };
+enum { K_UP = 256, K_DOWN, K_LEFT, K_RIGHT, K_ENTER, K_ESC, K_BKSP, K_TAB };
 #define K_REPEAT 0x1000 /* or-ed into an arrow key repeated while it is held */
 
 void ui_init(app_t *a);

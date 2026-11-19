@@ -82,6 +82,7 @@ int proc_start(proc_t *p, const char *cmd);      /* stdin = /dev/null */
 int proc_start_feed(proc_t *p, const char *cmd); /* stdin = a pipe written with proc_feed */
 void proc_feed(proc_t *p, const void *buf, size_t n); /* n a multiple of the stream's frame size */
 void proc_stop(proc_t *p);
+void mkdirs(const char *file_path); /* create every parent directory of file_path */
 void reap_group(pid_t pg); /* collect the remaining members of a killed child process group */
 
 /* Flat-JSON field extraction (rs41mod and gpsd TPV objects are flat). */
@@ -432,7 +433,7 @@ typedef struct {
     sdr_t *dsdr;             /* tuned receiver (listen / decode): dongle at freq_hz - 12 kHz + DDC_RATE/4, else NULL */
     ddc_t ddc;
     radio_t radio;           /* audio of the tuned frequency: mode and channel width */
-    int radio_audio;         /* set by the UI while the spectrum is on screen */
+    int radio_audio;         /* set by the UI while the spectrum is on screen: radio audio and its live spectrum */
     spectrum_t live;         /* spectrum of the decode window (+-DDC_RATE/2 around the dongle) */
     double t_live;
     double t_restart;

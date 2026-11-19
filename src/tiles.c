@@ -13,7 +13,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-static void mkdirs(const char *file_path) /* create every parent directory of file_path */
+void mkdirs(const char *file_path)
 {
     char p[320];
     char *s;

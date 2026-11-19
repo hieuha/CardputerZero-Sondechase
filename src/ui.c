@@ -1029,10 +1029,10 @@ static void p_freq(void)
     nav_bar(PG_RADIO);
 }
 
-static void stripes(int y)
+static void stripes_col(int y, uint32_t col)
 {
     int x, i;
-    fill(0, y, 320, 6, C_YL);
+    fill(0, y, 320, 6, col);
     for (x = -6; x < 320; x += 12)
         for (i = 0; i < 6; i++) ln(x + i, y + 6, x + i + 6, y, C_G, 1);
 }
@@ -1055,7 +1055,7 @@ static void p_burst(void)
     char u[24];
     double fl = A->flight.burst_t - A->flight.t_first;
     top_bar("Alert", C_YL, NULL);
-    stripes(16);
+    stripes_col(16, C_YL);
     txt(10, 26, 300, F_TTL, C_YL, AL_L, "Balloon burst");
     txt(10, 60, 300, F_M, C_TX, AL_L, "At %.0f m after %d h %02d min. The sonde is now falling.",
         A->flight.burst_alt, (int)(fl / 3600), (int)(fl / 60) % 60);
@@ -1067,16 +1067,8 @@ static void p_burst(void)
     }
     txt(10, 134, 300, F_S, C_DIM, AL_L, "Enter  show landing point on map");
     txt(10, 134, 300, F_S, C_DIM, AL_R, "Esc  dismiss");
-    stripes(150);
+    stripes_col(150, C_YL);
     nav_bar(page);
-}
-
-static void stripes_col(int y, uint32_t col)
-{
-    int x, i;
-    fill(0, y, 320, 6, col);
-    for (x = -6; x < 320; x += 12)
-        for (i = 0; i < 6; i++) ln(x + i, y + 6, x + i + 6, y, C_G, 1);
 }
 
 /* Blocking screen: nothing can be received without the USB receiver. It clears by itself

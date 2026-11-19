@@ -5,7 +5,6 @@
 #include <linux/input.h>
 #include <string.h>
 #include <sys/ioctl.h>
-#include <time.h>
 #include <unistd.h>
 
 #define BIT(arr, n) ((arr[(n) / 8] >> ((n) % 8)) & 1)
@@ -60,16 +59,9 @@ static int held;          /* K_* of the arrow held down, 0 = none */
 static unsigned short held_code;
 static double held_next;  /* next repeat */
 
-static double mono_s(void)
-{
-    struct timespec t;
-    clock_gettime(CLOCK_MONOTONIC, &t);
-    return t.tv_sec + t.tv_nsec / 1e9;
-}
-
 double keys_esc_held_s(void)
 {
-    return esc_down > 0 ? mono_s() - esc_down : 0.0;
+    return esc_down > 0 ? sc_now() - esc_down : 0.0;
 }
 
 int keys_read(int fd)
@@ -77,20 +69,20 @@ int keys_read(int fd)
     struct input_event ev;
     if (fd < 0) return 0;
     while (read(fd, &ev, sizeof ev) == (ssize_t)sizeof ev) {
-        if (ev.type == EV_KEY && ev.code == KEY_ESC && ev.value != 2) esc_down = ev.value ? mono_s() : 0;
+        if (ev.type == EV_KEY && ev.code == KEY_ESC && ev.value != 2) esc_down = ev.value ? sc_now() : 0;
         if (ev.type == EV_KEY && ev.value == 0 && ev.code == held_code) held = 0;
         if (ev.type == EV_KEY && ev.value == 1) { /* press only; the kernel's auto-repeat is ignored */
             int k = xlate(ev.code);
             if (k == K_UP || k == K_DOWN || k == K_LEFT || k == K_RIGHT) {
                 held = k;
                 held_code = ev.code;
-                held_next = mono_s() + REPEAT_DELAY_S;
+                held_next = sc_now() + REPEAT_DELAY_S;
             }
             if (k) return k;
         }
     }
-    if (held && mono_s() >= held_next) {
-        held_next = mono_s() + REPEAT_EVERY_S;
+    if (held && sc_now() >= held_next) {
+        held_next = sc_now() + REPEAT_EVERY_S;
         return held | K_REPEAT;
     }
     return 0;

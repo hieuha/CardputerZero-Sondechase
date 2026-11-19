@@ -3,7 +3,6 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <time.h>
 
 static void set_status(app_t *a, const char *s)
@@ -127,7 +126,7 @@ static void rx_poll(app_t *a, double now)
         if (n && a->proc.pid > 0) proc_feed(&a->proc, out, n * 2 * sizeof out[0]);
         if (nw && wfm) audio_radio_push(&a->audio, pcm, radio_process_wfm(&a->radio, wide, nw, pcm));
         else if (n && listen && !wfm) audio_radio_push(&a->audio, pcm, radio_process(&a->radio, out, n, pcm));
-        if (now - a->t_live >= 0.05 && k >= 2 * SWEEP_FFT * SWEEP_FRAMES) {
+        if (a->radio_audio && now - a->t_live >= 0.05 && k >= 2 * SWEEP_FFT * SWEEP_FRAMES) { /* only drawn there */
             int i, b = (int)(DC_ZONE_HZ / ((double)DDC_RATE / SWEEP_FFT)), l = SWEEP_FFT / 2 - b - 1, r = SWEEP_FFT / 2 + b + 1;
             fft_spectrum(&a->sw.fft, iq, SWEEP_FRAMES, db);
             for (i = l + 1; i < r; i++) db[i] = db[l] + (db[r] - db[l]) * (float)(i - l) / (float)(r - l); /* DC zone */
@@ -352,12 +351,9 @@ static void log_autorx(app_t *a, const char *dir)
     }
     if (!a->rlog) {
         char p[320];
-        snprintf(p, sizeof p, "%s/sondechase", dir);
-        mkdir(p, 0755);
-        snprintf(p, sizeof p, "%s/sondechase/log", dir);
-        mkdir(p, 0755);
         strftime(t, sizeof t, "%Y%m%d-%H%M%S", &tm);
-        snprintf(p + strlen(p), sizeof p - strlen(p), "/%s_%s_RS41_%.3f_sonde.log", t, s->id, a->freq_hz / 1e6);
+        snprintf(p, sizeof p, "%s/sondechase/log/%s_%s_RS41_%.3f_sonde.log", dir, t, s->id, a->freq_hz / 1e6);
+        mkdirs(p);
         if (!(a->rlog = fopen(p, "a"))) return;
         snprintf(a->rlog_id, sizeof a->rlog_id, "%s", s->id);
         fprintf(a->rlog, "timestamp,serial,frame,lat,lon,alt,vel_v,vel_h,heading,temp,humidity,pressure,type,"

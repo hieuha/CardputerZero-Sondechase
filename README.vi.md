@@ -13,7 +13,7 @@
 Ứng dụng thu, giải mã radiosonde RS41 và hỗ trợ chase trên M5Stack CardputerZero
 (Raspberry Pi CM0, LCD 320×170, bàn phím 46 phím) với RTL-SDR v4 và GPS.
 
-Phiên bản 0.4.1. Đã chạy trên CardputerZero thật với RTL-SDR Blog V4: phần quét và giải mã đã được kiểm trên máy
+Phiên bản 0.5.0. Đã chạy trên CardputerZero thật với RTL-SDR Blog V4: phần quét và giải mã đã được kiểm trên máy
 với một sonde RS41 đang phát (Y0532351). Chưa thử chase ngoài thực địa có GPS; xem mục "Trạng thái kiểm thử".
 
 | | |
@@ -219,14 +219,14 @@ Bố cục cài đặt và gói `.deb` theo đúng hợp đồng của Cardputer
 ```sh
 # Build ngay trên máy (Debian 13; cần cmake, ninja-build, build-essential). Lần đầu mất khoảng 10 phút.
 cmake --workflow --preset cp0-native-package
-# -> dist/sondechase_0.4.1-rev1_arm64.deb
+# -> dist/sondechase_0.5.0-rev1_arm64.deb
 
 # Hoặc cross build trên PC Debian/Ubuntu (cần crossbuild-essential-arm64, ninja-build, cmake >= 3.25).
 # Lần đầu tự tải BSP sysroot của CardputerZero và LVGL v9.5.0.
 cmake --workflow --preset cp0-cross-package
 
 # Cài trên CardputerZero:
-sudo apt install --no-install-recommends ./sondechase_0.4.1-rev1_arm64.deb
+sudo apt install --no-install-recommends ./sondechase_0.5.0-rev1_arm64.deb
 ```
 
 Nội dung gói:

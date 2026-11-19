@@ -10,333 +10,183 @@
 [![platform](https://img.shields.io/badge/platform-CardputerZero%20arm64-orange)](https://docs.m5stack.com/)
 [![LVGL](https://img.shields.io/badge/LVGL-9.5-6c5ce7)](https://lvgl.io)
 
-Ứng dụng thu, giải mã radiosonde RS41 và hỗ trợ chase trên M5Stack CardputerZero
-(Raspberry Pi CM0, LCD 320×170, bàn phím 46 phím) với RTL-SDR v4 và GPS.
+Ứng dụng thu, giải mã và bám theo bóng thám không RS41 cho M5Stack CardputerZero (Raspberry Pi CM0, màn hình
+320×170, bàn phím 46 phím), dùng một RTL-SDR và GPS (không bắt buộc).
 
-Phiên bản 0.5.0. Đã chạy trên CardputerZero thật với RTL-SDR Blog V4: phần quét và giải mã đã được kiểm trên máy
-với một sonde RS41 đang phát (Y0532351). Chưa thử chase ngoài thực địa có GPS; xem mục "Trạng thái kiểm thử".
+Phiên bản 0.5.0. Đã chạy trên CardputerZero thật với RTL-SDR Blog V4: phần quét và giải mã đã được kiểm với một quả
+RS41 đang bay (Y0532351). Chưa thử đi săn ngoài thực địa với GPS; xem [Hạn chế đã biết](#hạn-chế-đã-biết).
 
 | | |
 |---|---|
-| ![Màn Track: la bàn, khoảng cách và hướng tới sonde](screenshots/mockup/track.png) | ![Màn Map, kiểu simple: chỉ nước và đường](screenshots/mockup/map.png) |
-| **Track**: khoảng cách, hướng, góc ngẩng tới sonde, dự đoán điểm rơi | **Map**: kiểu simple (nước và đường), vệt bay, điểm rơi |
-| ![Màn Radio đang giải mã một RS41](screenshots/mockup/radio-decoding.png) | ![Màn Radio, tổng quan dải với con trỏ tự do](screenshots/mockup/band-overview.png) |
-| **Radio**: phổ đang thu, audio NFM, `Enter` để giải mã | **Radio, Scan** (`S`): tự tìm đỉnh sóng và thử giải mã từng đỉnh; phím mũi tên để chọn tay |
+| ![Màn hình Track: la bàn, khoảng cách và hướng tới sonde](screenshots/mockup/track.png) | ![Màn hình Map, kiểu đơn giản: chỉ có sông hồ và đường](screenshots/mockup/map.png) |
+| **Track**: khoảng cách, hướng và góc ngẩng tới sonde, điểm rơi dự đoán | **Map**: kiểu đơn giản (sông hồ và đường), đường bay, điểm rơi |
+| ![Màn hình Radio đang giải mã một RS41](screenshots/mockup/radio-decoding.png) | ![Màn hình Radio, Scan cả dải](screenshots/mockup/band-overview.png) |
+| **Radio**: phổ quanh tần số đang chỉnh, nghe NFM, `Enter` để giải mã | **Radio, Scan** (`S`): tìm các đỉnh tín hiệu và thử giải mã từng đỉnh; phím mũi tên để chọn tay |
 | ![Biểu đồ Skew-T log-P của chuyến bay](screenshots/mockup/skew-t.png) | ![Độ cao và tốc độ đứng theo thời gian](screenshots/mockup/flight.png) |
 | **Graph**: Skew-T log-P của chuyến thám không | **Graph**: độ cao và tốc độ đứng, có đánh dấu điểm nổ |
-| ![Màn Info: sonde, thu nhận, thiết bị](screenshots/mockup/info.png) | ![Cảnh báo bóng nổ](screenshots/mockup/burst.png) |
-| **Info**: sonde, thu nhận, thiết bị, tọa độ điểm rơi | **Cảnh báo nổ**: tốc độ rơi, thời gian và khoảng cách tới điểm rơi |
+| ![Màn hình Info: sonde, thu sóng, thiết bị](screenshots/mockup/info.png) | ![Cảnh báo bóng nổ](screenshots/mockup/burst.png) |
+| **Info**: sonde, thu sóng, thiết bị, toạ độ điểm rơi | **Cảnh báo bóng nổ**: tốc độ rơi, thời gian và khoảng cách tới điểm rơi |
 
-Đây là ảnh mockup: chính mã UI của app (`tools/render.c`) vẽ một chuyến bay mô phỏng, phổ radio là dữ liệu dựng, bản
-đồ từ tile OpenStreetMap. Phóng 2×.
+Đây là ảnh mô phỏng: chính code giao diện của app (`tools/render.c`) vẽ một chuyến bay giả lập, phổ radio là dữ liệu
+dựng sẵn, bản đồ lấy từ tile OpenStreetMap. Phóng to 2×.
 
-Trên máy thật (chụp framebuffer, phóng 2×):
+Trên máy thật (chụp framebuffer, 2×):
 
 | | |
 |---|---|
-| ![Màn Track: telemetry của sonde khi GPS của nó chưa fix](screenshots/device/track-sonde-no-gps-fix.png) | ![SondeChase trong launcher APPLaunch](screenshots/device/launcher.png) |
-| **Track**: một sonde RS41 thật (Y0532351) đang chờ GPS fix | Mục trong launcher **APPLaunch** |
-| ![Giữ Esc: đếm ngược để thoát](screenshots/device/hold-esc-to-quit.png) | ![Màn Radio đang nghe một đài FM phát thanh](screenshots/device/scan-tuned.png) |
-| **Giữ `Esc`** để thoát | **Radio** với RTL-SDR Blog V4 thật, đang nghe một đài FM phát thanh (lúc không có sonde) |
+| ![Màn hình Track: telemetry của sonde khi GPS của nó chưa fix](screenshots/device/track-sonde-no-gps-fix.png) | ![SondeChase trong launcher APPLaunch](screenshots/device/launcher.png) |
+| **Track**: một quả RS41 thật (Y0532351) đang chờ GPS fix | Biểu tượng trong launcher **APPLaunch** |
+| ![Giữ Esc: đếm ngược để thoát](screenshots/device/hold-esc-to-quit.png) | ![Màn hình Radio đang nghe một đài FM](screenshots/device/scan-tuned.png) |
+| **Giữ `Esc`** để thoát | **Radio** với RTL-SDR Blog V4 thật, đang nghe một đài FM (lúc đó không có sonde trên trời) |
 
-## Kiến trúc
+## Phần cứng
 
-```
-┌────────────┐          ┌────────────────────────────────────────────────────────────┐
-│ RTL-SDR v4 │── USB ──►│ sdr.c  librtlsdr (dlopen) · luồng USB · ring IQ            │
-└────────────┘          └─────────┬─────────────────────────────────────┬────────────┘
-                                  │ quét 2,048 MS/s                     │ nghe / giải mã 1,536 MS/s
-                                  ▼                                     ▼
-                    ┌────────────────────────────┐    ┌──────────────────────────────────┐
-                    │ quét: 4 bước               │    │ dsp.c DDC (chuỗi rtl_fm -F9)     │
-                    │ FFT 1024 điểm, giữ đỉnh    │    │ → cs16 48 kHz + FFT trực tiếp    │
-                    └─────────────┬──────────────┘    └───────────────┬─────────┬────────┘
-                                  │ phổ                               │ stdin   │
-                                  │                                   ▼         └─► radio.c NFM/AM/SSB/WFM audio → pacat
-                                  │                         ┌────────────────────────┐
-                                  │                         │ fsk_demod │ rs41mod    │
-                                  │                         └───────────┬────────────┘
-                                  │                                     │ JSON
-                                  │                                     │
-GPS ── gpsd, TCP 2947 ────────────┼─► vị trí                            │
-Từ kế ── IIO sysfs ───────────────┼─► hướng                             │
-                                  │                                     │
-                    ┌─────────────▼─────────────────────────────────────▼────────────────┐
-                    │ sondechase  ·  C, LVGL 9.5, /dev/fb0 + evdev                       │
-                    │ app.c   IDLE / SCAN / LISTEN / DECODE, dò tần, sonde đã biết       │
-                    │ geo.c   khoảng cách, hướng, ISA, dự đoán điểm rơi                  │
-                    │ track.c lịch sử, bóng nổ, beeper + audio radio → pacat → PipeWire  │
-                    │ ui.c    Track, Map, Graph, Radio, Info + cảnh báo                  │
-                    └────────────────────────────────────────────────────────────────────┘
-```
-
-App tự giữ dongle qua `librtlsdr`, nạp lúc chạy bằng `dlopen` (không phụ thuộc lúc build, nên cross build không cần
-librtlsdr trong sysroot). Một luồng USB đổ IQ vào ring không khóa; mọi phần khác chạy trong vòng lặp chính.
-`fsk_demod` và `rs41mod` của `radiosonde_auto_rx` là hai decoder ngoài duy nhất; bản thân `radiosonde_auto_rx`
-không chạy.
-
-Dongle được mở một lần và giữ suốt phiên; việc quét dải (2,048 MS/s) và bộ thu đang dò (1,536 MS/s, nghe và giải
-mã) lần lượt dùng nó, nên
-đổi việc chỉ cần chạy lại luồng USB ở tốc độ mẫu kia. App không dùng `rtl_power` và `rtl_fm`. Nếu thiếu `librtlsdr0`
-hoặc dongle đang bị chương trình khác giữ, lý do hiện trên dòng trạng thái và app tự thử lại.
-
-## Màn hình và phím
-
-| Phím | Chức năng |
+| Thiết bị | Ghi chú |
 |---|---|
-| `4` Track | La bàn HUD, khoảng cách, bearing, elevation, điểm rơi dự đoán; số hiệu, frame và pin của sonde khi GPS của nó chưa fix. Mỗi frame nhận được kêu một tiếng tít và nháy đèn đỏ. Vòng la bàn chuyển xanh khi mũi tên lệch không quá 15° so với hướng đang đi |
-| `5` Map | Tile, vị trí máy, sonde, vệt bay, điểm rơi. Phím mũi tên để pan (giữ phím thì chạy liên tục; bản đồ thôi bám, hiện `free`), `+` / `-` để zoom, `C` bám lại như trước khi pan, còn lại thì đổi both / device / sonde, `V` đổi bản đồ đơn giản / chi tiết. Khi chưa có vị trí nào: căn giữa theo `map_lat` / `map_lon` |
-| `6` Graph | `Left/Right` đổi trang: Skew-T log-P, độ cao + tốc độ đứng theo thời gian |
-| `7` Radio | Phổ kiểu app SDR, kèm audio của tần số đang thu: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` để giải mã tại đó. `S` Scan: quét dải và thử giải mã từng đỉnh sóng cho tới khi gặp RS41 (xem bên dưới); `Esc` để quay lại. Giữ phím mũi tên thì tần số tự chạy (sau 0,4 s, 12 bước mỗi giây). `D` đổi kiểu điều chế (NFM / AM / USB / LSB / WFM cho đài phát thanh FM), `B` đổi độ rộng kênh, hiện bằng dải tô màu quanh tần số đang thu |
-| `8` Info | Sonde, thu nhận, thiết bị, một cặp tọa độ đích |
-| `Tab` | Sang màn kế tiếp (Track → Map → Graph → Radio → Info → Track) |
-| `F` | Nhập tần số (kHz) |
-| `M` | Tắt / bật tiếng beeper, tiếng tít mỗi frame và audio radio (đèn vẫn nháy) |
-| `R` / `X` | Khởi động lại decoder / dừng |
-| `Q`, hoặc giữ `Esc` 3 s | Thoát (giữ `Esc` sẽ hiện đếm ngược) |
+| M5Stack CardputerZero | Raspberry Pi CM0, Debian 13 arm64, màn hình 320×170, bàn phím 46 phím, âm thanh qua PipeWire |
+| RTL-SDR | Đã thử: RTL-SDR Blog V4 (tuner R828D). Các dongle RTL2832U khác chưa được thử |
+| GPS (không bắt buộc) | Bất kỳ GPS nào gpsd đọc được, ví dụ GPS USB. Cần cho khoảng cách, hướng, điểm rơi và beeper |
+| Cảm biến từ trường (không bắt buộc) | Cảm biến IIO trên bo mạch, dùng làm hướng khi chưa có hướng di chuyển từ GPS |
+| Đèn ACT | Đèn đỏ nháy mỗi khi nhận được frame, ở màn Track và Map |
 
-Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` mở Map, bấm `Esc` ngắn để đóng.
+Không có GPS thì sonde vẫn được giải mã và telemetry vẫn hiện; beeper không kêu.
 
-**Màn Radio**
+## Cài đặt
 
-- **Đang thu** (lúc mở app khi chưa đặt `freq_hz`: nghe ở giữa dải, 403,000 MHz): tần số đang thu nằm giữa màn, màn hình hiện chính mẫu của bộ thu ±384 kHz quanh nó, cập nhật 20 lần/s.
-  Audio của tần số đó phát khi đang ở màn Radio: mặc định NFM 16 kHz (đúng kênh của RS41), có squelch theo mức nhiễu nên
-  kênh trống chỉ còn tiếng rì nhỏ. `D` đổi NFM / AM / USB / LSB / WFM, `B` đổi độ rộng của chế độ đó (NFM 16 / 25 / 6 / 12 kHz,
-  AM 6 / 10 kHz, SSB 2,4 / 3 kHz, WFM 180 kHz); chế độ và độ rộng hiện ở góc trên bên trái phổ, một dải tô màu rộng
-  đúng bằng kênh đánh dấu kênh đang nghe.
-  Decoder luôn nhận đủ dòng 48 kHz, bất kể đang nghe chế độ nào. Dò tần chỉ để nghe; `Enter` bắt đầu giải mã ở tần số đó (chữ vàng trên thanh trên: `listen` → `decode`),
-  dịch đi thì decoder dừng cho tới khi bấm `Enter` lại.
-- **Scan** (`S`, thanh trên hiện `scan`): quét 400–406 MHz liên tục, khoảng 4 lượt mỗi giây, có giữ đỉnh. Các đỉnh
-  cao hơn nền ≥ 10 dB được đánh dấu dưới phổ. Sau hai lượt quét, Scan lấy đỉnh mạnh nhất và chạy decoder ở đó (thanh
-  trên hiện `try` và số giây còn lại): có khung RS41 trong 10 s thì Scan dừng ở đó (kêu hai tiếng, `found RS41 …`);
-  không có thì bỏ qua đỉnh đó 2 phút (dấu mờ đi) và quét tiếp. Bấm phím mũi tên thì thôi tự chọn, con trỏ di chuyển
-  theo tay (cùng bước), `Enter` để chuyển tới đó (vừa nghe vừa giải mã); `Esc` để quay lại tần số trước khi bấm `S`
-  (đang nghe thì nghe tiếp, đang giải mã thì giải mã tiếp), `X` để dừng.
-- Mọi frame giải mã được đều ghi lại tần số kèm số hiệu sonde; phổ gắn số hiệu (`Y0532351`) tại tần số đó.
-
-**Trạng thái thiếu phần cứng**
-
-- Không có SDR trên USB (VID:PID `0bda:2838` hoặc `0bda:2832`): màn hình chặn "No SDR device found".
-  App kiểm tra lại USB mỗi 2 s và tự tiếp tục giải mã khi thiết bị xuất hiện. Tắt kiểm tra: `sdr_check = 0`.
-- Máy chưa có GPS fix: việc giải mã sonde không bị ảnh hưởng. Thanh trên cùng hiện `GPS 0/3` màu đỏ khi GPS đã
-  cắm nhưng chưa fix (số vệ tinh đang dùng / thấy được), nếu không thì `GPS lost` (đã từng có fix) hoặc `No GPS`.
-  Khi có fix thì hiện `3D 9/12`. GPS USB có thể rút ra cắm lại khi app đang chạy (gpsd tự nhận). Màn hình Track thay khoảng cách, bearing, elevation bằng độ cao và tọa độ tuyệt đối của
-  sonde và của điểm rơi dự đoán. Map bám theo sonde. Beeper không kêu.
-- Sonde chưa có GPS fix (còn dưới đất, `sats < 4`): frame của nó mang vị trí vô nghĩa, nên Track và Info chỉ hiện số
-  hiệu, frame, số vệ tinh và pin, và không có gì đưa vào vệt bay, lịch sử hay dự đoán.
-
-## Thuật toán
-
-**Quét phổ** (`app.c`, `io.c`): 4 bước đổi tần ở 2,048 MS/s, giữ 80 % giữa của FFT 1024 điểm (bin 2 kHz). Sau mỗi
-lần đổi tần, app bỏ 15 ms dữ liệu chờ ổn định cộng một bộ đệm USB 16 KiB, rồi lấy trung bình 5 khung FFT. Offset DC
-và rò LO của tuner tạo peak giả trong khoảng ~50 kHz quanh tâm mỗi lần dò, nên mỗi bước bỏ qua vùng đó và cứ mỗi lượt
-thứ hai lại dịch nửa bước để đo bù; màn đang thu nội suy qua vùng này. Mỗi ô
-5 kHz giữ giá trị so với lượt trước đã giảm 3 dB, nên peak của sonde đứng yên giữa các frame và tín hiệu đã tắt mờ
-dần trong vài giây.
-
-**Bộ hạ tần cho decoder** (`dsp.c`, port từ `rtl_fm.c`, rtl-sdr 2.0.2): cùng chuỗi xử lý với
-`rtl_fm -M raw -F9 -s 48000`. Dongle đặt ở `f − 12 kHz + 384 kHz`, phép xoay 90° đưa dải về 0 Hz (tránh gai DC),
-năm tầng half-band nhị thức giảm mẫu ÷32 và một FIR 9 tap bù độ rủ. Dòng cs16 48 kHz được ghi vào stdin của
-`fsk_demod | rs41mod` theo từng khối `PIPE_BUF`; pipe luôn ghi trọn các khối này, nên decoder chạy chậm chỉ mất
-nguyên khối (có đếm) chứ không bao giờ lệch biên mẫu.
-
-**Audio radio** (`radio.c`): cùng dòng 48 kHz, dịch −12 kHz để tần số đang thu về 0 Hz, lọc kênh bằng FIR 63 tap (hệ
-số phức với USB / LSB để chỉ giữ một biên), giải điều chế, rồi lấy trung bình 3 mẫu xuống 16 kHz. NFM: bộ phân biệt
-theo hiệu pha; squelch so trung bình bình phương đầu ra trong 20 ms với ngưỡng riêng cho từng độ rộng, nằm giữa
-~0,05 rad² (sóng mang với độ di tần như RS41) và mức nhiễu qua bộ lọc đó (0,13 tới 1,39). AM: đường bao quanh mức sóng
-mang, mức này cũng làm hệ số khuếch đại. SSB: phần thực, có AGC. FM phát
-thanh (độ di tần ±75 kHz) không vừa dòng 48 kHz: WFM lấy dòng 192 kHz của bộ hạ tần (sau lần chia đôi thứ ba), dịch
-−12 kHz, giải điều chế bằng cùng bộ phân biệt pha, rồi de-emphasis 50 µs, lọc thông thấp 10 kHz và lấy trung bình 12
-mẫu xuống 16 kHz. Audio
-được trộn dưới tiếng beeper trong cùng một luồng `pacat`.
-
-**Dự đoán điểm rơi** (`geo.c`, `predict_landing`)
-
-- Tốc độ rơi dưới dù ở vận tốc cuối: `v(h) = v_sl · sqrt(ρ0 / ρ(h))`, `ρ(h)` theo ISA.
-- Khi sonde đang rơi, `v_sl` hiệu chỉnh từ tốc độ đứng đo được: `v_sl = |vv| / sqrt(ρ0 / ρ(h))`.
-- Khi sonde đang lên: giả định độ cao nổ `burst_alt` và `descent_v0` trong file cấu hình.
-- Trôi ngang tích phân theo lớp 100 m: `Δx = w(h) · Δh / v(h)`. `w(h)` lấy từ profile gió do chính
-  sonde đo ở pha bay lên (bin 250 m). Lớp chưa quan sát dùng vận tốc ngang hiện tại.
-
-**Phát hiện bóng nổ** (`track.c`, `flight_update`): tốc độ đứng < −3 m/s trong 3 frame liên tiếp,
-độ cao > 1000 m, sau khi đã quan sát pha bay lên. Trường hợp bật máy khi sonde đã rơi: chuyển pha,
-không phát cảnh báo.
-
-**Beeper theo khoảng cách** (`track.c`): khoảng cách ngang từ máy tới sonde (hoặc tới last fix khi
-mất tín hiệu).
-
-- Bật khi d ≤ 10 km, tắt khi d > 10,5 km.
-- Chu kỳ `T = 0,12 + 1,88 · (d / 10 km)^0,6` giây; mỗi tiếng 60 ms.
-- Âm lượng `V = 1 − 0,35 · log10(d / 100 m)`, giới hạn 0,3–1,0.
-
-**Tín hiệu mỗi frame** (`track.c`): khi đang ở màn Track hoặc Map, mỗi frame giải mã được phát một tiếng tít
-1500 Hz dài 30 ms và nháy đèn đỏ ACT 80 ms (`led_path`, mặc định `/sys/class/leds/ACT/brightness`, nhóm
-`input` ghi được). Đèn được đảo khỏi trạng thái nghỉ rồi trả lại; ghi 0 cũng tắt trigger hoạt động của
-kernel cho tới lần khởi động lại.
-- 2200 Hz khi telemetry đang cập nhật, 1100 Hz khi mất tín hiệu.
-- Phát qua PipeWire bằng `pacat` (`audio_cmd`): PipeWire giữ codec ES8389, nên `aplay` trực tiếp không mở được.
-
-**Skew-T log-P** (`ui.c`): `y ∝ ln(1050 / p)` từ 1050 đến 100 hPa, isotherm nghiêng 45°,
-dry adiabat `T = θ · (p/1000)^0,2857`. Dew point theo Magnus (a = 17,62; b = 243,12 °C).
-Với RS41-SG (không có cảm biến áp suất), P tính từ độ cao theo ISA, hiển thị với tiền tố `~`.
-
-## Bản đồ
-
-Màn hình Map tìm mỗi ô tile theo thứ tự:
-
-1. Gói nạp sẵn trong `tile_dir` (PNG đã đổi sang màu của UI, tạo bằng `tools/prep_tiles.py`).
-2. Cache tải về trong `~/.cache/sondechase/tiles` (PNG nguyên bản của server; đổi màu khi nạp vào RAM).
-3. Nếu chưa có và `tile_online = 1`: tải ô đó qua mạng bằng `curl`, tối đa 2 kết nối đồng thời. Ô tải lỗi
-   không được thử lại trong 30 s.
-
-- Chỉ các ô đang hiển thị mới được tải; app không tải trước theo vùng. Đây là kiểu sử dụng mà
-  `tile.openstreetmap.org` cho phép; tải hàng loạt để dùng offline thì bị cấm.
-- Mỗi request gửi User-Agent định danh ứng dụng (`tile_user_agent`). Màn hình Map hiện dòng
-  "© OpenStreetMap" khi có tile.
-- Cache giới hạn bởi `tile_cache_mb` (mặc định 200 MB); khi vượt, các ô cũ nhất bị xóa.
-- Ô chưa có hiện lưới trống, kèm trạng thái: `Loading map`, `No network: stored map only`,
-  hoặc `No map stored for this area` (khi `tile_online = 0`). Khi có mạng nhưng tên miền của server tile không
-  dùng được, màn Map nói rõ và ghi tên miền:
-  - `Map server blocked by DNS`: tên miền chỉ trả về `127.0.0.1` / `::1` / `0.0.0.0`, đây là cách các bộ lọc DNS
-    (router, Pi-hole, AdGuard, NextDNS, cài đặt DNS của Tailscale) chặn một tên miền. Hãy cho phép
-    `tile.openstreetmap.org` ở đó.
-  - `Map server name not found (DNS)`: tên miền hoàn toàn không phân giải được.
-- Đổi màu (`tile_recolor` trong `src/tiles.c`), hai kiểu từ cùng tile OpenStreetMap (`V` trên màn Map để đổi,
-  `map_simple` chọn kiểu lúc mở app):
-  - **simple** (mặc định): chỉ còn nước và đường. Đường chính (kiểu OSM tô đỏ nhạt, cam, vàng) thành nét sáng, đường
-    nhỏ (trắng) thành nét mờ; nhãn, nhà và vùng đất về màu nền. Các kiểu bản đồ đơn giản (CARTO, Stamen,
-    Thunderforest) giờ đều cần API key, nên app tự rút gọn tile chuẩn.
-  - **detailed**: màu xuất hiện nhiều nhất của ô được coi là nền đất; độ sáng đầu ra tỉ lệ với khoảng cách màu so
-    với nền, nên đường, nhãn và ranh giới thành nét sáng trên nền tối; pixel thiên xanh dương thành màu nước.
-- `tools/prep_tiles.py` vẫn dùng được để nạp sẵn một vùng từ file MBTiles hoặc thư mục `z/x/y.png` có quyền
-  dùng offline. Công cụ này không tải tile.
-
-## Build và đóng gói
-
-Bố cục cài đặt và gói `.deb` theo đúng hợp đồng của CardputerZero Template (`cmake/cm0-package.cmake`,
-`cmake/toolchains/cp0-aarch64-linux-gnu.cmake`, tên preset giống Template):
+Tải `sondechase_0.5.0-rev1_arm64.deb` từ [bản release mới nhất](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest),
+chép vào máy rồi cài:
 
 ```sh
-# Build ngay trên máy (Debian 13; cần cmake, ninja-build, build-essential). Lần đầu mất khoảng 10 phút.
-cmake --workflow --preset cp0-native-package
-# -> dist/sondechase_0.5.0-rev1_arm64.deb
-
-# Hoặc cross build trên PC Debian/Ubuntu (cần crossbuild-essential-arm64, ninja-build, cmake >= 3.25).
-# Lần đầu tự tải BSP sysroot của CardputerZero và LVGL v9.5.0.
-cmake --workflow --preset cp0-cross-package
-
-# Cài trên CardputerZero:
 sudo apt install --no-install-recommends ./sondechase_0.5.0-rev1_arm64.deb
 ```
 
-Nội dung gói:
+Mở **SondeChase** từ APPLaunch. Gói cài đã kèm sẵn bộ giải mã RS41 (`fsk_demod` và `rs41mod`, lấy từ
+`radiosonde_auto_rx`). Gói cần `librtlsdr0` và `curl`; nên cài thêm `gpsd` và `pulseaudio-utils`.
 
-| Đường dẫn | Nội dung |
+Muốn tự build gói (trên máy hoặc cross-compile), xem [hướng dẫn deploy](docs/deployment-guide.md).
+
+## Phím
+
+| Phím | Chức năng |
 |---|---|
-| `/usr/bin/sondechase` | binary (LVGL, bộ giải mã PNG và TTF liên kết tĩnh) |
-| `/etc/sondechase.conf` | cấu hình (conffile) |
-| `/usr/share/sondechase/fonts/` | Rajdhani SemiBold, Orbitron Bold |
-| `/usr/share/sondechase/tiles/` | thư mục cho gói bản đồ nạp sẵn (trống) |
-| `/usr/share/APPLaunch/applications/sondechase.desktop` | mục trong launcher |
-| `/usr/share/APPLaunch/share/images/sondechase.png` | icon 100×100 |
-| `/usr/lib/sondechase/fsk_demod`, `/usr/lib/sondechase/rs41mod` | decoder, build từ mã nguồn `radiosonde_auto_rx` v1.9.0 trong lúc build |
+| `4` Track | La bàn HUD, khoảng cách, hướng, góc ngẩng, điểm rơi dự đoán. Khi sonde chưa có GPS fix: số hiệu, frame và pin. Mỗi frame kêu tít và nháy đèn đỏ. Vòng la bàn chuyển xanh khi mũi tên lệch không quá 15° so với hướng đang đi |
+| `5` Map | Tile bản đồ, vị trí máy, sonde, đường bay, điểm rơi. Phím mũi tên để kéo bản đồ (giữ để kéo liên tục; bản đồ thôi bám theo, hiện `free`). `+` (`Sym` + `Z`, hoặc `Z`) / `-` để zoom. `C` chuyển vòng giữa cả hai / theo máy / theo sonde, hoặc bám theo lại sau khi kéo. `V` đổi kiểu đơn giản / chi tiết. Khi chưa có vị trí nào: lấy tâm ở `map_lat` / `map_lon` |
+| `6` Graph | `Left` / `Right` để đổi trang: Skew-T log-P, độ cao và tốc độ đứng theo thời gian |
+| `7` Radio | Phổ kèm âm thanh của tần số đang chỉnh. `Left` / `Right` ±10 kHz, `Up` / `Down` ±100 kHz (giữ để chỉnh liên tục). `Enter` để giải mã tại đó. `S` để Scan, `Esc` để quay lại. `D` đổi chế độ (NFM / AM / USB / LSB / WFM), `B` đổi độ rộng kênh |
+| `8` Info | Sonde, thu sóng, thiết bị, một cặp toạ độ đích |
+| `Tab` | Sang màn tiếp theo (Track → Map → Graph → Radio → Info → Track) |
+| `F` | Nhập tần số theo kHz; `Enter` để chỉnh tới tần số đó (trong dải của tuner) và giải mã |
+| `S` | Scan dải 400–406 MHz và thử giải mã các đỉnh tín hiệu (xem [Màn hình Radio](#màn-hình-radio)) |
+| `X` | Dừng bộ thu |
+| `R` | Khởi động lại bộ giải mã ở tần số hiện tại |
+| `M` | Tắt / bật tiếng beeper, tiếng tít mỗi frame và âm thanh radio (đèn vẫn nháy) |
+| `Q`, hoặc giữ `Esc` 3 giây | Thoát (khi giữ `Esc` sẽ hiện đếm ngược) |
 
-`Depends: libc6, curl, librtlsdr0 (>= 2.0.2)` (librtlsdr0 của Debian 13 chạy được RTL-SDR Blog V4; app nạp nó lúc
-chạy chứ không link). Lúc build, CMake tải bản phát hành `radiosonde_auto_rx` v1.9.0 (đã ghim SHA-256) và biên dịch
-`fsk_demod`, `rs41mod` với đúng cờ trong Makefile của nó; giấy phép của chúng nằm ở `/usr/share/doc/sondechase/`.
-Tùy chọn lúc chạy: `gpsd` cho vị trí của máy, `pacat` (`pulseaudio-utils`) cho beeper và audio radio (cả hai nằm trong
-`Recommends`).
+Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` để mở Map, bấm nhanh `Esc` để tắt cảnh báo.
 
-Gói không cài systemd service: app được mở từ APPLaunch và chạy với user của launcher. User đó cần quyền
-đọc/ghi `/dev/fb0`, `/dev/input/event*`, RTL-SDR và PipeWire (các group `video`, `input`, `plugdev`, `audio`).
-App là child subreaper: các pipeline decoder, âm thanh và tải tile mà app dừng đều được chính app thu dọn, không còn
-để lại zombie dưới launcher.
+## Các màn hình
 
-`app-builder.json` là manifest cho store (trang developer hoặc `czdev publish`); `tools/validate_app_builder.py`
-kiểm tra nó theo luật của store (trường bắt buộc, version khớp `CMakeLists.txt`, share code, danh mục, quyền, icon
-và ảnh 320×170) và chạy trong CI.
+| Màn hình | Nội dung |
+|---|---|
+| Track | Vòng la bàn, mũi tên chỉ tới sonde, khoảng cách, hướng, góc ngẩng, điểm rơi; thanh trên cùng có tần số, trạng thái và GPS |
+| Map | Tile OpenStreetMap (tải khi cần), vị trí máy, sonde, đường bay, điểm rơi |
+| Graph | Skew-T log-P (trang 1) và độ cao / tốc độ đứng, có đánh dấu điểm nổ (trang 2) |
+| Radio | Phổ trực tiếp quanh tần số đang chỉnh, vùng tô màu thể hiện độ rộng kênh, trạng thái giải mã |
+| Info | ID sonde, số frame, nhiệt độ, độ ẩm, áp suất, pin, chi tiết GPS và thu sóng |
 
-### Chế độ demo và ảnh render
+### Màn hình Radio
 
-- `demo = 1` trong file cấu hình: app phát một chuyến bay giả lập (bay lên 5 m/s tới 31,2 km, nổ, rơi dưới dù,
-  chạm đất, mất tín hiệu sau 90 s) qua đúng đường xử lý của frame thật. Không cần SDR, GPS hay decoder.
-  `demo_speed` là số giây mô phỏng trên một giây thực.
-- `tools/render.c` chạy mã UI thật trên một display trong bộ nhớ và ghi ảnh 320×170 của từng màn hình:
+- Khi mở app mà chưa đặt `freq_hz`, SondeChase nghe ở giữa dải (403 MHz) và phát âm thanh. Chỉnh tần số chỉ để nghe.
+  `Enter` sẽ bật bộ giải mã ở tần số đó; thanh trên cùng hiện `listen` hoặc `decode`.
+- **Scan** (`S`): quét liên tục dải 400–406 MHz. Sau hai lượt quét, app thử giải mã đỉnh có tín hiệu lớn nhất trong
+  10 giây. Nhận được frame RS41 thì dừng quét tại đó (`found RS41 …`). Không nhận được thì bỏ qua đỉnh đó trong 2 phút
+  và quét tiếp. Phím mũi tên để tự chọn; `Enter` để chỉnh tới vị trí con trỏ; `Esc` để quay lại tần số trước đó.
+- Frame giải mã được sẽ ghi lại tần số của nó; trên phổ, tần số đó được gắn số hiệu sonde.
 
-```sh
-cmake -S . -B build-render -DSC_RENDER=ON && cmake --build build-render -j
-./build-render/sc_render <thư mục ra> assets/fonts <thư mục tile>     # ghi các file .ppm
+### Khi không có bộ thu hoặc GPS
+
+- **Chưa cắm SDR vào USB**: hiện màn hình "No SDR device found". App kiểm tra USB mỗi 2 giây và chạy tiếp khi thấy
+  dongle. Tắt bước kiểm tra này bằng `sdr_check = 0`.
+- **Máy chưa có GPS fix**: vẫn giải mã bình thường. Thanh trên cùng hiện `GPS 0/3` màu đỏ khi GPS đã cắm nhưng chưa
+  fix (số vệ tinh đang dùng / thấy được), `GPS lost` khi đã từng có fix, hoặc `No GPS`. Khi có fix thì hiện `3D 9/12`.
+- **Sonde chưa có GPS fix** (còn dưới đất): không dùng vị trí của nó; Track và Info hiện số hiệu, frame, số vệ tinh và
+  pin.
+
+## Cấu hình nhanh
+
+File cấu hình là `/etc/sondechase.conf`. Mỗi dòng có dạng `key = value`; `#` bắt đầu một ghi chú, ở đầu dòng hoặc sau
+một khoảng trắng. Mọi key đều không bắt buộc.
+
+```ini
+freq_hz = 403000000      # giải mã ngay khi mở app (bỏ trống: mở màn Radio)
+gain = 38.6              # gain của tuner, dB (bỏ trống: AGC của tuner)
+sdr_check = 1            # bắt buộc có RTL-SDR trên USB
+gpsd_port = 2947         # gpsd (0 để tắt GPS)
+burst_alt = 30000        # độ cao nổ giả định khi bóng đang lên, m
+tile_online = 1          # tải các tile bản đồ đang hiện trên màn hình
+tile_cache_mb = 200      # giới hạn dung lượng cache tile
+map_simple = 1           # kiểu bản đồ đơn giản (V trên màn Map để đổi)
+demo = 0                 # 1 = chuyến bay giả lập, không cần phần cứng
 ```
 
-Các ảnh nằm trực tiếp trong `screenshots/` (dùng cho `app-builder.json`) và ảnh mockup 2× trong `screenshots/mockup/`
-sinh từ công cụ này với dữ liệu demo. Tile bản đồ lấy từ thư mục cache truyền ở tham số thứ tư;
-`SC_RENDER_MISSING=<file>` liệt kê các tile mà ảnh cần thay vì vẽ lưới trống.
-`screenshots/device/` chứa các ảnh chụp framebuffer từ máy thật ở đầu trang.
+Danh sách đầy đủ các key, giá trị mặc định, đóng gói và gói tile bản đồ: [hướng dẫn deploy](docs/deployment-guide.md#configuration).
 
-Build trên PC để thao tác với UI: `cmake -S . -B build-sim -DSC_SIM=ON` (cần `libsdl2-dev`; chưa thử).
-Chỉ build phần lõi và chạy test: `cmake -S . -B build -DSC_BUILD_UI=OFF && cmake --build build && ctest --test-dir build`.
+Chế độ demo (`demo = 1`) phát một chuyến bay giả lập qua đúng luồng code thật, tiện để xem mọi màn hình khi không có
+dongle.
 
-### Nguồn tile
+## Log
 
-`prep_tiles.py` không tải tile. Đầu vào là file MBTiles raster hoặc thư mục `z/x/y.png` đã có sẵn:
-tile tự render từ dữ liệu OSM, hoặc gói tile của nhà cung cấp cho phép dùng offline.
-Server `tile.openstreetmap.org` không cho phép tải hàng loạt để dùng offline.
-Bộ lọc `--recolor dark` chuyển tile nền sáng sang bảng màu tối của UI bằng heuristic theo khoảng cách
-màu so với màu nền chiếm đa số; cần chỉnh lại nếu style tile khác nhiều so với style OSM chuẩn.
+- `~/sondechase.csv`: mỗi frame hợp lệ một dòng, ghi nối tiếp qua các lần mở app.
+- `~/sondechase/log/YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log`: mỗi sonde một file theo định dạng log của
+  radiosonde_auto_rx. Giờ ghi theo UTC, lấy từ GPS của chính sonde, nên vẫn đúng ngoài thực địa khi không có mạng. SNR
+  và lệch tần ghi là `-1`.
 
-## Trạng thái kiểm thử
+Thư mục: `log_dir` (mặc định `$HOME`).
 
-`tests/test_core.c`: 4308 phép kiểm đạt trên Debian 13 arm64 và, trong CI, trên Ubuntu x86-64 (`-Wall -Wextra`). Một `librtlsdr` giả
-(`tests/fake_rtlsdr.c`, phát sóng mang 403,000 MHz ở bất kỳ tần số nào đang đặt) cho phép chạy trọn quét và giải mã
-mà không cần dongle. Phạm vi: geodesy, ISA, dew point, dự đoán
-điểm rơi, parser JSON rs41mod (kể cả một frame thật chưa có fix) và gpsd, heading, ô phổ và giữ đỉnh, ring IQ, FFT,
-bộ hạ tần (sonde rơi đúng +12 kHz, tần số ảnh yếu hơn ≥ 20 dB, chia mẩu cho kết quả giống từng bit), audio radio (NFM / AM / USB / LSB / WFM khôi phục đúng tone thử, NFM squelch nhiễu), chuyển nghe → giải mã, lặp phím khi giữ, kiểu bản đồ, lý do tải tile lỗi (DNS chặn), ghi stdin, thu
-dọn process group, lịch sử bay, tile, vòng đời pipeline con.
+## Tài liệu
 
-Trên CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 ở 403,000 MHz):
+Tài liệu kỹ thuật viết bằng tiếng Anh:
 
-| Hạng mục | Kết quả |
+| Tài liệu | Nội dung |
 |---|---|
-| Giải mã, 60 s | 55 frame (frame đầu sau 4,2 s, sau đó 1/s); pipeline `rtl_fm`: 58 |
-| CPU khi giải mã | 15,6 % một nhân cho cả app (riêng `rtl_fm` trước đây: 61,5 %) |
-| Quét | một lượt 400–406 MHz mỗi ~0,25 s, CPU 12,8 %, sonde +55 dB |
-| Mẫu bị bỏ | 0 ở ring IQ, 0 ở pipe tới decoder |
-| Đổi tần (R828D, I2C) | 32,7 ms; chuyển từ quét sang giải mã 621 ms khi còn mở lại dongle (nay dongle giữ mở; chưa đo lại trên phần cứng) |
-| Đang nghe (phổ + audio FM, chưa giải mã) | 22,6 % một nhân; nghe được đài FM 100,0 MHz, kênh 403 MHz trống bị squelch xuống tiếng rì nhỏ |
-| Màn hình, bàn phím, âm thanh PipeWire, node từ kế, tải tile OSM | chạy được |
+| [Project overview and PDR](docs/project-overview-pdr.md) | Phạm vi, yêu cầu, tiêu chí nghiệm thu |
+| [System architecture](docs/system-architecture.md) | Module, luồng dữ liệu, thiết bị ngoại vi, thuật toán (DSP, giải điều chế, dự đoán điểm rơi, phát hiện nổ, beeper), bản đồ và tile |
+| [Code standards](docs/code-standards.md) | Quy ước C, đặt tên, test, commit |
+| [Codebase summary](docs/codebase-summary.md) | Các file và vai trò của từng file |
+| [Deployment guide](docs/deployment-guide.md) | Build, test, cài đặt, danh sách cấu hình, các bước release, kiểm tra trên máy |
+| [Project roadmap](docs/project-roadmap.md) | Các phiên bản đã phát hành, những phần còn thiếu |
 
-Chưa kiểm: GPS (chưa có module), beeper khi chase thực địa, phát hiện bóng nổ và dự đoán điểm rơi trên chuyến bay
-thật, cross build `cp0-cross`, tốc độ vẽ khi có nhiều tile bản đồ. Phần mới trong 0.4.0, mới chỉ xem qua ảnh render
-hoặc bộ thu giả: audio AM / SSB với tín hiệu thật, bản đồ kiểu simple và pan bản đồ trên máy.
+## Tình trạng test
 
-## Giới hạn đã biết
+`tests/test_core.c`: 4315 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
+native trên Debian 13. Một `librtlsdr` giả và một bộ giải mã giả chạy trọn quy trình quét và giải mã mà không cần
+dongle. Chi tiết và số đo trên máy thật: [hướng dẫn deploy](docs/deployment-guide.md#tests).
 
-- Chỉ hỗ trợ RS41. Loại sonde khác cần decoder và tham số `fsk_demod` riêng.
-- Cạnh một sonde rất mạnh, tổng quan dải có thể hiện vài gai yếu hơn (đã thấy 402,88 và 404,6 MHz khi sonde cách anten
-  vài cm); dò tới đó thì không có gì để giải mã.
-- La bàn chưa hiệu chuẩn: từ kế trên board này có offset từ cứng lớn; phải tự đặt `mag_off_x/y`, `mag_rot_deg`,
-  `mag_flip_y`, và chưa có bù nghiêng.
-- Skew-T cắt ở 100 hPa; chưa vẽ moist adiabat và mixing ratio.
-- Dự đoán điểm rơi khi sonde còn đang lên phụ thuộc `burst_alt` giả định và không có gió phía trên
-  độ cao hiện tại.
-- Lịch sử bay giữ 2048 mẫu (5 s/mẫu, tự giảm độ phân giải khi đầy); không khôi phục sau khi khởi động lại app.
-  Log CSV đầy đủ ghi tại `~/sondechase.csv`,
-  và mỗi sonde có thêm một file theo định dạng sonde log của radiosonde_auto_rx trong `~/sondechase/log/`
-  (`YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log`, giờ UTC lấy từ GPS của chính sonde như auto_rx, nên vẫn
-  đúng ngoài thực địa khi không có mạng; SNR và lệch tần ghi -1).
+## Hạn chế đã biết
+
+- Chỉ hỗ trợ RS41. Các loại sonde khác cần bộ giải mã riêng.
+- Ở gần một sonde phát rất mạnh, màn tổng quan có thể hiện thêm vài đỉnh phụ yếu hơn; chỉnh tới đó sẽ không có gì để
+  giải mã.
+- La bàn chưa được hiệu chỉnh: phải tự đặt `mag_off_x` / `mag_off_y`, `mag_rot_deg` và `mag_flip_y`, và chưa bù độ
+  nghiêng.
+- Skew-T dừng ở 100 hPa; chưa vẽ đường đoạn nhiệt ẩm và đường tỉ lệ hỗn hợp.
+- Dự đoán điểm rơi khi bóng đang lên phụ thuộc vào `burst_alt` giả định.
+- Lịch sử chuyến bay không được khôi phục sau khi mở lại app.
+- Chưa kiểm ngoài thực địa: GPS, beeper, phát hiện nổ và điểm rơi trên một chuyến bay thật. Danh sách đầy đủ trong
+  [roadmap](docs/project-roadmap.md#known-gaps).
 
 ## Giấy phép
 
-SondeChase phát hành theo GNU General Public License phiên bản 3 hoặc (tùy bạn chọn) bất kỳ phiên bản nào mới hơn (`GPL-3.0-or-later`), xem [`LICENSE`](LICENSE).
-Giấy phép này cho phép đưa kèm các decoder upstream vào repo hoặc gói cài đặt.
+SondeChase phát hành theo GNU General Public License phiên bản 3, hoặc (tuỳ bạn chọn) bất kỳ phiên bản nào mới hơn
+(`GPL-3.0-or-later`), xem [`LICENSE`](LICENSE).
 
-Thành phần bên thứ ba:
+Thành phần của bên thứ ba:
 
 | Thành phần | Giấy phép |
 |---|---|
 | `rs41mod` (zilog80, [rs1729/RS](https://github.com/rs1729/RS), qua [radiosonde_auto_rx](https://github.com/projecthorus/radiosonde_auto_rx)) | GPL-3.0 |
 | `fsk_demod` ([codec2](https://github.com/drowe67/codec2), David Rowe) | LGPL-2.1 |
-| Bộ hạ tần trong `src/dsp.c`, port từ `rtl_fm.c` ([rtl-sdr](https://gitea.osmocom.org/sdr/rtl-sdr)) | GPL-2.0-or-later |
+| Front end của bộ giải mã trong `src/dsp.c`, port từ `rtl_fm.c` ([rtl-sdr](https://gitea.osmocom.org/sdr/rtl-sdr)) | GPL-2.0-or-later |
 | `librtlsdr` (nạp lúc chạy) | GPL-2.0-or-later |
 | [LVGL](https://github.com/lvgl/lvgl) v9.5 | MIT |
 | Các file trong `cmake/` lấy từ CardputerZero Template | MIT, xem `cmake/LICENSE-CardputerZero-Template.txt` |

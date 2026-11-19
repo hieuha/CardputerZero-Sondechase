@@ -1152,7 +1152,7 @@ static void map_pan(int k)
     py = py * TILE_PX + (k == K_DOWN ? 40 : (k == K_UP ? -40 : 0));
     if (py < 0) py = 0;
     if (py > n) py = n;
-    pan_lon = fmod(px / n * 360.0 + 540.0, 360.0) - 180.0; /* inverse Web Mercator */
+    pan_lon = fmod(px / n * 360.0 + 360.0, 360.0) - 180.0; /* inverse Web Mercator, wrapping at 180 degrees */
     pan_lat = atan(sinh(M_PI * (1.0 - 2.0 * py / n))) * 180.0 / M_PI;
 }
 

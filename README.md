@@ -67,7 +67,7 @@ If `librtlsdr0` is missing or the dongle is busy, the reason shows on the status
 | `4` Track | HUD compass, distance, bearing, elevation, predicted landing point; sonde serial, frame and battery while its GPS has no fix |
 | `5` Map | Tiles, device position, sonde, flight track, landing point. `Up/Down` zoom, `C` cycles follow mode (both / device / sonde). With no position yet: centred on `map_lat` / `map_lon` |
 | `6` Graph | `Left/Right` switch page: Skew-T log-P, altitude + vertical speed over time |
-| `7` Scan | Spectrum, like an SDR app, with the tuned frequency's audio: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` decode here. `S` band overview: the same keys move a cursor, `Enter` listens there |
+| `7` Scan | Spectrum, like an SDR app, with the tuned frequency's audio: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` decode here. `S` band overview: the same keys move a cursor, `Enter` listens there. Holding an arrow key keeps tuning (after 0.4 s, 12 steps a second) |
 | `8` Info | Sonde, reception, device, one pair of target coordinates |
 | `F` | Enter frequency (kHz) |
 | `M` | Mute / unmute beeper and radio audio |
@@ -236,12 +236,12 @@ distance from the dominant background color; it needs tuning if the tile style d
 
 ## Test status
 
-`tests/test_core.c`: 4227 checks pass on Debian 13 arm64 (`-Wall -Wextra -Werror`). A fake `librtlsdr`
+`tests/test_core.c`: 4247 checks pass on Debian 13 arm64 (`-Wall -Wextra -Werror`). A fake `librtlsdr`
 (`tests/fake_rtlsdr.c`, a 403.000 MHz carrier wherever it is tuned) runs scanning and decoding end to end without a
 dongle. Covered: geodesy, ISA,
 dew point, landing prediction, rs41mod JSON (including a real no-fix frame) and gpsd parsers, heading, spectrum
 cells and peak hold, IQ ring, FFT, decoder front end (sonde lands at +12 kHz, images ≥ 20 dB down, chunking
-bit-exact), FM audio (tone recovered, empty channel squelched), listen → decode switching, stdin feeding, process-group reaping, flight history, tiles, child pipeline lifecycle.
+bit-exact), FM audio (tone recovered, empty channel squelched), listen → decode switching, held-key repeat, stdin feeding, process-group reaping, flight history, tiles, child pipeline lifecycle.
 
 On a CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 at 403.000 MHz):
 

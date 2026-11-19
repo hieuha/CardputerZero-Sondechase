@@ -768,10 +768,24 @@ static void p_flight(void)
 }
 
 /* ---------------- 7 Scan ---------------- */
+/* Arrow key glyph centred on (x, y), the fonts have none: dir 0 left, 1 right, 2 up, 3 down. */
+static void key_arrow(int x, int y, int dir, uint32_t col)
+{
+    static const int dx[] = {-1, 1, 0, 0}, dy[] = {0, 0, -1, 1};
+    double tx = x + 4 * dx[dir], ty = y + 4 * dy[dir]; /* tip */
+    ln(x - 4 * dx[dir], y - 4 * dy[dir], tx, ty, col, 1);
+    ln(tx, ty, tx - 3 * dx[dir] - 3 * dy[dir], ty - 3 * dy[dir] + 3 * dx[dir], col, 1);
+    ln(tx, ty, tx - 3 * dx[dir] + 3 * dy[dir], ty - 3 * dy[dir] - 3 * dx[dir], col, 1);
+}
+
 static void scan_hints(const char *third, const char *fourth)
 {
-    txt(6, 140, 80, F_S, C_DIM, AL_L, "L/R  10 kHz");
-    txt(88, 140, 90, F_S, C_DIM, AL_L, "U/D  100 kHz");
+    key_arrow(10, 147, 0, C_DIM);
+    key_arrow(23, 147, 1, C_DIM);
+    txt(32, 140, 60, F_S, C_DIM, AL_L, "10 kHz");
+    key_arrow(92, 147, 2, C_DIM);
+    key_arrow(103, 147, 3, C_DIM);
+    txt(112, 140, 60, F_S, C_DIM, AL_L, "100 kHz");
     txt(176, 140, 80, F_S, C_DIM, AL_L, "%s", third);
     txt(254, 140, 60, F_S, C_DIM, AL_R, "%s", fourth);
 }
@@ -1100,6 +1114,10 @@ static long tune_step(int k)
 
 void ui_key(int k)
 {
+    if (k & K_REPEAT) { /* a held arrow keeps tuning on the spectrum; elsewhere it acts once */
+        if (page != PG_SCAN || entry || A->burst_alert) return;
+        k &= ~K_REPEAT;
+    }
     if (!A->sdr_ok) { /* blocking error screen */
         if (k == 'q') quit = 1;
     } else if (A->burst_alert) { /* alert overlay takes Enter / Esc only */

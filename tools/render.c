@@ -102,7 +102,8 @@ int main(int argc, char **argv)
     shot("06_freq");
     ui_key(K_ESC);
     ui_key(K_RIGHT);
-    ui_key(K_ENTER); /* tune 403.500 -> Track */
+    ui_key(K_ENTER); /* tune the cursor (403.000) -> decode */
+    ui_key('4');
     shot("01_track_waiting");
 
     while (!app.burst_alert && app.demo.tv < 9000) demo_advance(&app, 5, now);

@@ -67,7 +67,7 @@ hoặc dongle đang bị chương trình khác giữ, lý do hiện trên dòng 
 | `4` Track | La bàn HUD, khoảng cách, bearing, elevation, điểm rơi dự đoán; số hiệu, frame và pin của sonde khi GPS của nó chưa fix |
 | `5` Map | Tile, vị trí máy, sonde, vệt bay, điểm rơi. `Up/Down` zoom, `C` đổi chế độ bám (both / device / sonde). Khi chưa có vị trí nào: căn giữa theo `map_lat` / `map_lon` |
 | `6` Graph | `Left/Right` đổi trang: Skew-T log-P, độ cao + tốc độ đứng theo thời gian |
-| `7` Scan | Phổ kiểu app SDR, kèm audio của tần số đang thu: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` để giải mã tại đó. `S` tổng quan dải: cùng các phím di chuyển con trỏ, `Enter` để nghe tại đó |
+| `7` Scan | Phổ kiểu app SDR, kèm audio của tần số đang thu: `Left/Right` ±10 kHz, `Up/Down` ±100 kHz, `Enter` để giải mã tại đó. `S` tổng quan dải: cùng các phím di chuyển con trỏ, `Enter` để nghe tại đó. Giữ phím mũi tên thì tần số tự chạy (sau 0,4 s, 12 bước mỗi giây) |
 | `8` Info | Sonde, thu nhận, thiết bị, một cặp tọa độ đích |
 | `F` | Nhập tần số (kHz) |
 | `M` | Tắt / bật tiếng beeper và audio radio |
@@ -235,11 +235,11 @@ màu so với màu nền chiếm đa số; cần chỉnh lại nếu style tile 
 
 ## Trạng thái kiểm thử
 
-`tests/test_core.c`: 4227 phép kiểm đạt trên Debian 13 arm64 (`-Wall -Wextra -Werror`). Một `librtlsdr` giả
+`tests/test_core.c`: 4247 phép kiểm đạt trên Debian 13 arm64 (`-Wall -Wextra -Werror`). Một `librtlsdr` giả
 (`tests/fake_rtlsdr.c`, phát sóng mang 403,000 MHz ở bất kỳ tần số nào đang đặt) cho phép chạy trọn quét và giải mã
 mà không cần dongle. Phạm vi: geodesy, ISA, dew point, dự đoán
 điểm rơi, parser JSON rs41mod (kể cả một frame thật chưa có fix) và gpsd, heading, ô phổ và giữ đỉnh, ring IQ, FFT,
-bộ hạ tần (sonde rơi đúng +12 kHz, tần số ảnh yếu hơn ≥ 20 dB, chia mẩu cho kết quả giống từng bit), audio FM (khôi phục đúng tone, kênh trống bị squelch), chuyển nghe → giải mã, ghi stdin, thu
+bộ hạ tần (sonde rơi đúng +12 kHz, tần số ảnh yếu hơn ≥ 20 dB, chia mẩu cho kết quả giống từng bit), audio FM (khôi phục đúng tone, kênh trống bị squelch), chuyển nghe → giải mã, lặp phím khi giữ, ghi stdin, thu
 dọn process group, lịch sử bay, tile, vòng đời pipeline con.
 
 Trên CardputerZero (Debian 13, RTL-SDR Blog V4, sonde Y0532351 ở 403,000 MHz):

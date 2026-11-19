@@ -52,6 +52,13 @@ static int xlate(int c)
 }
 
 static double esc_down; /* monotonic time Esc went down, 0 while it is up */
+/* Held arrow key, repeated by the app itself: the keypad driver may not auto-repeat, and the delay and rate
+ * are kept below the tuner's retune time (~33 ms over I2C) so tuning never falls behind the key. */
+#define REPEAT_DELAY_S 0.4
+#define REPEAT_EVERY_S 0.08
+static int held;          /* K_* of the arrow held down, 0 = none */
+static unsigned short held_code;
+static double held_next;  /* next repeat */
 
 static double mono_s(void)
 {
@@ -71,10 +78,20 @@ int keys_read(int fd)
     if (fd < 0) return 0;
     while (read(fd, &ev, sizeof ev) == (ssize_t)sizeof ev) {
         if (ev.type == EV_KEY && ev.code == KEY_ESC && ev.value != 2) esc_down = ev.value ? mono_s() : 0;
-        if (ev.type == EV_KEY && ev.value == 1) { /* press only, no auto-repeat */
+        if (ev.type == EV_KEY && ev.value == 0 && ev.code == held_code) held = 0;
+        if (ev.type == EV_KEY && ev.value == 1) { /* press only; the kernel's auto-repeat is ignored */
             int k = xlate(ev.code);
+            if (k == K_UP || k == K_DOWN || k == K_LEFT || k == K_RIGHT) {
+                held = k;
+                held_code = ev.code;
+                held_next = mono_s() + REPEAT_DELAY_S;
+            }
             if (k) return k;
         }
+    }
+    if (held && mono_s() >= held_next) {
+        held_next = mono_s() + REPEAT_EVERY_S;
+        return held | K_REPEAT;
     }
     return 0;
 }

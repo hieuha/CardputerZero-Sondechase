@@ -26,7 +26,7 @@ find_package(Threads REQUIRED)
 target_link_libraries(sc_core PUBLIC m Threads::Threads ${CMAKE_DL_LIBS}) # sdr.c: USB thread, dlopen(librtlsdr)
 
 enable_testing()
-add_executable(test_core tests/test_core.c)
+add_executable(test_core tests/test_core.c src/keys.c) # keys.c: evdev only, no LVGL
 target_link_libraries(test_core PRIVATE sc_core)
 # librtlsdr stand-in loaded by the tests through cfg rtlsdr_lib (never installed)
 add_library(fake_rtlsdr SHARED tests/fake_rtlsdr.c)
@@ -65,7 +65,7 @@ if(SC_BUILD_UI)
   add_subdirectory("${lvgl_SOURCE_DIR}" "${lvgl_BINARY_DIR}" EXCLUDE_FROM_ALL)
 
   if(SC_RENDER)
-    add_executable(sc_render tools/render.c src/ui.c)
+    add_executable(sc_render tools/render.c src/ui.c src/keys.c)
     target_compile_options(sc_render PRIVATE -Wall -Wextra)
     target_link_libraries(sc_render PRIVATE sc_core lvgl)
     return()

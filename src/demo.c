@@ -98,8 +98,7 @@ static void demo_scan(app_t *a)
         s->db[i] = (float)db;
         s->ok[i] = 1;
     }
-    a->state = ST_IDLE;
-    snprintf(a->status, sizeof a->status, "scan done");
+    a->t_restart = sc_now() + 3600.0; /* the simulated band stays on screen, like the continuous sweep */
 }
 
 void demo_advance(app_t *a, double virtual_seconds, double now)

@@ -1,5 +1,8 @@
 #define _GNU_SOURCE
 #include "../src/sc.h"
+#include "../src/ui.h"
+#include <fcntl.h>
+#include <linux/input.h>
 #include <math.h>
 #include <signal.h>
 #include <sys/prctl.h>
@@ -315,6 +318,42 @@ static void t_dsp(void)
     for (off = 0, nb = 0; off < sizeof iq; off += 38)
         nb += ddc_process(&d2, iq + off, off + 38 <= sizeof iq ? 38 : sizeof iq - off, b + 2 * nb);
     CHECK(nb == na && !memcmp(a, b, na * 2 * sizeof a[0]));
+}
+
+/* Held arrow keys repeat (after 0.4 s, every 0.08 s) until released; other keys act once. */
+static void t_keys(void)
+{
+    int p[2], k, n = 0;
+    double t0;
+    struct input_event ev;
+    CHECK(pipe(p) == 0);
+    fcntl(p[0], F_SETFL, O_NONBLOCK);
+    memset(&ev, 0, sizeof ev);
+#define KEV(c, v) (ev.type = EV_KEY, ev.code = (c), ev.value = (v), write(p[1], &ev, sizeof ev) == (ssize_t)sizeof ev)
+    CHECK(KEV(KEY_RIGHT, 1));
+    CHECK(keys_read(p[0]) == K_RIGHT);
+    CHECK(keys_read(p[0]) == 0); /* no repeat before the delay */
+    t0 = sc_now();
+    while (sc_now() - t0 < 1.0) {
+        if ((k = keys_read(p[0])) != 0) {
+            CHECK(k == (K_RIGHT | K_REPEAT));
+            n++;
+        }
+        usleep(5000);
+    }
+    CHECK(n >= 6 && n <= 9); /* (1.0 - 0.4) / 0.08 = 7.5 */
+    CHECK(KEV(KEY_RIGHT, 2)); /* the kernel's own auto-repeat is ignored */
+    CHECK(KEV(KEY_RIGHT, 0));
+    CHECK(keys_read(p[0]) == 0);
+    usleep(200000);
+    CHECK(keys_read(p[0]) == 0); /* released: no more repeats */
+    CHECK(KEV(KEY_S, 1));
+    CHECK(keys_read(p[0]) == 's');
+    usleep(500000);
+    CHECK(keys_read(p[0]) == 0);
+#undef KEV
+    close(p[0]);
+    close(p[1]);
 }
 
 /* Radio audio: FM at the DDC's +12 kHz comes out as its modulating tone; an empty channel is squelched. */
@@ -763,6 +802,7 @@ int main(int argc, char **argv)
     t_ring();
     t_dsp();
     t_fm();
+    t_keys();
     t_frames();
     t_feed();
     t_track();

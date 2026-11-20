@@ -22,26 +22,26 @@ The core (`sc_core`) has no LVGL dependency and is unit-tested on any Linux host
 
 | File | Lines | Responsibility |
 |---|---|---|
-| `src/sc.h` | 550 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
+| `src/sc.h` | 559 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
 | `src/main.c` | 92 | Entry point, signal handling, main loop, LVGL setup, hold-Esc quit |
-| `src/app.c` | 615 | State machine (`ST_IDLE`, `ST_SCAN`, `ST_LISTEN`, `ST_DECODE`), receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
-| `src/base.c` | 367 | `sc_now`, config parser and defaults, line reader, child process groups, flat-JSON field extraction |
+| `src/app.c` | 627 | State machine (`ST_IDLE`, `ST_SCAN`, `ST_LISTEN`, `ST_DECODE`), receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
+| `src/base.c` | 424 | `sc_now`, config parser and defaults, line reader, child process groups, flat-JSON field extraction |
 | `src/sdr.c` | 332 | Receiver front: IQ ring, `sdr_*` calls dispatched to a back end; RTL-SDR back end (`librtlsdr` loaded with `dlopen`, reader thread, tuner range table) |
 | `src/sdr_hackrf.c` | 314 | HackRF back end: `libhackrf` loaded with `dlopen`, int8 to u8 IQ, halving to reach rates under 2 MS/s, retune-safe transfers |
 | `src/sdr_priv.h` | 32 | Back-end interface (`sdr_ops_t`) shared by the two |
 | `src/dsp.c` | 234 | FFT, decoder front end (DDC: rotation, half-band decimation, droop FIR), wide 192 kHz stream |
 | `src/radio.c` | 207 | Audio demodulators for NFM, AM, USB, LSB, WFM |
-| `src/io.c` | 239 | gpsd client (TPV and SKY), USB SDR presence, spectrum cells and peaks |
-| `src/compass.c` | 398 | Heading sources, magnetometer and accelerometer, tilt compensation, compass calibration |
-| `src/geo.c` | 202 | Geodesy, ISA, dew point, wind profile, sonde JSON parse, landing prediction |
-| `src/track.c` | 310 | Flight history, burst detection, proximity beeper, PCM audio stream to `pacat`, frame LED, slippy-map maths |
-| `src/tiles.c` | 296 | Tile lookup, `curl` downloads with cache cap and failure reasons, recolouring |
+| `src/io.c` | 282 | gpsd client (TPV and SKY), USB SDR presence, spectrum cells and peaks |
+| `src/compass.c` | 399 | Heading sources, magnetometer and accelerometer, tilt compensation, compass calibration |
+| `src/geo.c` | 223 | Geodesy, ISA, dew point, wind profile, sonde JSON parse, landing prediction |
+| `src/track.c` | 315 | Flight history, burst detection, proximity beeper, PCM audio stream to `pacat`, frame LED, slippy-map maths |
+| `src/tiles.c` | 326 | Tile lookup, `curl` downloads with cache cap and failure reasons, recolouring |
 | `src/demo.c` | 139 | Simulated flight (`demo = 1`) through the same frame path |
-| `src/keys.c` | 92 | Keyboard from evdev (`/dev/input/event*`), Sym symbol keys, held-arrow repeat |
-| `src/ui.c` | 252 | UI state, overlays (frequency entry, burst alert, no SDR), LVGL draw callback, key dispatch (`ui_key`) |
-| `src/ui_draw.c` | 220 | Drawing primitives (line, rectangle, label), top and nav bars, battery |
+| `src/keys.c` | 97 | Keyboard from evdev (`/dev/input/event*`), Sym symbol keys, held-arrow repeat |
+| `src/ui.c` | 258 | UI state, overlays (frequency entry, burst alert, no SDR), LVGL draw callback, key dispatch (`ui_key`) |
+| `src/ui_draw.c` | 233 | Drawing primitives (line, rectangle, label), top and nav bars, battery |
 | `src/ui_track.c` | 215 | Track screen and compass |
-| `src/ui_map.c` | 284 | Map screen, decoded tile cache, pan, zoom, follow, style |
+| `src/ui_map.c` | 290 | Map screen, decoded tile cache, pan, zoom, follow, style |
 | `src/ui_graph.c` | 142 | Skew-T and flight profile |
 | `src/ui_radio.c` | 159 | Band overview, tuned spectrum, listening, decoding |
 | `src/ui_info.c` | 177 | Info screens and compass calibration |
@@ -86,10 +86,17 @@ flowchart LR
 | Decoder pipeline | `sh -c` child in its own process group | `fsk_demod --cs16 ... \| rs41mod --json ...`. Stdin is fed by the app; stdout is read line by line |
 | Audio | `sh -c` child (`audio_cmd`, default `pacat`) | Receives 16 kHz S16_LE mono PCM: beeper tones and, on the Radio screen, the demodulated audio |
 | Tile fetch | `sh -c` children (`tile_fetch_cmd`, `curl`) | At most `TF_JOBS` = 2 at a time |
-| gpsd | Non-blocking TCP socket | Sends `?WATCH` JSON; reconnect attempted every 5 s |
+| Tile cache sweep, blocked-name lookup | Forked children of the app | Run off the main loop: the sweep stats every cached file, and a DNS lookup can block for seconds without a network |
+| gpsd | Non-blocking TCP socket | The connect itself is non-blocking (given up after 5 s); sends `?WATCH` JSON; reconnect every 5 s, a name that does not resolve every 30 s |
 
 The app sets itself as a child subreaper (`PR_SET_CHILD_SUBREAPER`). Process-group members that a shell leaves
 behind are reaped by the app (`reap_group`) instead of becoming zombies under the launcher.
+
+The app ignores `SIGPIPE`; its `sh -c` children get it back at its default, with no signals blocked
+(`sc_child_setup`), so a decoder stage whose reader died ends too and the app sees the pipeline exit.
+
+The main loop never waits on the receiver: one `app_poll` processes at most about 160 ms of IQ, so a core that
+falls behind the stream (throttled on battery) loses samples, counted by the ring, instead of freezing the UI.
 
 ## Receiver ownership and states
 
@@ -110,7 +117,11 @@ job restarts only the USB stream at the other rate.
   the floor is tried with the decoder for `HUNT_TRY_S` (10 s). An RS41 frame on it ends the hunt there. Otherwise the
   peak is skipped for `HUNT_SKIP_S` (120 s); up to `HUNT_SKIP_N` (16) peaks are remembered.
 - Missing receiver: with `sdr_check = 1` the USB bus is scanned every 2 s (`sdr_present`). Without a receiver the
-  UI shows the "No SDR device found" screen and nothing runs.
+  UI shows the "No SDR device found" screen and nothing runs. A receiver that disappears is closed whatever the
+  job, even while paused, and reopened when it is back.
+- A stream that ends during Scan (unplugged, or a USB hiccup) leaves the state at `ST_SCAN`: the sweep starts
+  again after 2 s, then every 3 s until it can. A sweep step whose retune failed (outside the tuner's range) is
+  not added to the overview.
 
 ## Data flows
 
@@ -176,7 +187,7 @@ and decimates to 16 kHz. Output goes to `audio_radio_push`, which mixes it with 
 |---|---|---|---|
 | RTL-SDR (RTL2832U) | USB, `librtlsdr` | `dlopen` at run time; `rtl_dev` index | Matches VID:PID `0bda:2838` or `0bda:2832` for the presence check. Tested: RTL-SDR Blog V4 (R828D tuner) |
 | HackRF One / rad1o | USB, `libhackrf` | `dlopen` at run time; `rtl_dev` index | `1d50:6089` or `1d50:cc15`. 1 MHz to 6 GHz. Tried with a HackRF One on the device (libhackrf 2024.02.1): scan and WFM audio clear, about 20 % of one core while decoding and playing WFM; RS41 decoding not yet tried |
-| GPS | gpsd, TCP `127.0.0.1:2947` (`gpsd_host`, `gpsd_port`) | Non-blocking socket, JSON `TPV` and `SKY` | `gpsd_port = 0` disables it. A USB GPS can be plugged in while the app runs; gpsd picks it up |
+| GPS | gpsd, TCP `127.0.0.1:2947` (`gpsd_host`, `gpsd_port`) | Non-blocking socket and connect, JSON `TPV` and `SKY` (a fix with a non-finite or out-of-range position is ignored) | `gpsd_port = 0` disables it. A USB GPS can be plugged in while the app runs; gpsd picks it up |
 | Magnetometer | IIO sysfs `/sys/bus/iio/devices/iio:deviceN/in_magn_{x,y,z}_raw` (BMM150) | Read at 5 Hz | `mag_enable`, `mag_off_x/y/z`, `mag_rot_deg`, `mag_flip_y`, `declination` |
 | Accelerometer | IIO sysfs `in_accel_{x,y,z}_raw` (BMI270) | Read at 5 Hz with the magnetometer, low-passed (about 0.6 s) | Used only for tilt compensation (`mag_tilt`, `accel_axes`). Without it the compass assumes the device is flat |
 | ACT LED | sysfs `led_path` (default `/sys/class/leds/ACT/brightness`) | One-byte write per blink | Writable by the `input` group. The first blink drops the kernel's `actpwr` trigger until reboot |
@@ -250,6 +261,10 @@ about 230 ns per call on the device, nearly all of WFM's cost at 192 000 calls a
 `sonde_parse` reads the flat JSON that `rs41mod` prints (`lat`, `lon`, `alt`, `id`, `frame`, `sats`, `vel_v`,
 `vel_h`, `heading`, `temp`, `humidity`, `pressure`, `batt`, `bt`, `datetime`, `subtype`). Before a GPS solution a
 sonde reports `sats` below 4 and a meaningless position, so those frames return 2.
+
+A frame with a valid CRC can still carry anything, so a frame is dropped if a number it has is not finite, its
+altitude is outside -500 to 60 000 m, or a speed is over 1000 m/s. The serial names log files and fills CSV
+columns: characters other than letters, digits, `-` and `_` become `_`.
 
 If a sonde reports no pressure, `pres_est` is set and the pressure is the ISA value for its altitude (shown with a
 `~` prefix in the UI).
@@ -377,11 +392,17 @@ Tile lookup order (`tf_find`, then `tf_request` for a download):
 2. Download cache in `tile_cache_dir` (default `<data_dir>/tiles`, `data_dir` = `$HOME/sondechase`), original server PNGs, recoloured
    when loaded into RAM.
 3. Missing and `tile_online = 1`: download only the tiles the Map screen shows, at most two at a time, with a
-   User-Agent from `tile_user_agent`. A failed tile is not retried for 30 s.
+   User-Agent from `tile_user_agent`. A failed tile is not retried for 30 s. A download is kept only if it starts
+   with the PNG signature: a captive portal answering with a web page would otherwise stand in for the tile.
 
 Rules:
 - Nothing is prefetched. Bulk downloading for offline use is not implemented.
-- The cache is capped by `tile_cache_mb` (default 1000). Above the cap the oldest downloaded tiles are removed.
+- The cache is capped by `tile_cache_mb` (default 1000, at least 1). After every 50 downloads a forked child
+  removes the oldest tiles above the cap. Only `.png` and `.part` files count, so other files in `tile_cache_dir`
+  are left alone.
+- The map wraps at the date line: tiles repeat east and west, every marker is drawn at its nearer copy, and with
+  both positions shown the centre and zoom take the short way round. Latitudes beyond Web Mercator's ±85.05° sit on
+  the map's edge. The dashed landing line is clipped to the screen before its dashes are laid.
 - Failure reasons (`TF_WHY_*`) set the Map status text:
 
 | Status | Cause |
@@ -415,12 +436,14 @@ The app has no RTC; the auto_rx-format file name and timestamps therefore come f
 
 | Event | Behaviour |
 |---|---|
-| No RTL2832U on USB | Blocking "No SDR device found" screen; rechecked every 2 s |
+| No RTL2832U or HackRF on USB | Blocking "No SDR device found" screen; rechecked every 2 s |
 | Dongle opens fail (busy, librtlsdr missing) | Reason on the status line; the app retries |
-| Dongle unplugged while streaming | Receiver state reset; restart after 2 s |
+| Dongle unplugged while streaming | Receiver state reset; restart after 2 s (Scan included) |
+| Dongle unplugged while paused (idle) | The old handle is dropped on the next use or USB check, then reopened |
 | Decoder exits | Pipeline stopped and restarted after 3 s (`decoder exited, restarting`) |
 | Decoder pipe full | Chunks dropped and counted; no misalignment |
 | gpsd unavailable | Reconnect every 5 s; the top bar shows `No GPS` or `GPS lost` |
 | Map tile download fails | Status text on the Map; retry after 30 s |
+| Config value unusable (scan band reversed, step too fine, `ppm` beyond ±1000, zoom outside 0–19, string too long) | Warning on stderr; the default or the nearest usable value is used |
 | Burst alert | Overlay on every screen; `Enter` opens Map, `Esc` dismisses |
 | Hold `Esc` for 3 s | Quit back to the launcher |

@@ -83,11 +83,14 @@ static double m_clat, m_clon, pan_lat, pan_lon; /* centre drawn last; centre whi
 static int follow_before_pan; /* the follow mode C returns to */
 static int m_z;
 
+/* Screen position; across the date line the nearer copy of the world, so a sonde at 179.9 E seen from 179.9 W is
+ * just next to the device, not a world-width away. */
 static void m_xy(double lat, double lon, double *x, double *y)
 {
-    double tx, ty;
+    double tx, ty, dx, world = TILE_PX * (double)(1 << m_z);
     tile_frac(lat, lon, m_z, &tx, &ty);
-    *x = tx * TILE_PX - m_cx + 160.0;
+    dx = tx * TILE_PX - m_cx;
+    *x = dx - world * floor(dx / world + 0.5) + 160.0;
     *y = ty * TILE_PX - m_cy + 86.0;
 }
 
@@ -102,11 +105,12 @@ void p_map(void)
     if (map_follow == 3) { clat = pan_lat; clon = pan_lon; } /* panned by hand */
     else if (have_me && (map_follow == 1 || !have_s)) { clat = g->lat; clon = g->lon; }
     else if (have_s && (map_follow == 2 || !have_me)) { clat = s->lat; clon = s->lon; }
-    else if (have_me && have_s) { clat = (g->lat + s->lat) / 2; clon = (g->lon + s->lon) / 2; }
+    else if (have_me && have_s) { clat = (g->lat + s->lat) / 2; clon = norm180(g->lon + norm180(s->lon - g->lon) / 2); }
     else { clat = A->cfg.map_lat; clon = A->cfg.map_lon; } /* no position yet: still show the map */
     m_z = map_zoom >= 0 ? map_zoom
         : (have_me && have_s && map_follow == 0)
-              ? tile_fit_zoom(g->lat, g->lon, s->lat, s->lon, 260, 100, A->cfg.zoom_min, A->cfg.zoom_max)
+              ? tile_fit_zoom(g->lat, g->lon, s->lat, g->lon + norm180(s->lon - g->lon), 260, 100, A->cfg.zoom_min,
+                              A->cfg.zoom_max) /* the short way round, also across the date line */
               : (A->cfg.zoom_max < 13 ? A->cfg.zoom_max : 13);
     m_clat = clat;
     m_clon = clon;
@@ -120,8 +124,9 @@ void p_map(void)
         for (tx = (int)floor((m_cx - 160) / TILE_PX); tx <= (int)floor((m_cx + 160) / TILE_PX); tx++) {
             const lv_image_dsc_t *img;
             int x0 = (int)floor(tx * TILE_PX - m_cx + 160.0), y0 = (int)floor(ty * TILE_PX - m_cy + 86.0);
-            if (tx < 0 || ty < 0 || tx >= (1 << m_z) || ty >= (1 << m_z)) continue;
-            img = tile_get(m_z, tx, ty);
+            int wx = ((tx % (1 << m_z)) + (1 << m_z)) % (1 << m_z); /* the world repeats east and west */
+            if (ty < 0 || ty >= (1 << m_z)) continue;
+            img = tile_get(m_z, wx, ty);
             if (img) {
                 lv_draw_image_dsc_t d;
                 lv_area_t a = {x0, y0, x0 + TILE_PX - 1, y0 + TILE_PX - 1};
@@ -131,8 +136,8 @@ void p_map(void)
                 any = 1;
             } else {
                 missing++;
-                tf_request(&A->tf, &A->cfg, m_z, tx, ty, sc_now());
-                loading += tf_busy(&A->tf, m_z, tx, ty);
+                tf_request(&A->tf, &A->cfg, m_z, wx, ty, sc_now());
+                loading += tf_busy(&A->tf, m_z, wx, ty);
                 for (i = 0; i < TILE_PX; i += 32) { /* empty cell: plain graticule */
                     ln_clip(x0 + i, y0, x0 + i, y0 + TILE_PX - 1, 0, 16, 319, 155, C_P, 1);
                     ln_clip(x0, y0 + i, x0 + TILE_PX - 1, y0 + i, 0, 16, 319, 155, C_P, 1);
@@ -152,7 +157,8 @@ void p_map(void)
         ln(x2 - 5, y2 - 5, x2 + 5, y2 + 5, C_YL, 2);
         ln(x2 - 5, y2 + 5, x2 + 5, y2 - 5, C_YL, 2);
         {
-            int lx = (int)x2 + 9 + 86 > 318 ? (int)x2 - 9 - 86 : (int)x2 + 9, ly = (int)y2 + 5;
+            double lx2 = x2 < -1000 ? -1000 : (x2 > 1000 ? 1000 : x2), ly2 = y2 < -1000 ? -1000 : (y2 > 1000 ? 1000 : y2);
+            int lx = (int)lx2 + 9 + 86 > 318 ? (int)lx2 - 9 - 86 : (int)lx2 + 9, ly = (int)ly2 + 5;
             if (lx < 2) lx = 2;
             fill(lx, ly, 86, 13, C_G);
             txt(lx, ly, 86, F_S, C_YL, AL_C, "Landing T-%02d:%02d", land_rem_s() / 60, land_rem_s() % 60);

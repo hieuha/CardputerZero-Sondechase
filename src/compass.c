@@ -177,11 +177,12 @@ void heading_update(heading_t *h, const gps_t *g, const cfg_t *c, double now)
 }
 
 /* ---------------- calibration ---------------- */
-/* A level turn traces a circle as wide as the horizontal part of the Earth's field: about 0.8 G across in Vietnam,
- * still over 0.3 G at 60° latitude. 0.2 G is well above the sensor noise (about 0.04 G on the BMM150). */
+/* A level turn traces a circle twice as wide as the horizontal part of the Earth's field: about 0.8 G in Vietnam,
+ * 0.3 G at 60° latitude, 0.15 G on Svalbard. 0.1 G is still 2.5 times the sensor noise (about 0.04 G on the
+ * BMM150); nearer the magnetic poles a compass is of little use anyway. */
 double mag_min_span(const heading_t *h)
 {
-    return h->mag_scale > 0 ? 0.2 / h->mag_scale : 300.0;
+    return h->mag_scale > 0 ? 0.1 / h->mag_scale : 300.0;
 }
 
 void magcal_start(magcal_t *m, double min_span, int use_acc)

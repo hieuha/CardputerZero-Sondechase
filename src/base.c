@@ -96,13 +96,44 @@ static char *trim(char *s)
     return s;
 }
 
+/* Values the app could not work with, from a hand-edited config: put back to something usable, with a warning. */
+static void cfg_check(cfg_t *c)
+{
+    cfg_t d;
+    cfg_defaults(&d);
+    if (c->scan_lo_hz <= 0 || c->scan_hi_hz <= c->scan_lo_hz) {
+        fprintf(stderr, "sondechase: scan_lo_hz must be below scan_hi_hz; using %ld..%ld\n", d.scan_lo_hz, d.scan_hi_hz);
+        c->scan_lo_hz = d.scan_lo_hz;
+        c->scan_hi_hz = d.scan_hi_hz;
+    }
+    if (c->scan_step_hz < 1000) c->scan_step_hz = 1000;
+    if ((c->scan_hi_hz - c->scan_lo_hz) / c->scan_step_hz > SPEC_MAX) /* the overview holds SPEC_MAX cells */
+        c->scan_step_hz = (c->scan_hi_hz - c->scan_lo_hz + SPEC_MAX - 1) / SPEC_MAX;
+    if (c->ppm < -1000 || c->ppm > 1000) {
+        fprintf(stderr, "sondechase: ppm %d is out of range; using 0\n", c->ppm);
+        c->ppm = 0;
+    }
+    if (c->zoom_min < 0) c->zoom_min = 0;
+    if (c->zoom_max > 19) c->zoom_max = 19;
+    if (c->zoom_min > c->zoom_max) c->zoom_min = c->zoom_max;
+    if (c->tile_cache_mb < 1) c->tile_cache_mb = 1;
+}
+
 int cfg_load(cfg_t *c, const char *path)
 {
     FILE *f = fopen(path, "r");
     if (!f) return -1;
     char line[1024];
     while (fgets(line, sizeof line, f)) {
-        char *s = trim(line);
+        char *s;
+        size_t len = strlen(line);
+        if (len == sizeof line - 1 && line[len - 1] != '\n') { /* too long: skip it, not parse its tail as a line */
+            int ch;
+            while ((ch = fgetc(f)) != EOF && ch != '\n') {}
+            fprintf(stderr, "sondechase: config line over %zu characters ignored\n", sizeof line - 2);
+            continue;
+        }
+        s = trim(line);
         if (!*s || *s == '#') continue;
         char *eq = strchr(s, '=');
         if (!eq) continue;
@@ -122,13 +153,17 @@ int cfg_load(cfg_t *c, const char *path)
             case 'l': *(long *)(void *)p = strtol(v, NULL, 10); break;
             case 'i': *(int *)(void *)p = (int)strtol(v, NULL, 10); break;
             case 'd': *(double *)(void *)p = strtod(v, NULL); break;
-            default: snprintf(p, ents[i].sz, "%s", v); break;
+            default: /* a cut command line would run something else: keep the default */
+                if (strlen(v) >= ents[i].sz) fprintf(stderr, "sondechase: %s is longer than %zu characters, ignored\n", k, ents[i].sz - 1);
+                else snprintf(p, ents[i].sz, "%s", v);
+                break;
             }
             break;
         }
         if (i == n) fprintf(stderr, "sondechase: unknown config key '%s'\n", k);
     }
     fclose(f);
+    cfg_check(c);
     return 0;
 }
 
@@ -183,6 +218,13 @@ int lr_readline(lr_t *r, char *out, size_t n)
 {
     for (;;) {
         char *nl = memchr(r->buf, '\n', r->len);
+        if (nl && r->skip) { /* the tail of an over-long line: not a line of its own */
+            size_t l = (size_t)(nl - r->buf);
+            memmove(r->buf, nl + 1, r->len - l - 1);
+            r->len -= l + 1;
+            r->skip = 0;
+            continue;
+        }
         if (nl) {
             size_t l = (size_t)(nl - r->buf);
             size_t cp = l < n - 1 ? l : n - 1;
@@ -192,7 +234,10 @@ int lr_readline(lr_t *r, char *out, size_t n)
             r->len -= l + 1;
             return 1;
         }
-        if (r->len == sizeof r->buf) r->len = 0; /* over-long line: drop it */
+        if (r->len == sizeof r->buf) { /* over-long line: drop it */
+            r->len = 0;
+            r->skip = 1;
+        }
         if (r->fd < 0) return -1;
         ssize_t k = read(r->fd, r->buf + r->len, sizeof r->buf - r->len);
         if (k > 0) {
@@ -206,11 +251,21 @@ int lr_readline(lr_t *r, char *out, size_t n)
 }
 
 /* ---------------- child process ---------------- */
+void sc_child_setup(void)
+{
+    sigset_t none;
+    setsid();
+    signal(SIGPIPE, SIG_DFL);
+    sigemptyset(&none);
+    sigprocmask(SIG_SETMASK, &none, NULL);
+}
+
 void proc_init(proc_t *p)
 {
     p->pid = 0;
     p->lr.fd = -1;
     p->lr.len = 0;
+    p->lr.skip = 0;
     p->wfd = -1;
     p->wdrop = 0;
 }
@@ -235,7 +290,7 @@ static int proc_spawn(proc_t *p, const char *cmd, int feed)
         return -1;
     }
     if (pid == 0) {
-        setsid(); /* new process group: the whole pipeline is signalled together */
+        sc_child_setup();
         dup2(pf[1], 1);
         close(pf[0]);
         close(pf[1]);
@@ -250,12 +305,14 @@ static int proc_spawn(proc_t *p, const char *cmd, int feed)
         execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
         _exit(127);
     }
+    setpgid(pid, pid); /* also here: a proc_stop right after the fork must reach the group */
     close(pf[1]);
     fcntl(pf[0], F_SETFL, O_NONBLOCK);
     fcntl(pf[0], F_SETFD, FD_CLOEXEC);
     p->pid = pid;
     p->lr.fd = pf[0];
     p->lr.len = 0;
+    p->lr.skip = 0;
     p->wdrop = 0;
     if (feed) {
         close(in[0]);

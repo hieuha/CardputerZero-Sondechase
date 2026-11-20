@@ -81,8 +81,12 @@ ctest --test-dir build --output-on-failure
 Notes:
 - `keys.c` and the tests include `<linux/input.h>`. The build fails on macOS; use a Debian or Ubuntu host or a
   Linux container.
-- Verified on 2026-11-20 in `debian:trixie` (GCC 14.2.0): `test_core` reports **4426 checks, 0 failed**.
+- Verified on 2026-11-20 in `debian:trixie` (GCC 14.2.0): `test_core` reports **4459 checks, 0 failed**.
 - The same build prints no warnings (`-Wall -Wextra`), nor does the UI (`sc_render`, `sondechase`).
+- Also on 2026-11-20: the whole suite under AddressSanitizer + UndefinedBehaviorSanitizer + LeakSanitizer
+  (`-fsanitize=address,undefined`) and under ThreadSanitizer (`-fsanitize=thread`) reports nothing; 300 000
+  mutated decoder, gpsd and config lines through `sonde_parse`, `gps_parse` and `cfg_load` under the same
+  sanitizers do not crash; `gcc -fanalyzer` and `cppcheck` leave no open finding.
 - What the tests cover is listed in [system architecture](./system-architecture.md) by module. Test names are
   in `tests/test_core.c`.
 
@@ -142,7 +146,7 @@ Syntax rules, from `src/base.c`:
 | `hackrf_lib` | `libhackrf.so.0` | libhackrf file to load with `dlopen` |
 | `sdr_check` | `1` | `1` requires a receiver on USB: an RTL2832U (VID:PID `0bda:2838` or `0bda:2832`) or a HackRF One or rad1o (`1d50:6089`, `1d50:cc15`) |
 | `scan_lo_hz`, `scan_hi_hz` | `400000000`, `406000000` | Scan band |
-| `scan_step_hz` | `5000` | Step of the scan spectrum cells |
+| `scan_step_hz` | `5000` | Step of the scan spectrum cells, at least 1000; raised so the band fits 2048 cells. A reversed band falls back to the defaults |
 | `decoder_feed_cmd` | `fsk_demod … \| rs41mod …` | Decoder pipeline; `{f_hz}` is replaced with the tuned frequency |
 | `gpsd_host`, `gpsd_port` | `127.0.0.1`, `2947` | gpsd address. `gpsd_port = 0` disables GPS |
 | `cog_min_speed` | `1.5` | m/s above which the GPS course is used as heading |
@@ -163,9 +167,9 @@ Syntax rules, from `src/base.c`:
 | `tile_user_agent` | `SondeChase/<version> (CardputerZero app; github.com/hieuha)` | User-Agent sent with each tile request |
 | `tile_fetch_cmd` | `curl -fsS --max-time 20 -A '{ua}' -o '{out}' '{url}'` | Download command; must write `{out}` and exit 0 |
 | `tile_cache_dir` | `<data_dir>/tiles` | Download cache (offline map) |
-| `tile_cache_mb` | `1000` | Cache size limit, MB; oldest downloads are removed |
+| `tile_cache_mb` | `1000` | Cache size limit, MB (at least 1); oldest downloaded tiles are removed, other files are left alone |
 | `tile_dir` | `/usr/share/sondechase/tiles` | Preloaded tile pack (`<z>/<x>/<y>.png`), used before the cache |
-| `zoom_min`, `zoom_max` | `6`, `18` | Zoom range of the Map |
+| `zoom_min`, `zoom_max` | `6`, `18` | Zoom range of the Map, within 0–19 |
 | `map_lat`, `map_lon` | `21.0285`, `105.8542` | Map centre while no position is known |
 | `map_simple` | `1` | Start-up map style: `1` simple (water and roads), `0` detailed. `V` toggles |
 | `font_dir` | `/usr/share/sondechase/fonts` | Folder with `Orbitron-Bold.ttf` and `Rajdhani-SemiBold.ttf` |

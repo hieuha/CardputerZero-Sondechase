@@ -7,7 +7,10 @@
 #include <linux/input.h>
 #include <math.h>
 #include <signal.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <sys/prctl.h>
+#include <sys/socket.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -100,6 +103,13 @@ static void t_parse(void)
     NEAR(s.temp, -55.2, 1e-9);
     CHECK(sonde_parse("{\"id\":\"X\",\"lat\":0.0,\"lon\":0.0,\"alt\":0.0}", &s) == 0);
     CHECK(sonde_parse("{\"id\":\"X\",\"frame\":1}", &s) == 0);
+    /* values a frame can carry but the app must not use: non-finite, absurd altitude, a serial meant as a path */
+    CHECK(sonde_parse("{\"id\":\"X\",\"lat\":nan,\"lon\":105.0,\"alt\":100.0,\"sats\":9}", &s) == 0);
+    CHECK(sonde_parse("{\"id\":\"X\",\"lat\":21.0,\"lon\":105.0,\"alt\":inf,\"sats\":9}", &s) == 0);
+    CHECK(sonde_parse("{\"id\":\"X\",\"lat\":21.0,\"lon\":105.0,\"alt\":1e9,\"sats\":9}", &s) == 0);
+    CHECK(sonde_parse("{\"id\":\"X\",\"lat\":21.0,\"lon\":105.0,\"alt\":900.0,\"sats\":9,\"vel_v\":-inf}", &s) == 0);
+    CHECK(sonde_parse("{\"id\":\"../a,b\",\"lat\":21.0,\"lon\":105.0,\"alt\":900.0,\"sats\":9,\"frame\":1e300}", &s) == 1 &&
+          !strcmp(s.id, "___a_b") && s.frame == 0);
     /* Real RS41 frame before its GPS locks (Y0532351 on the bench): telemetry only. */
     CHECK(sonde_parse("{ \"type\": \"RS41\", \"frame\": 471, \"id\": \"Y0532351\", \"datetime\": "
                       "\"1980-01-06T00:00:00.000Z\", \"lat\": 7.87821, \"lon\": 112.81147, \"alt\": 398.46852, "
@@ -123,6 +133,46 @@ static void t_parse(void)
     NEAR(g.alt, 18.2, 1e-9);
     NEAR(g.track, 271.5, 1e-9);
     CHECK(gps_parse(&g, "{\"class\":\"TPV\",\"mode\":1}", 3.0) == 1 && !gps_ok(&g, 3.0));
+    CHECK(gps_parse(&g, "{\"class\":\"TPV\",\"mode\":3,\"lat\":nan,\"lon\":105.0}", 4.0) == 1 && !gps_ok(&g, 4.0));
+    NEAR(g.lat, 21.0285, 1e-9); /* the last good fix is kept, not overwritten */
+
+    { /* gpsd over TCP: connects without blocking, sends ?WATCH, reads fixes; an unanswered host never stalls */
+        struct sockaddr_in sa;
+        socklen_t sl = sizeof sa;
+        cfg_t c;
+        char req[128];
+        int ls = socket(AF_INET, SOCK_STREAM, 0), cs = -1, i;
+        double t0;
+        memset(&sa, 0, sizeof sa);
+        sa.sin_family = AF_INET;
+        sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        CHECK(ls >= 0 && bind(ls, (struct sockaddr *)&sa, sizeof sa) == 0 && listen(ls, 1) == 0 &&
+              getsockname(ls, (struct sockaddr *)&sa, &sl) == 0);
+        cfg_defaults(&c);
+        c.gpsd_port = ntohs(sa.sin_port);
+        gps_init(&g);
+        for (i = 0; i < 100 && !gps_ok(&g, sc_now()); i++) {
+            gps_poll(&g, &c);
+            if (cs < 0 && (cs = accept4(ls, NULL, NULL, SOCK_NONBLOCK)) >= 0) {
+                static const char tpv[] = "{\"class\":\"TPV\",\"mode\":3,\"lat\":-33.9,\"lon\":151.2,\"altMSL\":5}\n";
+                usleep(20000);
+                CHECK(read(cs, req, sizeof req) > 0 && !strncmp(req, "?WATCH=", 7));
+                CHECK(write(cs, tpv, sizeof tpv - 1) == (ssize_t)(sizeof tpv - 1));
+            }
+            usleep(10000);
+        }
+        CHECK(gps_ok(&g, sc_now()) && g.lat == -33.9);
+        gps_close(&g);
+        if (cs >= 0) close(cs);
+        close(ls);
+        snprintf(c.gpsd_host, sizeof c.gpsd_host, "192.0.2.1"); /* TEST-NET: nothing answers */
+        gps_init(&g);
+        t0 = sc_now();
+        gps_poll(&g, &c);
+        gps_poll(&g, &c);
+        CHECK(sc_now() - t0 < 0.5 && !gps_ok(&g, sc_now()));
+        gps_close(&g);
+    }
 }
 
 static void t_heading(void)
@@ -400,6 +450,24 @@ static void t_cfg(void)
     CHECK(!strcmp(c.tile_url, "https://t.example/{z}#x"));      /* a # inside a value stays */
     CHECK(strstr(c.tile_user_agent, "SondeChase/" SC_VERSION " ") == c.tile_user_agent);
     CHECK(cfg_load(&c, "/nonexistent/x.conf") == -1);
+
+    { /* hand-edited values the app cannot use come back usable; a command too long to fit is not cut */
+        char cmd[600];
+        cfg_t d;
+        memset(cmd, 'x', sizeof cmd - 1);
+        cmd[sizeof cmd - 1] = 0;
+        f = fopen("/tmp/sc_test.conf", "w");
+        fprintf(f, "scan_lo_hz = 406000000\nscan_hi_hz = 400000000\nscan_step_hz = 10\nppm = 5000000\nzoom_min = -3\n"
+                   "zoom_max = 40\ntile_cache_mb = 0\ndecoder_feed_cmd = %s\nfreq_hz = %s\ngpsd_port = 1\n", cmd, cmd);
+        fclose(f);
+        cfg_defaults(&c);
+        cfg_defaults(&d);
+        CHECK(cfg_load(&c, "/tmp/sc_test.conf") == 0);
+        CHECK(c.scan_lo_hz == d.scan_lo_hz && c.scan_hi_hz == d.scan_hi_hz && (c.scan_hi_hz - c.scan_lo_hz) / c.scan_step_hz <= SPEC_MAX);
+        CHECK(c.ppm == 0 && c.zoom_min == 0 && c.zoom_max == 19 && c.tile_cache_mb == 1);
+        CHECK(!strcmp(c.decoder_feed_cmd, d.decoder_feed_cmd));
+        CHECK(c.gpsd_port == 1); /* the over-long line was skipped whole, the next one still read */
+    }
 }
 
 /* Framebuffer: config, then environment, then the udev /dev/fb_lcd link, then the ST7789V entry of /proc/fb, then fb0 */
@@ -470,6 +538,15 @@ static void t_spec(void)
     line[6000] = '\n';
     CHECK(write(fd[1], line, 6001) == 6001);
     CHECK(lr_readline(&lr, got, sizeof got) == 1 && strlen(got) == 6000);
+    { /* one over LR_MAX is dropped whole: its tail (here a {...}) does not come back as a line */
+        static char big[LR_MAX + 200];
+        lr.skip = 0;
+        memset(big, 'y', sizeof big);
+        memcpy(big + LR_MAX + 100, "{\"x\":1}\nok\n", 12);
+        CHECK(write(fd[1], big, LR_MAX + 112) == LR_MAX + 112);
+        for (i = 0; i < 5 && lr_readline(&lr, got, sizeof got) != 1; i++) {}
+        CHECK(!strcmp(got, "ok"));
+    }
     close(fd[0]);
     close(fd[1]);
 
@@ -927,6 +1004,21 @@ static void t_feed(void)
     prctl(PR_SET_CHILD_SUBREAPER, 1);
     for (i = 0; i < sizeof buf; i++) buf[i] = (unsigned char)i;
     proc_init(&p);
+    { /* the app ignores SIGPIPE, its children must not: a decoder whose reader died has to die too */
+        char line[128];
+        unsigned long ign = ~0ul, blk = ~0ul;
+        int r, k;
+        CHECK(proc_start(&p, "grep -E '^Sig(Ign|Blk)' /proc/self/status") == 0);
+        for (k = 0; k < 200; k++) {
+            r = lr_readline(&p.lr, line, sizeof line);
+            if (r < 0) break;
+            if (r == 0) { usleep(5000); continue; }
+            if (!strncmp(line, "SigIgn:", 7)) ign = strtoul(line + 7, NULL, 16);
+            if (!strncmp(line, "SigBlk:", 7)) blk = strtoul(line + 7, NULL, 16);
+        }
+        CHECK(ign != ~0ul && !(ign & (1ul << (SIGPIPE - 1))) && blk == 0);
+        proc_stop(&p);
+    }
     unlink("/tmp/sc_feed_test");
     CHECK(proc_start_feed(&p, "cat > /tmp/sc_feed_test") == 0 && p.wfd >= 0);
     proc_feed(&p, buf, sizeof buf);
@@ -1116,6 +1208,36 @@ static void t_app(const char *fake, const char *fakelib)
     CHECK(!a.hunt && a.state == ST_DECODE && a.freq_hz == 403000000L && !strcmp(a.status, "found RS41 S4430329"));
     app_listen(&a, 403100000L); /* tuning by hand while Scan runs ends it */
     CHECK(!a.hunt && a.state == ST_LISTEN);
+
+    { /* the dongle pulled out and put back: reopened, whatever the app was doing */
+        void *fl = dlopen(fakelib, RTLD_NOW | RTLD_LOCAL);
+        void (*unplug)(void) = fl ? (void (*)(void))dlsym(fl, "fake_rtlsdr_unplug") : NULL;
+        void (*replug)(void) = fl ? (void (*)(void))dlsym(fl, "fake_rtlsdr_replug") : NULL;
+        CHECK(unplug && replug);
+        if (unplug && replug) {
+            app_stop(&a); /* idle: the dongle stays open, paused */
+            CHECK(a.rx != NULL);
+            unplug();
+            app_scan(&a); /* the old handle cannot change rate: it is dropped, not kept */
+            CHECK(a.state == ST_IDLE && a.rx == NULL);
+            replug();
+            app_scan(&a);
+            CHECK(a.state == ST_SCAN && a.rx != NULL && a.sw.sdr == a.rx);
+            unplug(); /* the stream ends during the sweep: Scan goes on once the dongle is back */
+            for (i = 0; i < 100 && a.rx; i++) {
+                app_poll(&a);
+                usleep(10000);
+            }
+            CHECK(a.state == ST_SCAN && a.rx == NULL);
+            replug();
+            for (i = 0; i < 800 && !(a.sw.sdr && a.sw.passes >= 1); i++) {
+                app_poll(&a);
+                usleep(10000);
+            }
+            CHECK(a.state == ST_SCAN && a.rx != NULL && a.sw.sdr == a.rx && a.sw.passes >= 1);
+        }
+        if (fl) dlclose(fl);
+    }
     app_free(&a);
 
     /* librtlsdr0 missing: the reason is shown, nothing is spawned, scanning is refused the same way */
@@ -1242,6 +1364,11 @@ static void t_track(void)
     /* tiles: z/x/y of a known point, scale, zoom fit */
     tile_frac(21.0285, 105.8542, 12, &x, &y);
     CHECK((int)x == 3252 && (int)y == 1803);
+    tile_frac(90.0, 0, 12, &x, &y); /* Web Mercator stops at 85.05°: the poles stay on the map's edge, finite */
+    CHECK(isfinite(y) && fabs(y) < 1e-3);
+    tile_frac(-90.0, 0, 12, &x, &y);
+    CHECK(isfinite(y) && fabs(y - 4096.0) < 1e-3);
+    CHECK(tile_mpp(90.0, 19) > 0.01 && tile_mpp(-90.0, 19) > 0.01);
     tile_frac(0, 0, 1, &x, &y);
     NEAR(x, 1.0, 1e-9);
     NEAR(y, 1.0, 1e-9);
@@ -1262,14 +1389,16 @@ static void t_tiles(void)
 
     cfg_defaults(&c);
     CHECK(system("rm -rf /tmp/sc_tc /tmp/sc_pre && mkdir -p /tmp/sc_pre/12/3252 && "
-                 "head -c 300 /dev/zero > /tmp/sc_src.png && cp /tmp/sc_src.png /tmp/sc_pre/12/3252/1803.png") == 0);
+                 "printf '\\211PNG\\r\\n\\032\\n' > /tmp/sc_src.png && head -c 292 /dev/zero >> /tmp/sc_src.png && "
+                 "cp /tmp/sc_src.png /tmp/sc_pre/12/3252/1803.png && printf '<html>%%0300d</html>' 0 > /tmp/sc_portal.html") == 0);
     snprintf(c.tile_dir, sizeof c.tile_dir, "/tmp/sc_pre");
     snprintf(c.tile_cache_dir, sizeof c.tile_cache_dir, "/tmp/sc_tc");
     snprintf(c.tile_url, sizeof c.tile_url, "http://tiles.invalid/{z}/{x}/{y}.png");
     /* stand-in for curl: checks that url, user agent and output path arrive, then writes the file */
     {
         FILE *f = fopen("/tmp/sc_fetch.sh", "w");
-        fprintf(f, "case \"$1\" in http://tiles.invalid/11/1626/901.png|http://tiles.invalid/11/1627/901.png) ;; *) exit 22;; esac\n"
+        fprintf(f, "case \"$1\" in http://tiles.invalid/11/1626/901.png|http://tiles.invalid/11/1627/901.png) ;;\n"
+                   "http://tiles.invalid/11/1625/901.png) cp /tmp/sc_portal.html \"$3\"; exit 0;; *) exit 22;; esac\n"
                    "test -n \"$2\" && cp /tmp/sc_src.png \"$3\"\n");
         fclose(f);
     }
@@ -1293,12 +1422,18 @@ static void t_tiles(void)
     CHECK(tf_request(&t, &c, 11, 1628, 901, now + 5) == 0);
     CHECK(tf_request(&t, &c, 11, 1628, 901, now + TF_RETRY_S + 1) == 1);
     for (i = 0; i < 200 && t.failed < 2; i++) { tf_poll(&t, &c, now + 40); usleep(10000); }
+    /* a captive portal's web page instead of the tile: not kept as one */
+    CHECK(tf_request(&t, &c, 11, 1625, 901, now + 50) == 1);
+    for (i = 0; i < 200 && t.failed < 3; i++) { tf_poll(&t, &c, now + 50); usleep(10000); }
+    CHECK(t.failed == 3 && tf_find(&t, &c, 11, 1625, 901, p, sizeof p) == 0);
     c.tile_online = 0;
     CHECK(tf_request(&t, &c, 11, 1629, 901, now + 100) == 0);        /* offline mode never spawns */
     /* cache limit: two 300-byte tiles, cap 400 bytes -> the older one is removed */
-    CHECK(system("touch -d '2020-01-01' /tmp/sc_tc/11/1626/901.png") == 0);
+    CHECK(system("touch -d '2020-01-01' /tmp/sc_tc/11/1626/901.png && echo x > /tmp/sc_tc/notes.txt && "
+                 "touch -d '2019-01-01' /tmp/sc_tc/notes.txt") == 0);
     CHECK(tf_sweep(&t, 400) == 300);
     CHECK(access("/tmp/sc_tc/11/1626/901.png", F_OK) != 0 && access("/tmp/sc_tc/11/1627/901.png", F_OK) == 0);
+    CHECK(access("/tmp/sc_tc/notes.txt", F_OK) == 0); /* not a tile: never counted, never removed */
     tf_close(&t);
 
     /* why downloads fail, from curl's exit status; a name answered with loopback only is a DNS block */
@@ -1316,7 +1451,8 @@ static void t_tiles(void)
             snprintf(c.tile_fetch_cmd, sizeof c.tile_fetch_cmd, "exit %d", cases[k].code);
             tf_init(&t, &c);
             CHECK(tf_request(&t, &c, 11, 1630 + k, 901, now) == 1);
-            for (i = 0; i < 200 && t.failed == 0; i++) { tf_poll(&t, &c, now); usleep(10000); }
+            /* the blocked-name lookup runs in a child: poll until it has answered */
+            for (i = 0; i < 300 && (t.failed == 0 || t.dns_pid > 0); i++) { tf_poll(&t, &c, now); usleep(10000); }
             CHECK(t.failed == 1 && t.why == cases[k].why);
             tf_close(&t);
         }

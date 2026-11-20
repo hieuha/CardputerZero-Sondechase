@@ -113,7 +113,11 @@ conf/           sondechase.conf, installed as /etc/sondechase.conf
 - The USB thread never blocks the producer: `iqring_write` drops and counts instead of waiting.
 - Keep no unbounded buffers: histories are capped (`HIST_MAX` 2048 points, decimated), tile caches are capped
   (`tile_cache_mb`), the audio queue is fixed size (`AUDIO_RADIO_MAX`).
-- Signal handling: `SIGINT`/`SIGTERM` set a flag; `SIGPIPE` is ignored. Holding `Esc` for `ESC_QUIT_S` quits.
+- Signal handling: `SIGINT`/`SIGTERM` set a flag; `SIGPIPE` is ignored in the app and restored in every forked
+  child (`sc_child_setup`). Holding `Esc` for `ESC_QUIT_S` quits.
+- Input from outside (decoder JSON, gpsd, config, sysfs) is checked before use: finite numbers, sane ranges, and
+  strings that end up in paths or CSV reduced to safe characters. The fuzz of the parsers and the sanitizer runs
+  in the deployment guide are the check.
 - Do not write to the console from the core except on startup errors (`fprintf(stderr, ...)`, for example unknown
   config keys).
 

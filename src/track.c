@@ -186,13 +186,14 @@ static void audio_open(audio_t *a, const cfg_t *c)
         return;
     }
     if (pid == 0) {
-        setsid();
+        sc_child_setup();
         dup2(pf[0], 0);
         close(pf[0]);
         close(pf[1]);
         execl("/bin/sh", "sh", "-c", c->audio_cmd, (char *)NULL);
         _exit(127);
     }
+    setpgid(pid, pid);
     close(pf[0]);
     fcntl(pf[1], F_SETFL, O_NONBLOCK);
     fcntl(pf[1], F_SETFD, FD_CLOEXEC);
@@ -284,15 +285,19 @@ void led_close(led_t *l)
 }
 
 /* ---------------- slippy-map tiles (Web Mercator) ---------------- */
+#define MERC_LAT 85.05112878 /* Web Mercator's edge: the map stops here, nearer the poles it is infinite */
+
 void tile_frac(double lat, double lon, int z, double *tx, double *ty)
 {
-    double n = (double)(1 << z), r = lat * M_PI / 180.0;
+    double n = (double)(1 << z), r = (lat > MERC_LAT ? MERC_LAT : (lat < -MERC_LAT ? -MERC_LAT : lat)) * M_PI / 180.0;
     *tx = (lon + 180.0) / 360.0 * n;
     *ty = (1.0 - asinh(tan(r)) / M_PI) / 2.0 * n;
 }
 
 double tile_mpp(double lat, int z)
 {
+    if (lat > MERC_LAT) lat = MERC_LAT;
+    if (lat < -MERC_LAT) lat = -MERC_LAT;
     return 156543.03392 * cos(lat * M_PI / 180.0) / (double)(1 << z);
 }
 

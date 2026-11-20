@@ -180,7 +180,7 @@ Everything the app keeps is in one folder, `data_dir` (default `~/sondechase`):
 
 ## Test status
 
-`tests/test_core.c`: 4426 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
+`tests/test_core.c`: 4459 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
 arm64 package build on Debian 13. A fake `librtlsdr` and a fake decoder run scanning and decoding end to end without
 a dongle. Details and the device measurements: [deployment guide](docs/deployment-guide.md#tests).
 

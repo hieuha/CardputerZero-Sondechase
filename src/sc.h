@@ -75,6 +75,7 @@ void fb_pick(char *out, size_t n, const char *cfg_dev, const char *env, const ch
 typedef struct {
     int fd;
     size_t len;
+    int skip; /* an over-long line was dropped: discard up to its newline too */
     char buf[LR_MAX];
 } lr_t;
 int lr_readline(lr_t *r, char *out, size_t n); /* 1 line, 0 nothing yet, -1 EOF/error */
@@ -86,6 +87,10 @@ typedef struct {
     int wfd;                 /* child's stdin (proc_start_feed), -1 otherwise */
     unsigned long wdrop;     /* bytes proc_feed dropped because the child was not keeping up */
 } proc_t;
+/* In a forked child before exec: its own process group (the whole pipeline is signalled together), SIGPIPE back to
+ * the default (an ignored signal stays ignored across exec, and a decoder whose reader died must die too) and no
+ * blocked signals. */
+void sc_child_setup(void);
 void proc_init(proc_t *p);
 int proc_start(proc_t *p, const char *cmd);      /* stdin = /dev/null */
 int proc_start_feed(proc_t *p, const char *cmd); /* stdin = a pipe written with proc_feed */
@@ -144,6 +149,8 @@ pred_t predict_landing(const sonde_t *s, double vv, const wind_t *w, double grou
 typedef struct {
     lr_t lr;
     double t_retry;
+    int connecting;    /* lr.fd is a non-blocking connect still in progress, started at t_conn */
+    double t_conn;
     int mode; /* gpsd: 0/1 no fix, 2 = 2D, 3 = 3D */
     double lat, lon, alt, speed, track;
     int has_track;
@@ -412,6 +419,7 @@ typedef struct {
     unsigned done, failed, since_sweep;
     double t_last_ok, t_last_fail;
     int why;                 /* TF_WHY_*: reason of the last failed download */
+    pid_t sweep_pid, dns_pid; /* the cache sweep and the blocked-name lookup run in children, off the UI loop */
     char host[96];           /* the tile server, for the message */
     char cache_dir[240];
 } tilefetch_t;
@@ -465,6 +473,7 @@ typedef struct {
     int step, nstep;         /* nstep: steps of an even pass; odd passes, shifted half a step, take one more */
     double f_first, f_step;  /* centre of step 0, spacing between step centres */
     size_t skip, have;       /* bytes still to discard after a retune / bytes collected */
+    int tune_failed;         /* the current step's retune failed: its spectrum is not the step's, drop it */
     unsigned passes;         /* completed full passes since the sweep started */
     unsigned char buf[2 * SWEEP_FFT * SWEEP_FRAMES];
     float db[SWEEP_FFT];

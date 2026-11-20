@@ -72,6 +72,11 @@ int keys_read(int fd)
     struct input_event ev;
     if (fd < 0) return 0;
     while (read(fd, &ev, sizeof ev) == (ssize_t)sizeof ev) {
+        if (ev.type == EV_SYN && ev.code == SYN_DROPPED) { /* the kernel lost events: a release may be among them */
+            held = 0;
+            esc_down = 0;
+            continue;
+        }
         if (ev.type == EV_KEY && ev.code == KEY_ESC && ev.value != 2) esc_down = ev.value ? sc_now() : 0;
         if (ev.type == EV_KEY && ev.value == 0 && ev.code == held_code) held = 0;
         if (ev.type == EV_KEY && ev.value == 1) { /* press only; the kernel's auto-repeat is ignored */

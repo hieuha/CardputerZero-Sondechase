@@ -41,8 +41,8 @@ int app_compass_save(app_t *a)
     char p[200];
     magcal_apply(&a->cal, &a->cfg);
     a->cal.step = MAGCAL_OFF;
-    mkdirs(a->cfg.data_dir);
     snprintf(p, sizeof p, "%s/compass.conf", a->cfg.data_dir);
+    mkdirs(p); /* data_dir itself is new on a fresh install */
     return magcal_save(&a->cfg, p);
 }
 
@@ -77,6 +77,8 @@ void app_init(app_t *a, const char *cfg_path)
 /* ---------------- the dongle ---------------- */
 /* Opened once and kept for the session: the sweep and the decoder take turns on it, sw.sdr / dsdr pointing
  * to a->rx while their job runs. Failures (librtlsdr0 missing, dongle busy) are shown on the status line. */
+static void rx_lost(app_t *a);
+
 static sdr_t *rx_get(app_t *a, long rate)
 {
     char err[96];
@@ -84,7 +86,8 @@ static sdr_t *rx_get(app_t *a, long rate)
         set_status(a, err);
         return NULL;
     }
-    if (sdr_resume(a->rx, rate) < 0) {
+    if (sdr_resume(a->rx, rate) < 0) { /* e.g. unplugged while paused: drop it, the next try reopens it */
+        rx_lost(a);
         set_status(a, "cannot restart the receiver stream");
         return NULL;
     }
@@ -113,7 +116,7 @@ static void rx_stop(app_t *a)
 static void rx_tune(app_t *a)
 {
     long centre = a->freq_hz - RS41_TUNE_OFFSET_HZ + DDC_RATE / 4;
-    sdr_tune(a->dsdr, centre);
+    if (sdr_tune(a->dsdr, centre) < 0) set_status(a, "the receiver did not tune there");
     spec_reset(&a->live, centre - DDC_RATE / 2, centre + DDC_RATE / 2, DDC_RATE / SWEEP_FFT);
     a->t_live = 0;
 }
@@ -161,9 +164,11 @@ static void rx_poll(app_t *a, double now)
     static int16_t pcm[sizeof wide / sizeof wide[0] / 24 + 2];
     static float db[SWEEP_FFT];
     size_t k, nw;
-    int listen = a->radio_audio && !a->prox.muted, wfm = listen && a->radio.mode == DEMOD_WFM;
+    int listen = a->radio_audio && !a->prox.muted, wfm = listen && a->radio.mode == DEMOD_WFM, reads = 0;
     if (!listen) audio_radio_clear(&a->audio);
-    while ((k = sdr_read(a->dsdr, iq, sizeof iq)) > 0) {
+    /* at most ~170 ms of IQ per call: should the CPU ever fall behind the stream (a throttled core), the UI still
+     * runs and the ring counts what is lost, instead of this loop never ending */
+    while (reads++ < 8 && (k = sdr_read(a->dsdr, iq, sizeof iq)) > 0) {
         size_t n = ddc_process_wide(&a->ddc, iq, k, out, wfm ? wide : NULL, &nw);
         if (n && a->proc.pid > 0) proc_feed(&a->proc, out, n * 2 * sizeof out[0]);
         if (nw && wfm) audio_radio_push(&a->audio, pcm, radio_process_wfm(&a->radio, wide, nw, pcm));
@@ -197,7 +202,7 @@ static double sweep_centre(const sweep_t *w)
 static void sweep_tune(app_t *a)
 {
     sweep_t *w = &a->sw;
-    sdr_tune(w->sdr, (long)sweep_centre(w));
+    w->tune_failed = sdr_tune(w->sdr, (long)sweep_centre(w)) < 0; /* e.g. outside the tuner's range */
     w->skip = SWEEP_SETTLE_BYTES + SDR_USB_BUF_BYTES; /* settling time + a transfer begun before the retune */
     w->have = 0;
 }
@@ -494,9 +499,10 @@ static void sweep_poll(app_t *a)
     const int nbin = (int)(SWEEP_FFT * SWEEP_KEEP), lo_bin = (SWEEP_FFT - nbin) / 2;
     const double bin_hz = (double)SWEEP_RATE / SWEEP_FFT;
     const int dc_bins = (int)(DC_ZONE_HZ / bin_hz);
-    int i;
+    int i, reads = 0;
     for (;;) {
         size_t k;
+        if (++reads > 64) break; /* at most ~160 ms of IQ per call: the UI runs even if the CPU falls behind */
         if (w->skip) {
             if (!(k = sdr_read(w->sdr, junk, w->skip < sizeof junk ? w->skip : sizeof junk))) break;
             w->skip -= k;
@@ -504,20 +510,22 @@ static void sweep_poll(app_t *a)
         }
         if (!(k = sdr_read(w->sdr, w->buf + w->have, sizeof w->buf - w->have))) break;
         if ((w->have += k) < sizeof w->buf) continue;
-        fft_spectrum(&w->fft, w->buf, SWEEP_FRAMES, w->db);
-        for (i = SWEEP_FFT / 2 - dc_bins; i <= SWEEP_FFT / 2 + dc_bins; i++) w->db[i] = NAN; /* left alone */
-        spec_add_bins(&a->spec, sweep_centre(w) - SWEEP_RATE / 2.0 + lo_bin * bin_hz, bin_hz, w->db + lo_bin, nbin,
-                      SWEEP_DECAY_DB);
+        if (!w->tune_failed) {
+            fft_spectrum(&w->fft, w->buf, SWEEP_FRAMES, w->db);
+            for (i = SWEEP_FFT / 2 - dc_bins; i <= SWEEP_FFT / 2 + dc_bins; i++) w->db[i] = NAN; /* left alone */
+            spec_add_bins(&a->spec, sweep_centre(w) - SWEEP_RATE / 2.0 + lo_bin * bin_hz, bin_hz, w->db + lo_bin,
+                          nbin, SWEEP_DECAY_DB);
+        }
         if (++w->step == w->nstep + (int)(w->passes & 1)) { /* the sweep runs on like an SDR app's spectrum */
             w->step = 0;
             w->passes++;
         }
         sweep_tune(a);
     }
-    if (!sdr_alive(w->sdr)) { /* dongle unplugged */
+    if (!sdr_alive(w->sdr)) { /* unplugged, or a USB hiccup ended the stream: app_poll starts the sweep again */
         rx_lost(a);
-        a->state = ST_IDLE;
-        set_status(a, "receiver stream ended");
+        a->t_restart = sc_now() + 2.0;
+        set_status(a, "receiver stream ended, retrying");
     }
 }
 
@@ -541,9 +549,10 @@ void app_poll(app_t *a)
     if (a->cfg.sdr_check && now - a->t_sdr >= 2.0) {
         a->t_sdr = now;
         a->sdr_ok = sdr_present("/sys/bus/usb/devices");
-        if (!a->sdr_ok && a->state == ST_SCAN) { /* receiver unplugged during a sweep */
+        if (!a->sdr_ok && a->rx) { /* unplugged, whatever the job, even paused: reopen it once it is back */
             rx_lost(a);
-            a->state = ST_IDLE;
+            proc_stop(&a->proc); /* a decoder left without input: start_decoder reopens both */
+            a->t_restart = now + 2.0;
             set_status(a, "no SDR device");
         }
     }
@@ -566,6 +575,9 @@ void app_poll(app_t *a)
         }
     } else if (a->state == ST_SCAN && a->sw.sdr) {
         sweep_poll(a);
+    } else if (a->state == ST_SCAN && !a->cfg.demo && a->sdr_ok && now >= a->t_restart) { /* the stream was lost */
+        if (sweep_start(a) == 0) set_status(a, a->hunt ? "scanning for sondes" : "scanning");
+        else a->t_restart = now + 3.0;
     }
     if (a->hunt) hunt_poll(a, now);
 

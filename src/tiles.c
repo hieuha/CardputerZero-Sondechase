@@ -89,10 +89,11 @@ int tf_request(tilefetch_t *t, const cfg_t *c, int z, int x, int y, double now)
     pid = fork();
     if (pid < 0) return 0;
     if (pid == 0) {
-        setsid();
+        sc_child_setup();
         execl("/bin/sh", "sh", "-c", b, (char *)NULL);
         _exit(127);
     }
+    setpgid(pid, pid);
     t->job[slot].pid = pid;
     t->job[slot].z = z;
     t->job[slot].x = x;
@@ -122,8 +123,9 @@ int tf_host_blocked(const char *host)
 }
 
 /* Name the reason of a failed download from curl's exit status (default tile_fetch_cmd): 6 = the name did not
- * resolve; 7 = no connection, which is also what a name blocked to 127.0.0.1 gives, so only then is the name
- * looked up again (DNS has just answered, so this does not block); 22 = HTTP error. */
+ * resolve; 7 = no connection, which is also what a name blocked to 127.0.0.1 gives, so then the name is looked up
+ * again, in a child: a lookup can block for many seconds once the network has gone, and the UI must not wait.
+ * tf_poll turns "no network" into "blocked by DNS" if the child says so. 22 = HTTP error. */
 static void fail_reason(tilefetch_t *t, const cfg_t *c, int code)
 {
     const char *p = strstr(c->tile_url, "://");
@@ -131,25 +133,46 @@ static void fail_reason(tilefetch_t *t, const cfg_t *c, int code)
     p = p ? p + 3 : c->tile_url;
     n = strcspn(p, "/:");
     snprintf(t->host, sizeof t->host, "%.*s", (int)(n < sizeof t->host ? n : sizeof t->host - 1), p);
-    t->why = code == 6 ? TF_WHY_DNS_FAIL : code == 22 ? TF_WHY_HTTP
-           : (code == 7 && tf_host_blocked(t->host)) ? TF_WHY_DNS_BLOCKED : TF_WHY_NET;
+    t->why = code == 6 ? TF_WHY_DNS_FAIL : code == 22 ? TF_WHY_HTTP : TF_WHY_NET;
+    if (code == 7 && t->dns_pid <= 0 && (t->dns_pid = fork()) == 0) _exit(tf_host_blocked(t->host) ? 1 : 0);
+}
+
+/* A finished download is kept only if it is a PNG: a captive portal or a proxy can answer 200 with a web page,
+ * which would otherwise stand in for the tile for good. */
+static int is_png(const char *path)
+{
+    static const unsigned char sig[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
+    unsigned char b[8];
+    FILE *f = fopen(path, "rb");
+    int ok = f && fread(b, 1, sizeof b, f) == sizeof b && !memcmp(b, sig, sizeof sig);
+    if (f) fclose(f);
+    return ok;
 }
 
 int tf_poll(tilefetch_t *t, const cfg_t *c, double now)
 {
     int i, st, n = 0;
+    if (t->dns_pid > 0 && waitpid(t->dns_pid, &st, WNOHANG) == t->dns_pid) {
+        if (WIFEXITED(st) && WEXITSTATUS(st) == 1 && t->why == TF_WHY_NET) t->why = TF_WHY_DNS_BLOCKED;
+        t->dns_pid = 0;
+    }
+    if (t->sweep_pid > 0 && waitpid(t->sweep_pid, &st, WNOHANG) == t->sweep_pid) t->sweep_pid = 0;
     for (i = 0; i < TF_JOBS; i++) {
         struct stat sb;
         if (t->job[i].pid <= 0 || waitpid(t->job[i].pid, &st, WNOHANG) != t->job[i].pid) continue;
         reap_group(t->job[i].pid);
         if (WIFEXITED(st) && WEXITSTATUS(st) == 0 && stat(t->job[i].part, &sb) == 0 && sb.st_size > 64 &&
-            rename(t->job[i].part, t->job[i].dst) == 0) { /* rename: a reader never sees a partial file */
+            is_png(t->job[i].part) && rename(t->job[i].part, t->job[i].dst) == 0) { /* a reader never sees a part */
             t->done++;
             t->t_last_ok = now;
             n++;
-            if (++t->since_sweep >= 50) {
+            /* the sweep stats every cached file: thousands on an SD card, so it runs in a child */
+            if (++t->since_sweep >= 50 && t->sweep_pid <= 0) {
                 t->since_sweep = 0;
-                tf_sweep(t, (long)c->tile_cache_mb * 1024L * 1024L);
+                if ((t->sweep_pid = fork()) == 0) {
+                    tf_sweep(t, (long)c->tile_cache_mb * 1024L * 1024L);
+                    _exit(0);
+                }
             }
         } else {
             unlink(t->job[i].part);
@@ -179,6 +202,12 @@ void tf_close(tilefetch_t *t)
             unlink(t->job[i].part);
             t->job[i].pid = 0;
         }
+    if (t->sweep_pid > 0) waitpid(t->sweep_pid, NULL, 0); /* let it finish: it only deletes old tiles */
+    if (t->dns_pid > 0) {
+        kill(t->dns_pid, SIGKILL);
+        waitpid(t->dns_pid, NULL, 0);
+    }
+    t->sweep_pid = t->dns_pid = 0;
 }
 
 /* ---- cache size limit: remove the least recently modified tiles until the total fits ---- */
@@ -197,7 +226,8 @@ static void walk(const char *dir, tlist_t *l, int depth)
         if ((size_t)snprintf(p, sizeof p, "%s/%s", dir, e->d_name) >= sizeof p || stat(p, &sb) != 0) continue;
         if (S_ISDIR(sb.st_mode)) {
             if (depth < 2) walk(p, l, depth + 1);
-        } else if (S_ISREG(sb.st_mode)) {
+        } else if (S_ISREG(sb.st_mode) && (strstr(e->d_name, ".png") || strstr(e->d_name, ".part"))) {
+            /* only tiles: a tile_cache_dir set to a folder with other files must not lose them */
             if (l->n == l->cap) {
                 tfile_t *nv = realloc(l->v, sizeof *nv * (size_t)(l->cap ? l->cap * 2 : 256));
                 if (!nv) continue;
@@ -225,7 +255,7 @@ long tf_sweep(const tilefetch_t *t, long max_bytes)
     tlist_t l = {NULL, 0, 0, 0};
     int i;
     walk(t->cache_dir, &l, 0);
-    if (l.total > max_bytes) {
+    if (l.n > 0 && l.total > max_bytes) {
         qsort(l.v, (size_t)l.n, sizeof l.v[0], by_mtime);
         for (i = 0; i < l.n && l.total > max_bytes; i++)
             if (unlink(l.v[i].path) == 0) l.total -= l.v[i].size;

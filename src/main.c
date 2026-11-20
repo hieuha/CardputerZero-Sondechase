@@ -20,7 +20,7 @@ static void on_sig(int s)
 
 static uint32_t tick_ms(void)
 {
-    return (uint32_t)(sc_now() * 1000.0);
+    return (uint32_t)(uint64_t)(sc_now() * 1000.0); /* wraps after 49.7 days, as LVGL expects; a direct cast would stick */
 }
 
 #ifdef SC_SIM

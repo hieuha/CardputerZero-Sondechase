@@ -21,34 +21,47 @@ void ln(double x1, double y1, double x2, double y2, uint32_t col, int w)
     lv_draw_line(LY, &d);
 }
 
+/* The part [t0, t1] of the segment inside a rectangle (Liang-Barsky); 0 if none of it is. */
+static int clip(double x1, double y1, double x2, double y2, int cx0, int cy0, int cx1, int cy1, double *t0,
+                double *t1)
+{
+    double dx = x2 - x1, dy = y2 - y1;
+    double p[4] = {-dx, dx, -dy, dy}, q[4] = {x1 - cx0, cx1 - x1, y1 - cy0, cy1 - y1};
+    int i;
+    *t0 = 0;
+    *t1 = 1;
+    for (i = 0; i < 4; i++) {
+        if (p[i] == 0) {
+            if (q[i] < 0) return 0;
+        } else {
+            double r = q[i] / p[i];
+            if (p[i] < 0) { if (r > *t1) return 0; if (r > *t0) *t0 = r; }
+            else { if (r < *t0) return 0; if (r < *t1) *t1 = r; }
+        }
+    }
+    return 1;
+}
+
+/* Dashes only where the line is on screen: a landing point thousands of km away at a high zoom (or across the date
+ * line) is a line millions of pixels long, and one draw task per dash would stall the app. The pattern stays put. */
 void dash(double x1, double y1, double x2, double y2, uint32_t col, int w, double on, double off)
 {
-    double len = hypot(x2 - x1, y2 - y1), p;
-    if (len < 0.5) return;
-    for (p = 0; p < len; p += on + off) {
+    double len = hypot(x2 - x1, y2 - y1), p, t0, t1;
+    if (!(len >= 0.5) || !clip(x1, y1, x2, y2, -w, -w, 319 + w, 169 + w, &t0, &t1)) return;
+    for (p = floor(t0 * len / (on + off)) * (on + off); p < t1 * len; p += on + off) {
         double q = p + on > len ? len : p + on;
         ln(x1 + (x2 - x1) * p / len, y1 + (y2 - y1) * p / len, x1 + (x2 - x1) * q / len,
            y1 + (y2 - y1) * q / len, col, w);
     }
 }
 
-/* Line clipped to a rectangle (Liang-Barsky). */
+/* Line clipped to a rectangle. */
 void ln_clip(double x1, double y1, double x2, double y2, int cx0, int cy0, int cx1, int cy1,
              uint32_t col, int w)
 {
-    double t0 = 0, t1 = 1, dx = x2 - x1, dy = y2 - y1;
-    double p[4] = {-dx, dx, -dy, dy}, q[4] = {x1 - cx0, cx1 - x1, y1 - cy0, cy1 - y1};
-    int i;
-    for (i = 0; i < 4; i++) {
-        if (p[i] == 0) {
-            if (q[i] < 0) return;
-        } else {
-            double r = q[i] / p[i];
-            if (p[i] < 0) { if (r > t1) return; if (r > t0) t0 = r; }
-            else { if (r < t0) return; if (r < t1) t1 = r; }
-        }
-    }
-    ln(x1 + t0 * dx, y1 + t0 * dy, x1 + t1 * dx, y1 + t1 * dy, col, w);
+    double t0, t1;
+    if (clip(x1, y1, x2, y2, cx0, cy0, cx1, cy1, &t0, &t1))
+        ln(x1 + t0 * (x2 - x1), y1 + t0 * (y2 - y1), x1 + t1 * (x2 - x1), y1 + t1 * (y2 - y1), col, w);
 }
 
 void fill_opa(int x, int y, int w, int h, uint32_t col, lv_opa_t opa)

@@ -3,7 +3,9 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <math.h>
+#include <errno.h>
 #include <netdb.h>
+#include <poll.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -22,29 +24,58 @@ void gps_close(gps_t *g)
     if (g->lr.fd >= 0) close(g->lr.fd);
     g->lr.fd = -1;
     g->lr.len = 0;
+    g->lr.skip = 0;
+    g->connecting = 0;
 }
 
-static void gps_connect(gps_t *g, const cfg_t *c)
+/* Start a non-blocking connect: gpsd on another host (a phone over Wi-Fi) may not answer at all, and a blocking
+ * connect would hold the UI for the whole TCP timeout. gps_poll finishes it. A name that does not resolve is
+ * looked up again only after 30 s, as each lookup can take seconds without a network. */
+static void gps_connect(gps_t *g, const cfg_t *c, double now)
 {
-    static const char watch[] = "?WATCH={\"enable\":true,\"json\":true}\n";
     struct addrinfo hints, *res = NULL;
     char port[12];
     int fd;
     memset(&hints, 0, sizeof hints);
     hints.ai_socktype = SOCK_STREAM;
     snprintf(port, sizeof port, "%d", c->gpsd_port);
-    if (getaddrinfo(c->gpsd_host, port, &hints, &res) != 0 || !res) return;
-    fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (fd >= 0 && connect(fd, res->ai_addr, res->ai_addrlen) == 0 &&
-        write(fd, watch, sizeof watch - 1) == (ssize_t)(sizeof watch - 1)) {
-        fcntl(fd, F_SETFL, O_NONBLOCK);
-        fcntl(fd, F_SETFD, FD_CLOEXEC);
+    if (getaddrinfo(c->gpsd_host, port, &hints, &res) != 0 || !res) {
+        g->t_retry = now + 30.0;
+        return;
+    }
+    fd = socket(res->ai_family, res->ai_socktype | SOCK_NONBLOCK | SOCK_CLOEXEC, res->ai_protocol);
+    if (fd >= 0 && (connect(fd, res->ai_addr, res->ai_addrlen) == 0 || errno == EINPROGRESS)) {
         g->lr.fd = fd;
         g->lr.len = 0;
+        g->lr.skip = 0;
+        g->connecting = 1;
+        g->t_conn = now;
     } else if (fd >= 0) {
         close(fd);
     }
     freeaddrinfo(res);
+}
+
+/* 1 = connected and watching, 0 = still connecting, -1 = failed (closed). */
+static int gps_connected(gps_t *g, double now)
+{
+    static const char watch[] = "?WATCH={\"enable\":true,\"json\":true}\n";
+    struct pollfd p = {g->lr.fd, POLLOUT, 0};
+    int err = 0;
+    socklen_t len = sizeof err;
+    if (!g->connecting) return 1;
+    if (poll(&p, 1, 0) == 0) {
+        if (now - g->t_conn < 5.0) return 0;
+        gps_close(g); /* no answer */
+        return -1;
+    }
+    if (getsockopt(g->lr.fd, SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0 ||
+        write(g->lr.fd, watch, sizeof watch - 1) != (ssize_t)(sizeof watch - 1)) {
+        gps_close(g);
+        return -1;
+    }
+    g->connecting = 0;
+    return 1;
 }
 
 int gps_parse(gps_t *g, const char *line, double now)
@@ -53,20 +84,31 @@ int gps_parse(gps_t *g, const char *line, double now)
     double v;
     if (!js_str(line, "class", cls, sizeof cls)) return 0;
     if (!strcmp(cls, "SKY")) { /* gpsd 3.20+ puts the counts at the top; older ones only list satellites */
-        if (js_num(line, "nSat", &v)) {
+        if (js_num(line, "nSat", &v) && v >= 0 && v < 1000) {
             g->n_sat = (int)v;
-            g->n_used = js_num(line, "uSat", &v) ? (int)v : 0;
+            g->n_used = js_num(line, "uSat", &v) && v >= 0 && v < 1000 ? (int)v : 0;
             g->t_sky = now;
         }
         return 0;
     }
     if (strcmp(cls, "TPV")) return 0;
-    g->mode = js_num(line, "mode", &v) ? (int)v : 0;
-    if (g->mode >= 2 && js_num(line, "lat", &g->lat) && js_num(line, "lon", &g->lon)) {
+    g->mode = js_num(line, "mode", &v) && v >= 0 && v <= 3 ? (int)v : 0;
+    if (g->mode >= 2) {
+        double lat, lon, alt = g->alt, speed = 0, track = 0;
+        if (!js_num(line, "lat", &lat) || !js_num(line, "lon", &lon) || !isfinite(lat) || !isfinite(lon) ||
+            fabs(lat) > 90.0 || fabs(lon) > 180.0) {
+            g->mode = 0;
+            return 1;
+        }
+        if (!js_num(line, "altMSL", &alt)) js_num(line, "alt", &alt);
+        js_num(line, "speed", &speed);
+        g->has_track = js_num(line, "track", &track) && isfinite(track);
+        g->lat = lat;
+        g->lon = lon;
+        g->alt = isfinite(alt) ? alt : 0.0;
+        g->speed = isfinite(speed) ? speed : 0.0;
+        g->track = g->has_track ? track : 0.0;
         g->t_fix = now;
-        if (!js_num(line, "altMSL", &g->alt)) js_num(line, "alt", &g->alt);
-        if (!js_num(line, "speed", &g->speed)) g->speed = 0;
-        g->has_track = js_num(line, "track", &g->track);
     }
     return 1;
 }
@@ -80,9 +122,10 @@ void gps_poll(gps_t *g, const cfg_t *c)
     if (g->lr.fd < 0) {
         if (now < g->t_retry) return;
         g->t_retry = now + 5.0;
-        gps_connect(g, c);
+        gps_connect(g, c, now);
         if (g->lr.fd < 0) return;
     }
+    if (gps_connected(g, now) <= 0) return;
     while ((r = lr_readline(&g->lr, line, sizeof line)) == 1) gps_parse(g, line, now);
     if (r < 0) gps_close(g);
 }

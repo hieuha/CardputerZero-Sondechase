@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "sc.h"
+#include <ctype.h>
 #include <math.h>
 #include <string.h>
 
@@ -159,17 +160,36 @@ pred_t predict_landing(const sonde_t *s, double vv, const wind_t *w, double grou
     return r;
 }
 
+/* A number field that is present must be finite (strtod also reads "nan" and "inf"): *ok goes to 0 if not. */
+static void js_fin(const char *line, const char *key, double *out, int *ok)
+{
+    double v;
+    if (js_num(line, key, &v)) {
+        if (isfinite(v)) *out = v;
+        else *ok = 0;
+    }
+}
+
 int sonde_parse(const char *line, sonde_t *s)
 {
     double v;
+    char *c;
+    int ok = 1;
     memset(s, 0, sizeof *s);
     if (!js_num(line, "lat", &s->lat) || !js_num(line, "lon", &s->lon) || !js_num(line, "alt", &s->alt))
         return 0;
+    /* a frame with a CRC can still carry anything: rs41mod gives NaN for an all-zero position, and an infinite
+     * or absurd altitude would keep the landing prediction looping */
+    if (!isfinite(s->lat) || !isfinite(s->lon) || !isfinite(s->alt) || s->alt < -500.0 || s->alt > 60000.0) return 0;
     if (!js_str(line, "id", s->id, sizeof s->id)) strcpy(s->id, "?");
-    if (js_num(line, "frame", &v)) s->frame = (int)v;
+    /* the serial names log files and fills CSV columns: letters, digits, - and _ only */
+    for (c = s->id; *c; c++)
+        if (!isalnum((unsigned char)*c) && *c != '-' && *c != '_') *c = '_';
+    if (!s->id[0]) strcpy(s->id, "?");
+    if (js_num(line, "frame", &v) && isfinite(v) && fabs(v) < 2e9) s->frame = (int)v;
     /* Before its GPS locks (e.g. still on the ground indoors) an RS41 reports sats 0, a 1980 date
      * and a position that wanders around a meaningless point: keep the telemetry, not the position. */
-    if (js_num(line, "sats", &v)) {
+    if (js_num(line, "sats", &v) && isfinite(v) && fabs(v) < 1000) {
         s->sats = (int)v;
         if (s->sats < 4) {
             js_num(line, "batt", &s->batt);
@@ -179,17 +199,18 @@ int sonde_parse(const char *line, sonde_t *s)
     if (fabs(s->lat) < 1e-6 && fabs(s->lon) < 1e-6) return 0; /* no GPS solution on the sonde */
     if (fabs(s->lat) > 90.0 || fabs(s->lon) > 180.0) return 0;
     s->bt = -1;
-    if (js_num(line, "bt", &v)) s->bt = (int)v;
-    js_num(line, "vel_h", &s->vel_h);
-    js_num(line, "vel_v", &s->vel_v);
-    js_num(line, "heading", &s->heading);
+    if (js_num(line, "bt", &v) && isfinite(v) && fabs(v) < 1e6) s->bt = (int)v;
+    js_fin(line, "vel_h", &s->vel_h, &ok);
+    js_fin(line, "vel_v", &s->vel_v, &ok);
+    js_fin(line, "heading", &s->heading, &ok);
     s->temp = -273.0;
-    js_num(line, "temp", &s->temp);
-    js_num(line, "batt", &s->batt);
+    js_fin(line, "temp", &s->temp, &ok);
+    js_fin(line, "batt", &s->batt, &ok);
     s->humidity = -1.0;
-    js_num(line, "humidity", &s->humidity);
+    js_fin(line, "humidity", &s->humidity, &ok);
     s->pressure = -1.0;
-    js_num(line, "pressure", &s->pressure);
+    js_fin(line, "pressure", &s->pressure, &ok);
+    if (!ok || fabs(s->vel_v) > 1000.0 || fabs(s->vel_h) > 1000.0) return 0;
     if (s->pressure <= 0.0) { /* RS41-SG has no pressure sensor */
         s->pressure = isa_p(s->alt);
         s->pres_est = 1;

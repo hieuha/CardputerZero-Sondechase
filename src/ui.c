@@ -184,7 +184,13 @@ void ui_key(int k)
     }
     if (!A->sdr_ok) { /* blocking error screen: only holding Esc (quit) does anything */
     } else if (A->burst_alert) { /* alert overlay takes Enter / Esc only */
-        if (k == K_ENTER) { A->burst_alert = 0; page = PG_MAP; map_follow = 0; map_zoom = -1; }
+        if (k == K_ENTER) { /* to the Map: a calibration left running on Info would keep taking the keys there */
+            A->burst_alert = 0;
+            A->cal.step = MAGCAL_OFF;
+            page = PG_MAP;
+            map_follow = 0;
+            map_zoom = -1;
+        }
         else if (k == K_ESC) A->burst_alert = 0;
     } else if (A->cal.step != MAGCAL_OFF) { /* compass calibration takes Enter / Esc only */
         if (k == K_ESC || !A->hdg.mag_found) A->cal.step = MAGCAL_OFF;

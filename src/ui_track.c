@@ -183,12 +183,16 @@ static void track_panel(double dist, double brg, int last)
 
     if (ok && A->have_land && !last) {
         fmt_dist(num, sizeof num, &unit, A->land_dist);
-        char when[24];
+        static const char *ab[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+        char when[24], where[48];
         int ww;
         snprintf(when, sizeof when, "in %s", land_rem_txt());
         ww = text_w(F_S, when) + 2; /* the time keeps its width, the place text gets the rest: no wrapping */
+        snprintf(where, sizeof where, "Lands %s %s %s", num, unit, point8(A->land_brg));
+        if (text_w(F_S, where) > 308 - ww - 150) /* "36.75 km South-east" with "1h21" does not fit: SE */
+            snprintf(where, sizeof where, "Lands %s %s %s", num, unit, ab[(int)floor(norm360(A->land_brg + 22.5) / 45.0) % 8]);
         box(140, 132, 174, 18, C_YL, C_P);
-        txt(146, 134, 308 - ww - 150, F_S, C_YL, AL_L, "Lands %s %s %s", num, unit, point8(A->land_brg));
+        txt(146, 134, 308 - ww - 150, F_S, C_YL, AL_L, "%s", where);
         txt(308 - ww, 134, ww, F_S, C_YL, AL_R, "%s", when);
     } else if (!ok) {
         box(140, 132, 174, 18, C_RD, C_P);

@@ -136,6 +136,9 @@ map_simple = 1           # kiểu bản đồ đơn giản (V trên màn Map đ�
 demo = 0                 # 1 = chuyến bay giả lập, không cần phần cứng
 ```
 
+App tự tìm màn LCD (`/dev/fb_lcd`, không có thì đọc `/proc/fb`), nên vẫn hiện đúng khi cắm HDMI. Chỉ đặt `fb_dev`
+khi muốn ép dùng một framebuffer khác.
+
 Danh sách đầy đủ các key, giá trị mặc định, đóng gói và gói tile bản đồ: [hướng dẫn deploy](docs/deployment-guide.md#configuration).
 
 Chế độ demo (`demo = 1`) phát một chuyến bay giả lập qua đúng luồng code thật, tiện để xem mọi màn hình khi không có
@@ -173,10 +176,11 @@ Tài liệu kỹ thuật viết bằng tiếng Anh:
 | [Codebase summary](docs/codebase-summary.md) | Các file và vai trò của từng file |
 | [Deployment guide](docs/deployment-guide.md) | Build, test, cài đặt, danh sách cấu hình, các bước release, kiểm tra trên máy |
 | [Project roadmap](docs/project-roadmap.md) | Các phiên bản đã phát hành, những phần còn thiếu |
+| [Publish record](PUBLISH.md) | Những gì gửi lên app store CardputerZero: gói, trang store, ảnh, lần nộp gần nhất |
 
 ## Tình trạng test
 
-`tests/test_core.c`: 4356 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
+`tests/test_core.c`: 4363 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
 native trên Debian 13. Một `librtlsdr` giả và một bộ giải mã giả chạy trọn quy trình quét và giải mã mà không cần
 dongle. Chi tiết và số đo trên máy thật: [hướng dẫn deploy](docs/deployment-guide.md#tests).
 

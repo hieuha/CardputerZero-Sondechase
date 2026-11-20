@@ -3,7 +3,7 @@
 Last updated: 2026-11-20 (version 0.6.0).
 
 SondeChase is one C11 process on the CardputerZero. It reads the RTL-SDR in process, runs the RS41 decoder as
-a child pipeline, merges GPS and magnetometer data, and draws every screen with LVGL 9.5 on `/dev/fb0`.
+a child pipeline, merges GPS and magnetometer data, and draws every screen with LVGL 9.5 on the LCD framebuffer.
 The core (`sc_core`) has no LVGL dependency and is unit-tested on any Linux host.
 
 ## Contents
@@ -62,7 +62,7 @@ flowchart LR
     AUDIO --> PACAT["pacat (PipeWire)"]
     APP --> LED["ACT LED sysfs"]
     KBD["evdev keyboard"] --> UI
-    UI --> FB["/dev/fb0"]
+    UI --> FB["/dev/fb_lcd"]
     TILES["OSM tile server"] -.->|"curl, visible tiles only"| TILEC["tiles.c cache"]
     TILEC --> UI
 ```
@@ -153,7 +153,7 @@ and decimates to 16 kHz. Output goes to `audio_radio_push`, which mixes it with 
 
 - Screens: a 200 ms LVGL timer (`tick_cb`) and every key press invalidate the root object. The single
   `LV_EVENT_DRAW_MAIN` callback (`draw_cb`) repaints the active screen from `app_t`, immediate-mode style. LVGL
-  writes to `/dev/fb0` through `lv_linux_fbdev`.
+  writes to the LCD framebuffer through `lv_linux_fbdev`; `fb_pick` (`base.c`) chooses it at start: `fb_dev`, then `$LV_LINUX_FBDEV_DEVICE`, then `/dev/fb_lcd`, then `/proc/fb`, then `/dev/fb0`.
 - Logs: see [Files written](#files-written).
 - Burst: `flight_update` returns 1 once, sets `burst_alert`, and plays three rising tones (880, 1320, 1760 Hz).
 
@@ -166,7 +166,7 @@ and decimates to 16 kHz. Output goes to `audio_radio_push`, which mixes it with 
 | Magnetometer | IIO sysfs `/sys/bus/iio/devices/iio:deviceN/in_magn_{x,y}_raw` | Read at 5 Hz | `mag_enable`, `mag_off_x/y`, `mag_rot_deg`, `mag_flip_y`, `declination`. Not tilt-compensated |
 | ACT LED | sysfs `led_path` (default `/sys/class/leds/ACT/brightness`) | One-byte write per blink | Writable by the `input` group. The first blink drops the kernel's `actpwr` trigger until reboot |
 | Audio | `pacat` via `audio_cmd` (PipeWire) | Child stdin, 16 kHz S16_LE mono | `audio_enable`. Without PipeWire, `aplay` can be used through `audio_cmd` |
-| Display | `/dev/fb0`, `fb_dev` | LVGL `lv_linux_fbdev` | 320×170 |
+| Display | `/dev/fb_lcd` (found by `fb_pick`), `fb_dev` | LVGL `lv_linux_fbdev` | 320×170 |
 | Keyboard | evdev, `/dev/input/event*` | Non-blocking read, device grabbed | `kbd_dev` sets the device; empty auto-detects the first device with Q, Enter and 1 keys |
 | Network (tiles) | HTTPS via `curl` | Child process | Only when `tile_online = 1` |
 

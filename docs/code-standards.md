@@ -170,7 +170,7 @@ A change that touches behaviour, keys, screens, config keys, files on disk or th
 | User-visible behaviour, screens, logs, data folder | `README.md` and `README.vi.md` (same content, Vietnamese written with natural vi-VN terms) |
 | Config keys or defaults | `conf/sondechase.conf`, [deployment guide](./deployment-guide.md#configuration) |
 | Modules, data flow, peripherals, algorithms | [system architecture](./system-architecture.md), [codebase summary](./codebase-summary.md) |
-| A release | [roadmap](./project-roadmap.md), version in the READMEs and in each doc's "Last updated" line |
+| A release | [roadmap](./project-roadmap.md), version in the READMEs and in each doc's "Last updated" line, [`PUBLISH.md`](../PUBLISH.md) (version, package, submission result) |
 
 Check the docs against the code before committing; do not describe behaviour that is planned but not built.
 

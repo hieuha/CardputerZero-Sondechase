@@ -22,7 +22,7 @@ working tree and from the line counts below. Regenerate after large changes.
 | Application | `sondechase` (CardputerZero, Debian 13 arm64), LVGL 9.5.0 UI |
 | Core | `sc_core`, no LVGL, unit-tested on Linux |
 | Source size | `src/` 4766 lines (`src/sc.h` 496, `src/ui.c` 1271 the largest) |
-| Tests | `tests/test_core.c` (1052 lines), 4356 checks, all passing (GCC 14.2, Debian trixie) |
+| Tests | `tests/test_core.c` (1182 lines), 4363 checks, all passing (GCC 14.2, Debian trixie) |
 | External programs run | `fsk_demod`, `rs41mod` (built from `radiosonde_auto_rx` v1.9.0), `pacat`, `curl`, `gpsd` (socket) |
 | Runtime libraries | `librtlsdr` (loaded with `dlopen`), libc, libm, pthread |
 | License | GPL-3.0-or-later (see `LICENSE`) |
@@ -46,6 +46,7 @@ working tree and from the line counts below. Regenerate after large changes.
 ├── CMakeLists.txt    project, options, core and UI targets
 ├── CMakePresets.json configure, build, package and workflow presets
 ├── app-builder.json  CardputerZero store manifest
+├── PUBLISH.md        store publish record: package, listing, assets, last submission
 ├── lv_conf.h         LVGL configuration
 ├── README.md, README.vi.md
 └── release-manifest.json  tooling metadata; not used by the build
@@ -58,7 +59,7 @@ working tree and from the line counts below. Regenerate after large changes.
 | `src/sc.h` | 521 | all | Public types (`cfg_t`, `app_t`, `sonde_t`, `wind_t`, `radio_t`, `flight_t`, `tilefetch_t`, ...) and APIs |
 | `src/main.c` | 90 | `main` | Startup, signals, main loop, hold-Esc quit |
 | `src/app.c` | 615 | `app_init`, `app_poll`, `app_tune`, `app_listen`, `app_scan`, `app_hunt`, `app_on_frame`, `app_free` | Application state machine, receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
-| `src/base.c` | 346 | `cfg_load`, `cfg_defaults`, `sc_subst`, `lr_readline`, `proc_start_feed`, `js_num`, `js_str` | Config, line reader, child process groups, flat-JSON reader |
+| `src/base.c` | 364 | `cfg_load`, `cfg_defaults`, `sc_subst`, `fb_pick`, `lr_readline`, `proc_start_feed`, `js_num`, `js_str` | Config, line reader, child process groups, flat-JSON reader |
 | `src/sdr.c` | 273 | `sdr_open`, `sdr_tune`, `sdr_read`, `sdr_range`, `iqring_*` | librtlsdr via `dlopen`, reader thread, IQ ring, tuner range table |
 | `src/dsp.c` | 215 | `fft_spectrum`, `ddc_process`, `ddc_process_wide` | FFT with Hann window, decoder front end |
 | `src/radio.c` | 174 | `radio_init`, `radio_process`, `radio_process_wfm`, `radio_next_bw` | NFM, AM, USB, LSB, WFM demodulation and channel widths |
@@ -78,7 +79,7 @@ Info (`8`), frequency entry (`F`), burst alert overlay and the "No SDR device fo
 
 | File | Lines | Role |
 |---|---|---|
-| `tests/test_core.c` | 1149 | Core checks: geodesy, ISA, prediction, sonde and gpsd parsers, heading, compass calibration, config, spectrum, IQ ring, DSP, radio, sweep and hunt, tiles, flight, beeper, LED, child lifecycle |
+| `tests/test_core.c` | 1182 | Core checks: geodesy, ISA, prediction, sonde and gpsd parsers, heading, compass calibration, config, framebuffer choice, spectrum, IQ ring, DSP, radio, sweep and hunt, tiles, flight, beeper, LED, child lifecycle |
 | `tests/fake_rtlsdr.c` | 54 | Stand-in `librtlsdr` shared library: 403.000 MHz carrier wherever it is tuned |
 | `tests/fake_decoder.sh` | 11 | Stand-in decoder: prints rs41mod-style JSON lines and a non-JSON line |
 | `tools/render.c` | 209 | `sc_render`: headless UI on demo data, writes 320×170 PPM per screen |

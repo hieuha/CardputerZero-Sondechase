@@ -59,6 +59,10 @@ void cfg_defaults(cfg_t *c);
 int cfg_load(cfg_t *c, const char *path); /* 0 ok, -1 file not readable */
 /* Expand {f_hz} (the tuned sonde frequency) in a command template; -1 if out is too small. */
 int sc_subst(char *out, size_t n, const char *tpl, long f_hz);
+/* The LCD framebuffer: fb_dev from the config, else $LV_LINUX_FBDEV_DEVICE, else lcd_link (/dev/fb_lcd, made by the
+ * image's udev rule for the st7789v node), else the ST7789V entry in procfb (/proc/fb: fb_st7789v, or panel-mipi-dbi
+ * on newer kernels), else /dev/fb0. The LCD is not always fb0: with HDMI attached it can be fb1. */
+void fb_pick(char *out, size_t n, const char *cfg_dev, const char *env, const char *lcd_link, const char *procfb);
 
 /* Non-blocking line reader on a file descriptor (decoder JSON, gpsd reports). The longest lines are gpsd
  * SKY reports listing every satellite, a few kB; callers size their line buffer with LR_MAX. */

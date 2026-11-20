@@ -37,7 +37,7 @@ Options in `CMakeLists.txt`:
 | Option | Default | Effect |
 |---|---|---|
 | `SC_BUILD_UI` | `ON` | Build the LVGL application (fetches LVGL v9.5.0). `OFF` builds only the core and tests |
-| `SC_SIM` | `OFF` | SDL2 window instead of `/dev/fb0` and evdev |
+| `SC_SIM` | `OFF` | SDL2 window instead of the framebuffer and evdev |
 | `SC_RENDER` | `OFF` | Build `sc_render` (`tools/render.c`) with `SC_HEADLESS=1` |
 
 ## Build on the device
@@ -81,7 +81,7 @@ ctest --test-dir build --output-on-failure
 Notes:
 - `keys.c` and the tests include `<linux/input.h>`. The build fails on macOS; use a Debian or Ubuntu host or a
   Linux container.
-- Verified on 2026-11-20 in `debian:trixie` (GCC 14.2.0): `test_core` reports **4356 checks, 0 failed**.
+- Verified on 2026-11-20 in `debian:trixie` (GCC 14.2.0): `test_core` reports **4363 checks, 0 failed**.
 - The same build prints five `-Wformat-truncation` warnings (four sites in `src/app.c` and `src/tiles.c`). They are
   listed in the [roadmap](./project-roadmap.md#known-gaps).
 - What the tests cover is listed in [system architecture](./system-architecture.md) by module. Test names are
@@ -108,7 +108,7 @@ Installed files:
 
 Dependencies: `Depends: libc6, curl, librtlsdr0 (>= 2.0.2)`. librtlsdr is loaded at run time, not linked.
 `Recommends: gpsd, pulseaudio-utils, coreutils`. The package installs no systemd unit: the app is started from
-APPLaunch and runs as the launcher's user, which needs access to `/dev/fb0`, `/dev/input/event*`, the RTL-SDR and
+APPLaunch and runs as the launcher's user, which needs access to the LCD framebuffer (`/dev/fb_lcd`, `fb0` on the current image), `/dev/input/event*`, the RTL-SDR and
 PipeWire (groups `video`, `input`, `plugdev`, `audio`).
 
 Run from a terminal with a custom config:
@@ -166,7 +166,7 @@ Syntax rules, from `src/base.c`:
 | `map_lat`, `map_lon` | `21.0285`, `105.8542` | Map centre while no position is known |
 | `map_simple` | `1` | Start-up map style: `1` simple (water and roads), `0` detailed. `V` toggles |
 | `font_dir` | `/usr/share/sondechase/fonts` | Folder with `Orbitron-Bold.ttf` and `Rajdhani-SemiBold.ttf` |
-| `fb_dev` | `/dev/fb0` | Framebuffer |
+| `fb_dev` | unset | Framebuffer. Unset: `$LV_LINUX_FBDEV_DEVICE`, else `/dev/fb_lcd` (the image's udev link for the st7789v node), else the `fb_st7789v` or `panel-mipi-dbi` entry of `/proc/fb`, else `/dev/fb0` |
 | `kbd_dev` | auto | evdev keyboard. Empty: first device with Q, Enter and 1 keys |
 | `data_dir` | `$HOME/sondechase` | App data: `sondechase.csv`, `log/`, `tiles/`. Files from before 0.5.1 are moved in on first start |
 | `demo` | `0` | `1` simulated flight, see [Demo mode](#demo-mode) |
@@ -237,7 +237,9 @@ Steps used for 0.4.0 to 0.6.0. Keep the version identical in all places; the CMa
 7. Tag the same commit `vx.y.z` and create a GitHub release with the `.deb` attached and the SHA-256 in the notes.
 8. Publish to the CardputerZero store with `czdev publish --deb <deb>` (from CardputerZero/AppBuilder). It opens a
    pull request on CardputerZero/packages; an update of an existing app merges by itself once its CI passes. The
-   manifest rules are checked by `tools/validate_app_builder.py`.
+   manifest rules are checked by `tools/validate_app_builder.py`; run the skill's `prepublish_check.py` first (see
+   [`PUBLISH.md`](../PUBLISH.md)).
+9. Update [`PUBLISH.md`](../PUBLISH.md): version, package path, release link, PR and deploy run, submission time.
 
 
 ## CI workflows

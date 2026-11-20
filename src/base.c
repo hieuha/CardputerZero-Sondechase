@@ -37,7 +37,7 @@ void cfg_defaults(cfg_t *c)
     c->cog_min_speed = 1.5;
     c->mag_enable = 1;
     c->stale_s = 5.0;
-    snprintf(c->fb_dev, sizeof c->fb_dev, "/dev/fb0");
+    c->fb_dev[0] = 0; /* found at start by fb_pick */
     c->prox_radius_m = 10000.0;
     c->prox_hyst_m = 500.0;
     c->audio_enable = 1;
@@ -127,6 +127,24 @@ int cfg_load(cfg_t *c, const char *path)
     }
     fclose(f);
     return 0;
+}
+
+void fb_pick(char *out, size_t n, const char *cfg_dev, const char *env, const char *lcd_link, const char *procfb)
+{
+    char line[128], name[64];
+    int idx;
+    FILE *f;
+    if (cfg_dev && cfg_dev[0]) { snprintf(out, n, "%s", cfg_dev); return; }
+    if (env && env[0]) { snprintf(out, n, "%s", env); return; }
+    if (access(lcd_link, F_OK) == 0) { snprintf(out, n, "%s", lcd_link); return; }
+    snprintf(out, n, "/dev/fb0");
+    if (!(f = fopen(procfb, "r"))) return;
+    while (fgets(line, sizeof line, f))
+        if (sscanf(line, "%d %63s", &idx, name) == 2 && (strstr(name, "st7789") || strstr(name, "mipi-dbi"))) {
+            snprintf(out, n, "/dev/fb%d", idx);
+            break;
+        }
+    fclose(f);
 }
 
 int sc_subst(char *out, size_t n, const char *tpl, long f_hz)

@@ -238,6 +238,38 @@ static void t_cfg(void)
     CHECK(cfg_load(&c, "/nonexistent/x.conf") == -1);
 }
 
+/* Framebuffer: config, then environment, then the udev /dev/fb_lcd link, then the ST7789V entry of /proc/fb, then fb0 */
+static void t_fb(void)
+{
+    const char *pf = "/tmp/sc_test_procfb", *link = "/tmp/sc_test_fb_lcd", *none = "/nonexistent/fb_lcd";
+    char fb[64];
+    FILE *f = fopen(pf, "w");
+    fprintf(f, "0 vc4drmfb\n1 fb_st7789v\n");
+    fclose(f);
+    fb_pick(fb, sizeof fb, "", NULL, none, pf);
+    CHECK(!strcmp(fb, "/dev/fb1"));
+    fb_pick(fb, sizeof fb, "", "/dev/fb2", none, pf);
+    CHECK(!strcmp(fb, "/dev/fb2"));
+    fb_pick(fb, sizeof fb, "/dev/fb3", "/dev/fb2", none, pf);
+    CHECK(!strcmp(fb, "/dev/fb3"));
+    f = fopen(pf, "w");
+    fprintf(f, "0 vc4drmfb\n1 panel-mipi-dbid\n"); /* kernel 6.18: the LCD runs on the generic MIPI DBI panel driver */
+    fclose(f);
+    fb_pick(fb, sizeof fb, "", NULL, none, pf);
+    CHECK(!strcmp(fb, "/dev/fb1"));
+    fclose(fopen(link, "w"));
+    fb_pick(fb, sizeof fb, "", NULL, link, pf);
+    CHECK(!strcmp(fb, link));
+    unlink(link);
+    f = fopen(pf, "w");
+    fprintf(f, "0 vc4drmfb\n");
+    fclose(f);
+    fb_pick(fb, sizeof fb, "", NULL, none, pf);
+    CHECK(!strcmp(fb, "/dev/fb0"));
+    fb_pick(fb, sizeof fb, "", "", none, "/nonexistent/fb");
+    CHECK(!strcmp(fb, "/dev/fb0"));
+}
+
 static void t_spec(void)
 {
     static spectrum_t s;
@@ -1133,6 +1165,7 @@ int main(int argc, char **argv)
     t_magcal();
     t_subst();
     t_cfg();
+    t_fb();
     t_spec();
     t_ring();
     t_dsp();

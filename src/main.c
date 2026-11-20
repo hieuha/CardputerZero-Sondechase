@@ -67,8 +67,10 @@ int main(int argc, char **argv)
     }
 #else
     {
+        char fb[64];
         lv_display_t *d = lv_linux_fbdev_create();
-        lv_linux_fbdev_set_file(d, app.cfg.fb_dev);
+        fb_pick(fb, sizeof fb, app.cfg.fb_dev, getenv("LV_LINUX_FBDEV_DEVICE"), "/dev/fb_lcd", "/proc/fb");
+        lv_linux_fbdev_set_file(d, fb);
         kfd = keys_open(app.cfg.kbd_dev);
         ui_init(&app);
     }

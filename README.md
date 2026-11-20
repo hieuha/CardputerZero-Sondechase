@@ -136,6 +136,9 @@ map_simple = 1           # simple map style (V toggles it on the Map)
 demo = 0                 # 1 = simulated flight, no hardware needed
 ```
 
+The LCD is found by itself (`/dev/fb_lcd`, else `/proc/fb`), so it keeps working when HDMI is attached. Set
+`fb_dev` only to force another framebuffer.
+
 Full key reference, defaults, packaging and map tile packs: [deployment guide](docs/deployment-guide.md#configuration).
 
 Demo mode (`demo = 1`) plays a simulated flight through the same code path, which is useful to see every screen
@@ -170,10 +173,11 @@ Everything the app keeps is in one folder, `data_dir` (default `~/sondechase`):
 | [Codebase summary](docs/codebase-summary.md) | Files and their roles |
 | [Deployment guide](docs/deployment-guide.md) | Builds, tests, install, configuration reference, release steps, device checks |
 | [Project roadmap](docs/project-roadmap.md) | Released versions, known gaps |
+| [Publish record](PUBLISH.md) | What goes to the CardputerZero store: package, listing, assets, last submission |
 
 ## Test status
 
-`tests/test_core.c`: 4356 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
+`tests/test_core.c`: 4363 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
 arm64 package build on Debian 13. A fake `librtlsdr` and a fake decoder run scanning and decoding end to end without
 a dongle. Details and the device measurements: [deployment guide](docs/deployment-guide.md#tests).
 

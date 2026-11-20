@@ -45,6 +45,7 @@ void pol(double cx, double cy, double r, double deg, double *x, double *y);
 void fmt_dist(char *num, size_t n, const char **unit, double m);
 int fresh(void);
 int land_rem_s(void);
+const char *land_rem_txt(void);
 void read_battery(void);
 void top_bar(const char *name, uint32_t chip, const char *mid);
 void nav_bar(int active);

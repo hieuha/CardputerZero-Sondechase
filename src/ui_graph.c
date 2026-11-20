@@ -7,16 +7,24 @@
 #define SK_X1 222
 #define SK_YB 143
 #define SK_YT 33
+/* Top of the pressure axis: 100 hPa, or 10 hPa (about 31 km) once the flight has been above 100 hPa. A sonde is
+ * often first heard high up, and with a fixed 100 hPa top its whole profile would lie above the diagram. */
+static double sk_top = 100.0;
+
 static double sk_y(double p)
 {
-    if (p < 100) p = 100;
+    if (p < sk_top) p = sk_top;
     if (p > 1050) p = 1050;
-    return SK_YB - log(1050.0 / p) / log(10.5) * (SK_YB - SK_YT);
+    return SK_YB - log(1050.0 / p) / log(1050.0 / sk_top) * (SK_YB - SK_YT);
 }
 
+/* Isotherms lean by the same temperature per unit of ln(p) whatever the axis' top: 45° on the 1050-100 hPa
+ * diagram. Tied to pixels instead, a stretched axis would lean less and the cold upper air slide off the left. */
 static double sk_x(double t, double p)
 {
-    return SK_X0 + (t + 35.0) * (SK_X1 - SK_X0) / 80.0 + (SK_YB - sk_y(p));
+    if (p < sk_top) p = sk_top;
+    if (p > 1050) p = 1050;
+    return SK_X0 + (t + 35.0) * (SK_X1 - SK_X0) / 80.0 + log(1050.0 / p) / log(10.5) * (SK_YB - SK_YT);
 }
 
 static void sk_ln(double t1, double p1, double t2, double p2, uint32_t col, int w)
@@ -26,25 +34,39 @@ static void sk_ln(double t1, double p1, double t2, double p2, uint32_t col, int 
 
 void p_skewt(void)
 {
-    static const int isob[] = {1000, 850, 700, 500, 300, 200, 100};
-    static const double wl[] = {900, 700, 500, 400, 300, 200, 150};
+    /* grid lines; labels only where they have room (the extended axis squeezes the lower levels) */
+    static const int isob[] = {1000, 850, 700, 500, 300, 200, 100, 50, 20, 10};
+    static const int lab100[] = {1000, 700, 500, 300, 200, 100}, lab10[] = {1000, 500, 200, 100, 50, 20, 10};
+    static const double wl100[] = {900, 700, 500, 400, 300, 200, 150}, wl10[] = {850, 500, 300, 150, 70, 30, 15};
     const hist_t *h = &A->hist;
     const sonde_t *s = &A->sonde;
-    double zero_alt = -1, trop_alt = -1, tmin = 1e9;
-    int i, th, t, p;
+    const int *lab;
+    const double *wl;
+    double zero_alt = -1, trop_alt = -1, tmin = 1e9, p, pn;
+    int i, th, t, nlab;
+
+    sk_top = A->have_sonde && s->pressure > 0 && s->pressure < 100 ? 10.0 : 100.0;
+    for (i = 0; i < h->n && sk_top > 10.0; i++)
+        if (h->p[i].pres > 0 && h->p[i].pres < 100) sk_top = 10.0;
+    lab = sk_top < 100 ? lab10 : lab100;
+    nlab = sk_top < 100 ? (int)(sizeof lab10 / sizeof lab10[0]) : (int)(sizeof lab100 / sizeof lab100[0]);
+    wl = sk_top < 100 ? wl10 : wl100;
 
     top_bar("Graph 1/2", C_CY, NULL);
     fill(SK_X0, SK_YT, SK_X1 - SK_X0, SK_YB - SK_YT, C_P);
-    for (th = -20; th < 180; th += 20) /* dry adiabats: T = theta (p/1000)^0.2857 */
-        for (p = 1050; p > 100; p -= 50)
+    for (th = -20; th < (sk_top < 100 ? 300 : 180); th += 20) /* dry adiabats: T = theta (p/1000)^0.2857 */
+        for (p = 1050; p > sk_top; p = pn) {
+            pn = p > 150 ? p - 50 : p - 5; /* finer where the axis is stretched */
             sk_ln((th + 273.15) * pow(p / 1000.0, 0.2857) - 273.15, p,
-                  (th + 273.15) * pow((p - 50) / 1000.0, 0.2857) - 273.15, p - 50, C_AD, 1);
-    for (t = -120; t < 60; t += 20) sk_ln(t, 1050, t, 100, t == 0 ? C_DIM : C_L, 1);
-    for (i = 0; i < 6; i++) ln(SK_X0, sk_y(isob[i]), SK_X1, sk_y(isob[i]), C_L, 1);
+                  (th + 273.15) * pow(pn / 1000.0, 0.2857) - 273.15, pn, C_AD, 1);
+        }
+    for (t = sk_top < 100 ? -160 : -120; t < 60; t += 20) sk_ln(t, 1050, t, sk_top, t == 0 ? C_DIM : C_L, 1);
+    for (i = 0; i < (int)(sizeof isob / sizeof isob[0]); i++)
+        if (isob[i] > sk_top) ln(SK_X0, sk_y(isob[i]), SK_X1, sk_y(isob[i]), C_L, 1);
 
     for (i = 1; i < h->n; i++) {
         const hist_pt_t *a = &h->p[i - 1], *b = &h->p[i];
-        if (a->pres < 100 && b->pres < 100) continue;
+        if (a->pres < sk_top && b->pres < sk_top) continue;
         if (a->temp > -270 && b->temp > -270) {
             sk_ln(a->temp, a->pres, b->temp, b->pres, C_CY, 2);
             if (a->rh >= 0 && b->rh >= 0 && (i & 1)) /* dashed: every second segment */
@@ -66,15 +88,15 @@ void p_skewt(void)
         fill((int)bx - 1, (int)by - 1, 4, 4, C_GN);
         txt(240, (int)y - 6, 15, F_S, C_GN, AL_R, "%.0f", h->p[best].ws);
     }
-    if (A->have_sonde && s->pressure >= 100) {
+    if (A->have_sonde && s->pressure >= sk_top) {
         dash(SK_X0, sk_y(s->pressure), SK_X1, sk_y(s->pressure), C_TX, 1, 2, 3);
     }
     ln(SK_X0, SK_YT, SK_X1, SK_YT, C_DIM, 1);
     ln(SK_X1, SK_YT, SK_X1, SK_YB, C_DIM, 1);
     ln(SK_X1, SK_YB, SK_X0, SK_YB, C_DIM, 1);
     ln(SK_X0, SK_YB, SK_X0, SK_YT, C_DIM, 1);
-    for (i = 0; i < 7; i++) /* 850 hPa has a grid line but no label: it would collide with 700 and 1000 */
-        if (isob[i] != 850) txt(0, (int)sk_y(isob[i]) - (i == 0 ? 10 : 6), SK_X0 - 3, F_S, C_DIM, AL_R, "%d", isob[i]);
+    for (i = 0; i < nlab; i++) /* 850 hPa has a grid line but no label: it would collide with 700 and 1000 */
+        txt(0, (int)sk_y(lab[i]) - (i == 0 ? 10 : (lab[i] == 10 ? 0 : 6)), SK_X0 - 3, F_S, C_DIM, AL_R, "%d", lab[i]);
     for (t = -20; t <= 40; t += 20) txt((int)sk_x(t, 1050) - 12, 144, 24, F_S, C_DIM, AL_C, t ? "%+d" : "%d", t);
     txt(226, 144, 29, F_S, C_GN, AL_R, "m/s");
 
@@ -136,7 +158,7 @@ void p_flight(void)
     if (A->have_sonde) {
         txt(26, 18, 80, F_M, C_CY, AL_L, "Alt %.0f m", A->sonde.alt);
         txt(106, 18, 86, F_M, C_PK, AL_L, "V/S %+.1f m/s", A->vv_s);
-        if (A->pred.valid && fresh()) txt(192, 18, 96, F_M, C_YL, AL_L, "Landing T-%02d:%02d", land_rem_s() / 60, land_rem_s() % 60);
+        if (A->pred.valid && fresh()) txt(192, 18, 96, F_M, C_YL, AL_L, "Landing T-%s", land_rem_txt());
     }
     nav_bar(PG_GRAPH);
 }

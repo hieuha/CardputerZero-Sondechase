@@ -39,13 +39,13 @@ The core (`sc_core`) has no LVGL dependency and is unit-tested on any Linux host
 | `src/demo.c` | 139 | Simulated flight (`demo = 1`) through the same frame path |
 | `src/keys.c` | 97 | Keyboard from evdev (`/dev/input/event*`), Sym symbol keys, held-arrow repeat |
 | `src/ui.c` | 258 | UI state, overlays (frequency entry, burst alert, no SDR), LVGL draw callback, key dispatch (`ui_key`) |
-| `src/ui_draw.c` | 233 | Drawing primitives (line, rectangle, label), top and nav bars, battery |
-| `src/ui_track.c` | 215 | Track screen and compass |
+| `src/ui_draw.c` | 243 | Drawing primitives (line, rectangle, label), top and nav bars, battery |
+| `src/ui_track.c` | 223 | Track screen and compass |
 | `src/ui_map.c` | 290 | Map screen, decoded tile cache, pan, zoom, follow, style |
-| `src/ui_graph.c` | 142 | Skew-T and flight profile |
+| `src/ui_graph.c` | 164 | Skew-T and flight profile |
 | `src/ui_radio.c` | 159 | Band overview, tuned spectrum, listening, decoding |
 | `src/ui_info.c` | 177 | Info screens and compass calibration |
-| `src/ui_priv.h` | 76 | Colours, shared UI state and prototypes for the UI files |
+| `src/ui_priv.h` | 77 | Colours, shared UI state and prototypes for the UI files |
 | `src/ui.h` | 16 | UI entry points used by `main.c` |
 | `tools/render.c` | 226 | Headless build of the real UI for screenshots (`SC_RENDER`) |
 
@@ -164,7 +164,8 @@ steps through the band. `spec_peaks` returns the peaks for the Radio screen and 
 - `heading_update` picks the compass source in this order: GPS course when speed ≥ `cog_min_speed`, the magnetometer
   when found (read at 5 Hz), otherwise hold the last heading (`HDG_HOLD`). With `mag_tilt = 1` the magnetometer
   heading is tilt-compensated (see [compass](#compass-compassc)).
-- With a sonde and a valid GPS fix: ground distance, bearing, elevation angle and the relative bearing for the
+- With a sonde and a valid GPS fix: ground distance, bearing, elevation angle (also on Track, from the last fix
+  when GPS drops out, hidden once the sonde has landed) and the relative bearing for the
   arrow. Landing point distance and bearing when a prediction exists.
 - The proximity beeper (`prox_update`) and the telemetry tones use the ground distance.
 
@@ -380,7 +381,10 @@ leaning, and the two sensors being read a few milliseconds apart.
 
 ### Skew-T log-P (`ui_graph.c`)
 
-Pressure axis `y ∝ ln(1050 / p)` from 1050 to 100 hPa. Isotherms are skewed 45°, dry adiabats follow
+Pressure axis `y ∝ ln(1050 / p)` from 1050 to 100 hPa, or to 10 hPa once the sonde or its history has been above
+100 hPa: a sonde is often first heard high up, and on a fixed 100 hPa axis its whole profile would lie above the
+diagram (seen with Y0310371, first heard at 15.5 km). The isotherms lean by a fixed temperature per unit of ln(p),
+45° on the 100 hPa axis, so the cold upper air stays on the diagram when it stretches. Dry adiabats follow
 `T = θ · (p / 1000)^0.2857`. Dew point uses the Magnus formula (`dewpoint`, a = 17.62, b = 243.12 °C).
 Moist adiabats and mixing-ratio lines are not drawn.
 

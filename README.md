@@ -76,7 +76,7 @@ To build the package yourself (on the device or cross-compiled), see [deployment
 
 | Key | Function |
 |---|---|
-| `4` Track | HUD compass and the distance to the sonde, with which way to go in words (`Bear right, East`, `Straight ahead`), its height and drift, and the predicted landing point. The ring and the `Go` line turn green while the arrow is within 15° of straight ahead. If GPS drops out, distance and direction come from the device's last fix (yellow, `from last GPS`). Sonde without a GPS fix: serial, frame and battery. Each frame ticks and blinks the red LED |
+| `4` Track | HUD compass and the distance to the sonde, with which way to go in words (`Bear right, East`, `Straight ahead`), its height and drift, the elevation to point an antenna at (`Elevation 37° above the horizon`, hidden once it has landed), and the predicted landing point with the time left (`in 7:38`, from an hour `in 1h52`). The ring and the `Go` line turn green while the arrow is within 15° of straight ahead. If GPS drops out, distance and direction come from the device's last fix (yellow, `from last GPS`). Sonde without a GPS fix: serial, frame and battery. Each frame ticks and blinks the red LED |
 | `5` Map | Tiles, device position, sonde, flight track, landing point. Arrow keys pan (hold to keep moving; the map stops following, `free`). `Sym` + `T` (`+`) zooms in, `Sym` + `R` (`-`) zooms out. `C` cycles both / device / sonde, or follows again after panning. `V` switches simple / detailed style. With no position yet: centred on `map_lat` / `map_lon` |
 | `6` Graph | `Left` / `Right` switch page: Skew-T log-P, altitude and vertical speed over time |
 | `7` Radio | Spectrum with the tuned frequency's audio. `Left` / `Right` ±10 kHz, `Up` / `Down` ±100 kHz (hold to keep tuning). `Enter` decodes here. `S` Scan, `Esc` goes back. `D` mode (NFM / AM / USB / LSB / WFM), `B` channel width |
@@ -95,7 +95,7 @@ The burst alert overlays every screen: `Enter` opens Map, a short `Esc` dismisse
 
 | Screen | Shows |
 |---|---|
-| Track | Compass ring, arrow to the sonde, distance, which way to go, height, drift, landing point; top bar with the frequency, state and GPS |
+| Track | Compass ring, arrow to the sonde, distance, which way to go, height, drift, elevation, landing point; top bar with the frequency, state and GPS |
 | Map | OpenStreetMap tiles (downloaded on demand), device, sonde, track, landing point |
 | Graph | Skew-T log-P (`Graph 1/2`) and altitude / vertical speed with the burst marked (`Graph 2/2`) |
 | Radio | Live spectrum of the receiver's band around the tuned frequency, shaded channel width, decode status |
@@ -194,7 +194,8 @@ a dongle. Details and the device measurements: [deployment guide](docs/deploymen
   it is tilt-compensated with the accelerometer, so the device need not be held flat (not within about 15° of
   pointing straight up or down). Until then, trust the heading only while moving faster than about 5.4 km/h
   (1.5 m/s, `cog_min_speed`), where it is the GPS course.
-- Skew-T stops at 100 hPa; moist adiabats and mixing-ratio lines are not drawn.
+- Skew-T reaches 100 hPa, or 10 hPa (about 31 km) once the flight has been above 100 hPa; moist adiabats and
+  mixing-ratio lines are not drawn.
 - Landing prediction during ascent depends on the assumed `burst_alt`.
 - Flight history is not restored after an app restart.
 - Not yet checked in the field: GPS, the beeper, burst detection and landing on a real flight. Full list in the

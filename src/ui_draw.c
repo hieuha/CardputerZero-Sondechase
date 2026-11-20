@@ -161,6 +161,16 @@ int land_rem_s(void)
     return r < 0 ? 0 : (int)r;
 }
 
+/* Time to landing, short enough for the small boxes: "12:30" (min:s), from an hour "1h52" (h, min). */
+const char *land_rem_txt(void)
+{
+    static char b[16];
+    int r = land_rem_s();
+    if (r >= 3600) snprintf(b, sizeof b, "%dh%02d", r / 3600 % 100, r / 60 % 60);
+    else snprintf(b, sizeof b, "%d:%02d", r / 60, r % 60);
+    return b;
+}
+
 void read_battery(void)
 {
     DIR *d;

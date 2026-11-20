@@ -161,7 +161,7 @@ void p_map(void)
             int lx = (int)lx2 + 9 + 86 > 318 ? (int)lx2 - 9 - 86 : (int)lx2 + 9, ly = (int)ly2 + 5;
             if (lx < 2) lx = 2;
             fill(lx, ly, 86, 13, C_G);
-            txt(lx, ly, 86, F_S, C_YL, AL_C, "Landing T-%02d:%02d", land_rem_s() / 60, land_rem_s() % 60);
+            txt(lx, ly, 86, F_S, C_YL, AL_C, "Landing T-%s", land_rem_txt());
         }
     }
     if (have_s) {

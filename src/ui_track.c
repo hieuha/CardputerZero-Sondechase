@@ -170,6 +170,10 @@ static void track_panel(double dist, double brg, int last)
         const char *t = turn_words(rel, &tc);
         kv(140, 76, 174, "Go", tc, "%s, %s", t, point8(brg));
     } else kv(140, 76, 174, "Go", C_TX, "Head %s", point8(brg));
+    if (A->flight.phase != PH_LANDED) { /* where to point an antenna: from the last fix too, like the distance */
+        double el = geo_elev(dist, A->gps.alt, s->alt);
+        kv(140, 118, 174, "Elevation", C_TX, "%.0f° %s the horizon", fabs(el), el >= -0.5 ? "above" : "below");
+    }
     if (A->flight.phase == PH_LANDED) kv(140, 90, 174, "Height", C_TX, "%.0f m, landed", s->alt);
     else {
         kv(140, 90, 174, "Height", C_TX, "%.0f m, %s %.1f m/s", s->alt, A->vv_s < -0.05 ? "falling" : "rising",
@@ -179,9 +183,13 @@ static void track_panel(double dist, double brg, int last)
 
     if (ok && A->have_land && !last) {
         fmt_dist(num, sizeof num, &unit, A->land_dist);
+        char when[24];
+        int ww;
+        snprintf(when, sizeof when, "in %s", land_rem_txt());
+        ww = text_w(F_S, when) + 2; /* the time keeps its width, the place text gets the rest: no wrapping */
         box(140, 132, 174, 18, C_YL, C_P);
-        txt(146, 134, 124, F_S, C_YL, AL_L, "Lands %s %s %s", num, unit, point8(A->land_brg));
-        txt(266, 134, 42, F_S, C_YL, AL_R, "in %d:%02d", land_rem_s() / 60, land_rem_s() % 60);
+        txt(146, 134, 308 - ww - 150, F_S, C_YL, AL_L, "Lands %s %s %s", num, unit, point8(A->land_brg));
+        txt(308 - ww, 134, ww, F_S, C_YL, AL_R, "%s", when);
     } else if (!ok) {
         box(140, 132, 174, 18, C_RD, C_P);
         txt(146, 134, 40, F_S, C_DIM, AL_L, "Last fix");

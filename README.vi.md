@@ -76,7 +76,7 @@ Muốn tự build gói (trên máy hoặc cross-compile), xem [hướng dẫn de
 
 | Phím | Chức năng |
 |---|---|
-| `4` Track | La bàn HUD và khoảng cách tới sonde, kèm hướng cần đi viết bằng chữ (`Bear right, East`, `Straight ahead`), độ cao, hướng trôi và điểm rơi dự đoán. Vòng la bàn và dòng `Go` chuyển xanh khi mũi tên lệch không quá 15° so với hướng đang đi. Khi mất GPS, khoảng cách và hướng tính từ vị trí GPS cuối cùng của máy (màu vàng, `from last GPS`). Khi sonde chưa có GPS fix: số hiệu, frame và pin. Mỗi frame kêu tít và nháy đèn đỏ |
+| `4` Track | La bàn HUD và khoảng cách tới sonde, kèm hướng cần đi viết bằng chữ (`Bear right, East`, `Straight ahead`), độ cao, hướng trôi, góc ngẩng để chĩa anten (`Elevation 37° above the horizon`, ẩn khi sonde đã rơi xuống đất) và điểm rơi dự đoán kèm thời gian còn lại (`in 7:38`, từ một giờ trở lên là `in 1h52`). Vòng la bàn và dòng `Go` chuyển xanh khi mũi tên lệch không quá 15° so với hướng đang đi. Khi mất GPS, khoảng cách và hướng tính từ vị trí GPS cuối cùng của máy (màu vàng, `from last GPS`). Khi sonde chưa có GPS fix: số hiệu, frame và pin. Mỗi frame kêu tít và nháy đèn đỏ |
 | `5` Map | Tile bản đồ, vị trí máy, sonde, đường bay, điểm rơi. Phím mũi tên để kéo bản đồ (giữ để kéo liên tục; bản đồ thôi bám theo, hiện `free`). `Sym` + `T` (`+`) để phóng to, `Sym` + `R` (`-`) để thu nhỏ. `C` chuyển vòng giữa cả hai / theo máy / theo sonde, hoặc bám theo lại sau khi kéo. `V` đổi kiểu đơn giản / chi tiết. Khi chưa có vị trí nào: lấy tâm ở `map_lat` / `map_lon` |
 | `6` Graph | `Left` / `Right` để đổi trang: Skew-T log-P, độ cao và tốc độ đứng theo thời gian |
 | `7` Radio | Phổ kèm âm thanh của tần số đang chỉnh. `Left` / `Right` ±10 kHz, `Up` / `Down` ±100 kHz (giữ để chỉnh liên tục). `Enter` để giải mã tại đó. `S` để Scan, `Esc` để quay lại. `D` đổi chế độ (NFM / AM / USB / LSB / WFM), `B` đổi độ rộng kênh |
@@ -95,7 +95,7 @@ Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` để mở Map
 
 | Màn hình | Nội dung |
 |---|---|
-| Track | Vòng la bàn, mũi tên chỉ tới sonde, khoảng cách, hướng cần đi, độ cao, hướng trôi, điểm rơi; thanh trên cùng có tần số, trạng thái và GPS |
+| Track | Vòng la bàn, mũi tên chỉ tới sonde, khoảng cách, hướng cần đi, độ cao, hướng trôi, góc ngẩng, điểm rơi; thanh trên cùng có tần số, trạng thái và GPS |
 | Map | Tile OpenStreetMap (tải khi cần), vị trí máy, sonde, đường bay, điểm rơi |
 | Graph | Skew-T log-P (`Graph 1/2`) và độ cao / tốc độ đứng, có đánh dấu điểm nổ (`Graph 2/2`) |
 | Radio | Phổ trực tiếp quanh tần số đang chỉnh, vùng tô màu thể hiện độ rộng kênh, trạng thái giải mã |
@@ -197,7 +197,8 @@ dongle. Chi tiết và số đo trên máy thật: [hướng dẫn deploy](docs/
   Sau đó la bàn được bù độ nghiêng nhờ gia tốc kế, nên không cần cầm máy nằm ngang (trừ khi đầu máy chĩa gần thẳng lên
   trời hoặc xuống đất, trong khoảng 15°). Trước khi hiệu chỉnh, chỉ nên tin hướng khi đang di chuyển nhanh hơn khoảng 5,4 km/h (1,5 m/s, `cog_min_speed`)
   (hướng GPS).
-- Skew-T dừng ở 100 hPa; chưa vẽ đường đoạn nhiệt ẩm và đường tỉ lệ hỗn hợp.
+- Skew-T vẽ tới 100 hPa, hoặc tới 10 hPa (khoảng 31 km) khi chuyến bay đã lên trên 100 hPa; chưa vẽ đường đoạn nhiệt
+  ẩm và đường tỉ lệ hỗn hợp.
 - Dự đoán điểm rơi khi bóng đang lên phụ thuộc vào `burst_alt` giả định.
 - Lịch sử chuyến bay không được khôi phục sau khi mở lại app.
 - Chưa kiểm ngoài thực địa: GPS, beeper, phát hiện nổ và điểm rơi trên một chuyến bay thật. Danh sách đầy đủ trong

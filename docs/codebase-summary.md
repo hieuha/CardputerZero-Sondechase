@@ -21,7 +21,7 @@ working tree and from the line counts below. Regenerate after large changes.
 | Language | C11, one application, plus two shell and Python helper groups |
 | Application | `sondechase` (CardputerZero, Debian 13 arm64), LVGL 9.5.0 UI |
 | Core | `sc_core`, no LVGL, unit-tested on Linux |
-| Source size | `src/` 6172 lines (`src/app.c` 627 the largest, `src/sc.h` 559) |
+| Source size | `src/` 6213 lines (`src/app.c` 627 the largest, `src/sc.h` 559) |
 | Tests | `tests/test_core.c` (1613 lines), 4462 checks, all passing (GCC 14.2, Debian trixie) |
 | External programs run | `fsk_demod`, `rs41mod` (built from `radiosonde_auto_rx` v1.9.0), `pacat`, `curl`, `gpsd` (socket) |
 | Runtime libraries | `librtlsdr`, or `libhackrf` for a HackRF (loaded with `dlopen`), libc, libm, pthread |
@@ -73,13 +73,13 @@ working tree and from the line counts below. Regenerate after large changes.
 | `src/demo.c` | 139 | `demo_poll`, `demo_advance` | Simulated flight |
 | `src/keys.c` | 97 | `keys_open`, `keys_read`, `keys_esc_held_s` | evdev keyboard, Sym symbol keys, held-arrow repeat, Esc timing |
 | `src/ui.c` | 258 | `ui_init`, `ui_key`, `draw_cb`, `tick_cb` | UI state, overlays (frequency entry, burst alert, no SDR), LVGL glue, key dispatch |
-| `src/ui_draw.c` | 233 | `ln`, `fill`, `txt`, `box`, `kv`, `top_bar`, `nav_bar` | Drawing primitives, top and nav bars, battery, shared helpers |
-| `src/ui_track.c` | 215 | `p_track`, `compass`, `phase_name` | Track screen, compass, plain-language directions |
+| `src/ui_draw.c` | 243 | `ln`, `fill`, `txt`, `box`, `kv`, `top_bar`, `nav_bar` | Drawing primitives, top and nav bars, battery, shared helpers |
+| `src/ui_track.c` | 223 | `p_track`, `compass`, `phase_name` | Track screen, compass, plain-language directions |
 | `src/ui_map.c` | 290 | `p_map`, `map_pan`, `map_zoom_step`, `map_follow_next`, `map_style_toggle` | Map screen, decoded tile cache, pan, zoom, follow, style |
-| `src/ui_graph.c` | 142 | `p_skewt`, `p_flight` | Graph screens: Skew-T and flight profile |
+| `src/ui_graph.c` | 164 | `p_skewt`, `p_flight` | Graph screens: Skew-T and flight profile |
 | `src/ui_radio.c` | 159 | `p_scan` | Radio screen: band overview, tuned spectrum, listening, decoding |
 | `src/ui_info.c` | 177 | `p_info`, `p_info_pos`, `p_cal` | Info screens and compass calibration |
-| `src/ui_priv.h` | 76 | all of the above | Colours, shared UI state and prototypes for the UI files |
+| `src/ui_priv.h` | 77 | all of the above | Colours, shared UI state and prototypes for the UI files |
 | `src/ui.h` | 16 | `ui_init`, `ui_key`, `keys_*` | UI interface for `main.c` and the tests |
 
 One UI file per screen: Track (`4`, `ui_track.c`), Map (`5`, `ui_map.c`), Graph (`6`, Skew-T and flight pages,

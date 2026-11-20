@@ -1,6 +1,6 @@
 # Code Standards
 
-Last updated: 2026-11-20 (version 0.6.0). Describes the conventions the code already follows, so new code matches.
+Last updated: 2026-11-20 (version 0.7.0). Describes the conventions the code already follows, so new code matches.
 
 ## Contents
 - [Language and build](#language-and-build)

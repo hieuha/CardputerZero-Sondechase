@@ -1,6 +1,6 @@
 # System Architecture
 
-Last updated: 2026-11-20 (version 0.6.0).
+Last updated: 2026-11-20 (version 0.7.0).
 
 SondeChase is one C11 process on the CardputerZero. It reads the RTL-SDR in process, runs the RS41 decoder as
 a child pipeline, merges GPS and magnetometer data, and draws every screen with LVGL 9.5 on the LCD framebuffer.

@@ -1,6 +1,6 @@
 # Project Overview and PDR
 
-Last updated: 2026-11-20 (version 0.6.0).
+Last updated: 2026-11-20 (version 0.7.0).
 
 ## Contents
 - [Overview](#overview)
@@ -135,7 +135,7 @@ A release is accepted when all of these hold:
 
 ## Status
 
-- Version 0.6.0 (tag `v0.6.0`, GitHub release published, in the CardputerZero store).
+- Version 0.7.0 (tag `v0.7.0`, GitHub release published, in the CardputerZero store).
 - Tested on hardware: scanning and decoding with a live RS41 (Y0532351), display, keyboard, PipeWire audio, magnetometer
   node, OSM tile download. Not yet tested in the field: GPS (no module fitted when this was written), the beeper, burst
   detection and landing on a real flight. Full list in the [roadmap](./project-roadmap.md#known-gaps).

@@ -1,6 +1,6 @@
 # Codebase Summary
 
-Last updated: 2026-11-20 (version 0.6.0). Derived from a repomix compaction of the
+Last updated: 2026-11-20 (version 0.7.0). Derived from a repomix compaction of the
 working tree and from the line counts below. Regenerate after large changes.
 
 ## Contents
@@ -26,7 +26,7 @@ working tree and from the line counts below. Regenerate after large changes.
 | External programs run | `fsk_demod`, `rs41mod` (built from `radiosonde_auto_rx` v1.9.0), `pacat`, `curl`, `gpsd` (socket) |
 | Runtime libraries | `librtlsdr`, or `libhackrf` for a HackRF (loaded with `dlopen`), libc, libm, pthread |
 | License | GPL-3.0-or-later (see `LICENSE`) |
-| Store manifest | `app-builder.json` (version 0.6.0) |
+| Store manifest | `app-builder.json` (version 0.7.0) |
 
 ## Repository layout
 
@@ -103,7 +103,7 @@ alert overlay and the "No SDR device found" screen stay in `ui.c` with the draw 
 
 | File | Lines | Role |
 |---|---|---|
-| `CMakeLists.txt` | 92 | Project `sondechase` 0.6.0, options `SC_BUILD_UI`, `SC_SIM`, `SC_RENDER`, targets |
+| `CMakeLists.txt` | 92 | Project `sondechase` 0.7.0, options `SC_BUILD_UI`, `SC_SIM`, `SC_RENDER`, targets |
 | `CMakePresets.json` | 90 | Presets `cp0-native`, `cp0-cross`, `linux-x86-64`, `render`; packages `cp0-native-deb`, `cp0-cross-deb`; workflows |
 | `cmake/cm0-package.cmake` | 94 | Install layout, `.deb` settings (CPack), desktop entry, conffile |
 | `cmake/radiosonde-decoders.cmake` | 45 | Downloads `radiosonde_auto_rx` v1.9.0 (SHA-256 pinned) and builds `rs41mod` and `fsk_demod` |
@@ -147,6 +147,6 @@ and BSP sysroot), `repomix-output.xml`, `__pycache__/`. `.repomixignore` exclude
 
 ## History
 
-Tags and GitHub releases: `v0.4.0`, `v0.4.1`, `v0.5.0`, `v0.5.1`, `v0.6.0`.
+Tags and GitHub releases: `v0.4.0`, `v0.4.1`, `v0.5.0`, `v0.5.1`, `v0.6.0`, `v0.7.0`.
 Version bumps are `chore: version x.y.z` commits (see
 [project roadmap](./project-roadmap.md#released-versions)).

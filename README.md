@@ -15,8 +15,8 @@
 RS41 radiosonde receiver, decoder and chase aid for the M5Stack CardputerZero (Raspberry Pi CM0, 320×170 LCD,
 46-key keyboard), with an RTL-SDR (or a HackRF) and an optional GPS.
 
-Version 0.6.0. Tested on a real CardputerZero with an RTL-SDR Blog V4: scanning and decoding were checked with a live
-RS41 (Y0532351). GPS chasing in the field has not been tried yet; see [Known limitations](#known-limitations).
+Version 0.7.0. Tested on a real CardputerZero with an RTL-SDR Blog V4: scanning and decoding were checked with live
+RS41s (Y0532351, Y0310371). GPS chasing in the field has not been tried yet; see [Known limitations](#known-limitations).
 
 ![Replay of sonde Y0310371 through the app: Track and Skew-T from 15 to 30 km](screenshots/replay-y0310371.gif)
 
@@ -66,11 +66,11 @@ Without GPS the sonde is still decoded and its telemetry shown; the beeper stays
 
 ## Install
 
-Download `sondechase_0.6.0-rev1_arm64.deb` from the [latest release](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest),
+Download `sondechase_0.7.0-rev1_arm64.deb` from the [latest release](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest),
 copy it to the device, and install it:
 
 ```sh
-sudo apt install --no-install-recommends ./sondechase_0.6.0-rev1_arm64.deb
+sudo apt install --no-install-recommends ./sondechase_0.7.0-rev1_arm64.deb
 ```
 
 Open **SondeChase** from APPLaunch. The package includes the RS41 decoders (`fsk_demod` and `rs41mod`, from

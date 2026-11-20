@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Last updated: 2026-11-20 (version 0.6.0).
+Last updated: 2026-11-20 (version 0.7.0).
 
 Covers building the CardputerZero `.deb`, running the tests, installing and configuring the app on the device, and
 the release steps. Commands are taken from `CMakePresets.json`, `.github/workflows/` and the CMake files in `cmake/`.
@@ -30,7 +30,7 @@ the release steps. Commands are taken from `CMakePresets.json`, `.github/workflo
 | `render` | Headless screenshot tool (`SC_RENDER=ON`) | `render-rel` | none |
 
 Workflow presets: `cp0-native-package` (configure, build, package on the device) and `cp0-cross-package`.
-Package output goes to `dist/`, named `sondechase_<version>-rev1_arm64.deb` (for example `sondechase_0.6.0-rev1_arm64.deb`).
+Package output goes to `dist/`, named `sondechase_<version>-rev1_arm64.deb` (for example `sondechase_0.7.0-rev1_arm64.deb`).
 
 Options in `CMakeLists.txt`:
 
@@ -47,7 +47,7 @@ Requires Debian 13 arm64 on the CardputerZero (or any aarch64 Debian 13 host):
 ```sh
 sudo apt install cmake ninja-build build-essential git
 cmake --workflow --preset cp0-native-package
-sudo apt install --no-install-recommends ./dist/sondechase_0.6.0-rev1_arm64.deb
+sudo apt install --no-install-recommends ./dist/sondechase_0.7.0-rev1_arm64.deb
 ```
 
 The first build fetches LVGL v9.5.0 (git) and the `radiosonde_auto_rx` v1.9.0 release tarball (SHA-256 pinned in
@@ -93,7 +93,7 @@ Notes:
 ## Install and run
 
 ```sh
-sudo apt install --no-install-recommends ./sondechase_0.6.0-rev1_arm64.deb
+sudo apt install --no-install-recommends ./sondechase_0.7.0-rev1_arm64.deb
 ```
 
 Installed files:
@@ -231,7 +231,7 @@ cmake --build build/render -j
 
 ## Release procedure
 
-Steps used for 0.4.0 to 0.6.0. Keep the version identical in all places; the CMake configure step fails if
+Steps used for 0.4.0 to 0.7.0. Keep the version identical in all places; the CMake configure step fails if
 `CMakeLists.txt` and `app-builder.json` differ.
 
 1. Set the version in `CMakeLists.txt` (`project(sondechase VERSION x.y.z ...)`) and in `app-builder.json`

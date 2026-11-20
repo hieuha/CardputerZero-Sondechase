@@ -15,8 +15,8 @@
 Ứng dụng thu, giải mã và bám theo bóng thám không RS41 cho M5Stack CardputerZero (Raspberry Pi CM0, màn hình
 320×170, bàn phím 46 phím), dùng một RTL-SDR (hoặc HackRF) và GPS (không bắt buộc).
 
-Phiên bản 0.6.0. Đã chạy trên CardputerZero thật với RTL-SDR Blog V4: phần quét và giải mã đã được kiểm với một quả
-RS41 đang bay (Y0532351). Chưa thử đi săn ngoài thực địa với GPS; xem [Hạn chế đã biết](#hạn-chế-đã-biết).
+Phiên bản 0.7.0. Đã chạy trên CardputerZero thật với RTL-SDR Blog V4: phần quét và giải mã đã được kiểm với hai quả
+RS41 đang bay (Y0532351, Y0310371). Chưa thử đi săn ngoài thực địa với GPS; xem [Hạn chế đã biết](#hạn-chế-đã-biết).
 
 ![Phát lại sonde Y0310371 qua app: Track và Skew-T từ 15 lên 30 km](screenshots/replay-y0310371.gif)
 
@@ -66,11 +66,11 @@ Không có GPS thì sonde vẫn được giải mã và telemetry vẫn hiện; 
 
 ## Cài đặt
 
-Tải `sondechase_0.6.0-rev1_arm64.deb` từ [bản release mới nhất](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest),
+Tải `sondechase_0.7.0-rev1_arm64.deb` từ [bản release mới nhất](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest),
 chép vào máy rồi cài:
 
 ```sh
-sudo apt install --no-install-recommends ./sondechase_0.6.0-rev1_arm64.deb
+sudo apt install --no-install-recommends ./sondechase_0.7.0-rev1_arm64.deb
 ```
 
 Mở **SondeChase** từ APPLaunch. Gói cài đã kèm sẵn bộ giải mã RS41 (`fsk_demod` và `rs41mod`, lấy từ

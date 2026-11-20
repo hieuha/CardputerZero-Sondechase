@@ -15,7 +15,7 @@
 RS41 radiosonde receiver, decoder and chase aid for the M5Stack CardputerZero (Raspberry Pi CM0, 320×170 LCD,
 46-key keyboard), with an RTL-SDR and an optional GPS.
 
-Version 0.5.1. Tested on a real CardputerZero with an RTL-SDR Blog V4: scanning and decoding were checked with a live
+Version 0.6.0. Tested on a real CardputerZero with an RTL-SDR Blog V4: scanning and decoding were checked with a live
 RS41 (Y0532351). GPS chasing in the field has not been tried yet; see [Known limitations](#known-limitations).
 
 | | |
@@ -59,11 +59,11 @@ Without GPS the sonde is still decoded and its telemetry shown; the beeper stays
 
 ## Install
 
-Download `sondechase_0.5.1-rev1_arm64.deb` from the [latest release](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest),
+Download `sondechase_0.6.0-rev1_arm64.deb` from the [latest release](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest),
 copy it to the device, and install it:
 
 ```sh
-sudo apt install --no-install-recommends ./sondechase_0.5.1-rev1_arm64.deb
+sudo apt install --no-install-recommends ./sondechase_0.6.0-rev1_arm64.deb
 ```
 
 Open **SondeChase** from APPLaunch. The package includes the RS41 decoders (`fsk_demod` and `rs41mod`, from
@@ -173,7 +173,7 @@ Everything the app keeps is in one folder, `data_dir` (default `~/sondechase`):
 
 ## Test status
 
-`tests/test_core.c`: 4322 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
+`tests/test_core.c`: 4356 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
 arm64 package build on Debian 13. A fake `librtlsdr` and a fake decoder run scanning and decoding end to end without
 a dongle. Details and the device measurements: [deployment guide](docs/deployment-guide.md#tests).
 

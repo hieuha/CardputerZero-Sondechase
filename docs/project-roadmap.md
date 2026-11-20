@@ -1,6 +1,6 @@
 # Project Roadmap
 
-Last updated: 2026-11-20 (version 0.5.1). Versions come from `chore: version` commits and GitHub releases. The
+Last updated: 2026-11-20 (version 0.6.0). Versions come from `chore: version` commits and GitHub releases. The
 "Known gaps" list comes from the test status and limitations in the README and from the code. Nothing here is a
 commitment to a future feature.
 
@@ -18,8 +18,7 @@ commitment to a future feature.
 | 0.4.1 | 2026-11-19 04:08 | `539c908`..`59e89c7` | Tune and listen like an SDR, `Enter` sets decode; NFM, AM, USB, LSB audio with selectable width (Scan tab becomes Radio); held arrow keys keep tuning; simple map style; map pan and zoom; DNS block messages for the map; CI (tests, arm64 package, store checks); launcher icon with a radiosonde; config fix for long `rtlsdr_lib` paths |
 | 0.5.0 | 2026-11-19 14:12 | `59e89c7`..`6f6f036` | `Tab` switches screens; SDR-style start on the Radio screen; WFM audio; automatic Scan that tries peaks; tuner-range frequency entry; frame tick and ACT LED on Track and Map; GPS satellite counts; auto_rx-format log per sonde; green compass ring within 15° |
 | 0.5.1 | 2026-11-20 | `6f6f036`..`v0.5.1` | `Z` zooms the map in; zoom range 6–18; app data grouped in `data_dir` (`~/sondechase`: `sondechase.csv`, `log/`, `tiles/`), older files moved in; map tile cache 1000 MB for offline use; one CSV header per file; auto_rx log timed by the sonde's GPS time; inline `#` comments in the config; versioned tile User-Agent; live spectrum only on the Radio screen |
-
-| Unreleased | | `v0.5.1`.. | `Sym` + `R` (`-`) zooms out and `Sym` + `T` (`+`) zooms in (the driver sends them as keypad 7 and 8, which the app ignored); `Z` no longer zooms; `Q` no longer quits (hold `Esc` 3 s only, so a stray key cannot close the app); Track in plain words (distance labelled, `Go: Bear right, East`, height, drift; no degrees) and kept going from the last device fix when GPS drops out; Info 2/2 with the exact numbers; compass calibration in the app (Info, `K`, saved to `<data_dir>/compass.conf`); page number in the top-left label (`Graph 1/2`, `Info 1/2`); altitude label no longer cut off |
+| 0.6.0 | 2026-11-20 | `v0.5.1`..`v0.6.0` | `Sym` + `R` (`-`) zooms out and `Sym` + `T` (`+`) zooms in (the driver sends them as keypad 7 and 8, which the app ignored); `Z` no longer zooms; `Q` no longer quits (hold `Esc` 3 s only, so a stray key cannot close the app); Track in plain words (distance labelled, `Go: Bear right, East`, height, drift; no degrees) and kept going from the last device fix when GPS drops out; Info 2/2 with the exact numbers; compass calibration in the app (Info, `K`, saved to `<data_dir>/compass.conf`); page number in the top-left label (`Graph 1/2`, `Info 1/2`); altitude label no longer cut off |
 
 Notes:
 - Version bumps touch `CMakeLists.txt`, `app-builder.json` and both READMEs (see

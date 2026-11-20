@@ -1,6 +1,6 @@
 # Codebase Summary
 
-Last updated: 2026-11-20 (version 0.5.1). Derived from a repomix compaction of the
+Last updated: 2026-11-20 (version 0.6.0). Derived from a repomix compaction of the
 working tree and from the line counts below. Regenerate after large changes.
 
 ## Contents
@@ -22,11 +22,11 @@ working tree and from the line counts below. Regenerate after large changes.
 | Application | `sondechase` (CardputerZero, Debian 13 arm64), LVGL 9.5.0 UI |
 | Core | `sc_core`, no LVGL, unit-tested on Linux |
 | Source size | `src/` 4766 lines (`src/sc.h` 496, `src/ui.c` 1271 the largest) |
-| Tests | `tests/test_core.c` (1052 lines), 4322 checks, all passing (GCC 14.2, Debian trixie) |
+| Tests | `tests/test_core.c` (1052 lines), 4356 checks, all passing (GCC 14.2, Debian trixie) |
 | External programs run | `fsk_demod`, `rs41mod` (built from `radiosonde_auto_rx` v1.9.0), `pacat`, `curl`, `gpsd` (socket) |
 | Runtime libraries | `librtlsdr` (loaded with `dlopen`), libc, libm, pthread |
 | License | GPL-3.0-or-later (see `LICENSE`) |
-| Store manifest | `app-builder.json` (version 0.5.1) |
+| Store manifest | `app-builder.json` (version 0.6.0) |
 
 ## Repository layout
 
@@ -90,7 +90,7 @@ Info (`8`), frequency entry (`F`), burst alert overlay and the "No SDR device fo
 
 | File | Lines | Role |
 |---|---|---|
-| `CMakeLists.txt` | 86 | Project `sondechase` 0.5.1, options `SC_BUILD_UI`, `SC_SIM`, `SC_RENDER`, targets |
+| `CMakeLists.txt` | 86 | Project `sondechase` 0.6.0, options `SC_BUILD_UI`, `SC_SIM`, `SC_RENDER`, targets |
 | `CMakePresets.json` | 90 | Presets `cp0-native`, `cp0-cross`, `linux-x86-64`, `render`; packages `cp0-native-deb`, `cp0-cross-deb`; workflows |
 | `cmake/cm0-package.cmake` | 92 | Install layout, `.deb` settings (CPack), desktop entry, conffile |
 | `cmake/radiosonde-decoders.cmake` | 45 | Downloads `radiosonde_auto_rx` v1.9.0 (SHA-256 pinned) and builds `rs41mod` and `fsk_demod` |
@@ -134,6 +134,6 @@ and BSP sysroot), `repomix-output.xml`, `__pycache__/`. `.repomixignore` exclude
 
 ## History
 
-Tags and GitHub releases: `v0.4.0`, `v0.4.1`, `v0.5.0`, `v0.5.1`.
+Tags and GitHub releases: `v0.4.0`, `v0.4.1`, `v0.5.0`, `v0.5.1`, `v0.6.0`.
 Version bumps are `chore: version x.y.z` commits (see
 [project roadmap](./project-roadmap.md#released-versions)).

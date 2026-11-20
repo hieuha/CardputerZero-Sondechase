@@ -1,7 +1,7 @@
 {
   "app_name": "SondeChase",
   "package_name": "sondechase",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Radiosonde receiver and chase display for the CardputerZero (RTL-SDR v4, GPS)",
   "store": {
     "summary": "Receive, decode and chase RS41 weather balloons with an RTL-SDR and GPS",

@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Last updated: 2026-11-20 (version 0.5.1).
+Last updated: 2026-11-20 (version 0.6.0).
 
 Covers building the CardputerZero `.deb`, running the tests, installing and configuring the app on the device, and
 the release steps. Commands are taken from `CMakePresets.json`, `.github/workflows/` and the CMake files in `cmake/`.
@@ -30,7 +30,7 @@ the release steps. Commands are taken from `CMakePresets.json`, `.github/workflo
 | `render` | Headless screenshot tool (`SC_RENDER=ON`) | `render-rel` | none |
 
 Workflow presets: `cp0-native-package` (configure, build, package on the device) and `cp0-cross-package`.
-Package output goes to `dist/`, named `sondechase_<version>-rev1_arm64.deb` (for example `sondechase_0.5.1-rev1_arm64.deb`).
+Package output goes to `dist/`, named `sondechase_<version>-rev1_arm64.deb` (for example `sondechase_0.6.0-rev1_arm64.deb`).
 
 Options in `CMakeLists.txt`:
 
@@ -47,7 +47,7 @@ Requires Debian 13 arm64 on the CardputerZero (or any aarch64 Debian 13 host):
 ```sh
 sudo apt install cmake ninja-build build-essential git
 cmake --workflow --preset cp0-native-package
-sudo apt install --no-install-recommends ./dist/sondechase_0.5.1-rev1_arm64.deb
+sudo apt install --no-install-recommends ./dist/sondechase_0.6.0-rev1_arm64.deb
 ```
 
 The first build fetches LVGL v9.5.0 (git) and the `radiosonde_auto_rx` v1.9.0 release tarball (SHA-256 pinned in
@@ -81,7 +81,7 @@ ctest --test-dir build --output-on-failure
 Notes:
 - `keys.c` and the tests include `<linux/input.h>`. The build fails on macOS; use a Debian or Ubuntu host or a
   Linux container.
-- Verified on 2026-11-19 in `debian:trixie` (GCC 14.2.0): `test_core` reports **4322 checks, 0 failed**.
+- Verified on 2026-11-20 in `debian:trixie` (GCC 14.2.0): `test_core` reports **4356 checks, 0 failed**.
 - The same build prints five `-Wformat-truncation` warnings (four sites in `src/app.c` and `src/tiles.c`). They are
   listed in the [roadmap](./project-roadmap.md#known-gaps).
 - What the tests cover is listed in [system architecture](./system-architecture.md) by module. Test names are
@@ -90,7 +90,7 @@ Notes:
 ## Install and run
 
 ```sh
-sudo apt install --no-install-recommends ./sondechase_0.5.1-rev1_arm64.deb
+sudo apt install --no-install-recommends ./sondechase_0.6.0-rev1_arm64.deb
 ```
 
 Installed files:
@@ -220,7 +220,7 @@ cmake --build build/render -j
 
 ## Release procedure
 
-Steps used for 0.4.0 to 0.5.1. Keep the version identical in all places; the CMake configure step fails if
+Steps used for 0.4.0 to 0.6.0. Keep the version identical in all places; the CMake configure step fails if
 `CMakeLists.txt` and `app-builder.json` differ.
 
 1. Set the version in `CMakeLists.txt` (`project(sondechase VERSION x.y.z ...)`) and in `app-builder.json`
@@ -235,8 +235,9 @@ Steps used for 0.4.0 to 0.5.1. Keep the version identical in all places; the CMa
 6. Download the artifact, compute its checksum (`sha256sum sondechase_x.y.z-rev1_arm64.deb`), and check the
    package name and version with `dpkg-deb -I`.
 7. Tag the same commit `vx.y.z` and create a GitHub release with the `.deb` attached and the SHA-256 in the notes.
-8. Submit `app-builder.json` and the screenshots to the CardputerZero store (developer portal). The manifest rules
-   are checked by `tools/validate_app_builder.py`.
+8. Publish to the CardputerZero store with `czdev publish --deb <deb>` (from CardputerZero/AppBuilder). It opens a
+   pull request on CardputerZero/packages; an update of an existing app merges by itself once its CI passes. The
+   manifest rules are checked by `tools/validate_app_builder.py`.
 
 
 ## CI workflows

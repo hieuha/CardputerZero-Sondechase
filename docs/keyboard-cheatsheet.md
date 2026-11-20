@@ -1,6 +1,6 @@
 # SondeChase keyboard cheatsheet
 
-Every key the app reacts to, screen by screen (version 0.5.1). Keys are not case sensitive.
+Every key the app reacts to, screen by screen (version 0.6.0). Keys are not case sensitive.
 
 `Sym` works like `Shift`: hold it and press the key with the symbol (`-` on `R`, `+` on `T`). The same key without
 `Sym` keeps its letter action, so plain `R` restarts the decoder.

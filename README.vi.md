@@ -15,7 +15,7 @@
 Ứng dụng thu, giải mã và bám theo bóng thám không RS41 cho M5Stack CardputerZero (Raspberry Pi CM0, màn hình
 320×170, bàn phím 46 phím), dùng một RTL-SDR và GPS (không bắt buộc).
 
-Phiên bản 0.5.1. Đã chạy trên CardputerZero thật với RTL-SDR Blog V4: phần quét và giải mã đã được kiểm với một quả
+Phiên bản 0.6.0. Đã chạy trên CardputerZero thật với RTL-SDR Blog V4: phần quét và giải mã đã được kiểm với một quả
 RS41 đang bay (Y0532351). Chưa thử đi săn ngoài thực địa với GPS; xem [Hạn chế đã biết](#hạn-chế-đã-biết).
 
 | | |
@@ -59,11 +59,11 @@ Không có GPS thì sonde vẫn được giải mã và telemetry vẫn hiện; 
 
 ## Cài đặt
 
-Tải `sondechase_0.5.1-rev1_arm64.deb` từ [bản release mới nhất](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest),
+Tải `sondechase_0.6.0-rev1_arm64.deb` từ [bản release mới nhất](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest),
 chép vào máy rồi cài:
 
 ```sh
-sudo apt install --no-install-recommends ./sondechase_0.5.1-rev1_arm64.deb
+sudo apt install --no-install-recommends ./sondechase_0.6.0-rev1_arm64.deb
 ```
 
 Mở **SondeChase** từ APPLaunch. Gói cài đã kèm sẵn bộ giải mã RS41 (`fsk_demod` và `rs41mod`, lấy từ
@@ -176,7 +176,7 @@ Tài liệu kỹ thuật viết bằng tiếng Anh:
 
 ## Tình trạng test
 
-`tests/test_core.c`: 4322 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
+`tests/test_core.c`: 4356 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
 native trên Debian 13. Một `librtlsdr` giả và một bộ giải mã giả chạy trọn quy trình quét và giải mã mà không cần
 dongle. Chi tiết và số đo trên máy thật: [hướng dẫn deploy](docs/deployment-guide.md#tests).
 

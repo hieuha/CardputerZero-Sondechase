@@ -10,10 +10,10 @@ Publish with: `czdev publish --deb <deb>` (CLI, the way every release so far wen
 
 ## Package
 
-- Debian package path: `dist/sondechase_0.6.0-rev1_arm64.deb` (local build); released file attached to
-  [v0.6.0](https://github.com/hieuha/CardputerZero-Sondechase/releases/tag/v0.6.0), built by the `package` workflow
+- Debian package path: `dist/sondechase_0.7.0-rev1_arm64.deb` (local build); released file attached to
+  [v0.7.0](https://github.com/hieuha/CardputerZero-Sondechase/releases/tag/v0.7.0), built by the `package` workflow
 - Package: `sondechase`
-- Version: `0.6.0-rev1`
+- Version: `0.7.0-rev1`
 - Architecture: `arm64`
 - Maintainer: `hieuha <hieuha@users.noreply.github.com>` (`APP_MAINTAINER` in `cmake/cm0-package.cmake`)
 - APPLaunch desktop path: `/usr/share/APPLaunch/applications/sondechase.desktop`
@@ -54,28 +54,30 @@ The screenshots are drawn by the app's own UI code (`tools/render.c`); see
 
 ## Preflight
 
-Checked for 0.6.0:
+Checked for 0.7.0:
 
 - [x] `.deb` exists and can be parsed.
 - [x] Control fields contain Package, Version, Architecture, and Maintainer.
 - [x] Architecture is appropriate for the package (`arm64` for native binaries).
 - [x] APPLaunch `.desktop`, executable, and PNG icon exist inside the package.
-- [x] Package name ownership and update version are valid (`czdev` preflight: newer than 0.5.1-rev1).
+- [x] Package name ownership and update version are valid (`czdev` preflight: newer than 0.6.0-rev1).
 - [x] Listing copy and categories have been reviewed.
 - [x] Four clean 320 x 170 baseline screenshots exist (six are submitted).
 - [x] No credentials, tokens, or private server details are embedded.
 - [x] The user explicitly approved external submission.
 
 Automated: `python3 ~/.claude/skills/cardputer-app-publish/scripts/prepublish_check.py --deb <deb> --app-dir .`
-(passed for 0.6.0) and `python3 tools/validate_app_builder.py`.
+(passed for 0.7.0) and `python3 tools/validate_app_builder.py`.
 
 ## Submission Result
 
-- Status: `published` (0.6.0-rev1)
-- Submitted at: 2026-11-20T06:46:30Z (`czdev publish`)
+- Status: `published` (0.7.0-rev1)
+- Submitted at: 2026-11-20T16:10:55Z (`czdev publish`; the fork `hieuha/packages` had to be synced with
+  upstream first, otherwise creating the branch fails with HTTP 404)
 - Portal message: none (CLI); `czdev` preflight passed
-- Actions URL: <https://github.com/CardputerZero/packages/actions/runs/44690421238> (Deploy APT Repository to
+- Actions URL: <https://github.com/CardputerZero/packages/actions/runs/44770847527> (Deploy APT Repository to
   Pages, success)
-- Tracking or pull-request URL: <https://github.com/CardputerZero/packages/pull/544> (merged 2026-11-20T06:48:30Z)
+- Tracking or pull-request URL: <https://github.com/CardputerZero/packages/pull/565> (merged 2026-11-20T16:11:28Z)
 
-Earlier: 0.5.1-rev1 via <https://github.com/CardputerZero/packages/pull/516>.
+Earlier: 0.6.0-rev1 via <https://github.com/CardputerZero/packages/pull/544>, 0.5.1-rev1 via
+<https://github.com/CardputerZero/packages/pull/516>.

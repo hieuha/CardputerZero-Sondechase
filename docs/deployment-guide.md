@@ -247,7 +247,9 @@ Steps used for 0.4.0 to 0.7.0. Keep the version identical in all places; the CMa
    package name and version with `dpkg-deb -I`.
 7. Tag the same commit `vx.y.z` and create a GitHub release with the `.deb` attached and the SHA-256 in the notes.
 8. Publish to the CardputerZero store with `czdev publish --deb <deb>` (from CardputerZero/AppBuilder). It opens a
-   pull request on CardputerZero/packages; an update of an existing app merges by itself once its CI passes. The
+   pull request on CardputerZero/packages; an update of an existing app merges by itself once its CI passes. If it
+   fails with HTTP 404 while creating the branch, sync the fork first
+   (`gh api -X POST repos/<you>/packages/merge-upstream -f branch=main`). The
    manifest rules are checked by `tools/validate_app_builder.py`; run the skill's `prepublish_check.py` first (see
    [`PUBLISH.md`](../PUBLISH.md)).
 9. Update [`PUBLISH.md`](../PUBLISH.md): version, package path, release link, PR and deploy run, submission time.

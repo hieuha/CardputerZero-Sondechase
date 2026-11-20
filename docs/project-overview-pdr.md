@@ -90,7 +90,7 @@ Out of scope (decided or not planned):
 |---|---|---|
 | NFR-01 | Runs on the CardputerZero (4 cores, arm64) within its CPU budget while decoding | 15.6 % of one core for the whole app while decoding (device measurement, [deployment guide](./deployment-guide.md#device-checks)) |
 | NFR-02 | No dropped samples between the dongle and the decoder under normal load | 0 dropped in the IQ ring and the decoder pipe (device measurement) |
-| NFR-03 | Core logic is testable without hardware | `test_core`: 4459 checks, 0 failed |
+| NFR-03 | Core logic is testable without hardware | `test_core`: 4462 checks, 0 failed |
 | NFR-04 | Package installs with no build tools, only `libc6`, `curl`, `librtlsdr0 (>= 2.0.2)`, `libhackrf0` | `cmake/cm0-package.cmake` |
 | NFR-05 | Works offline for everything except new map tiles | Cache and preloaded pack are used first |
 | NFR-06 | Does not stop on a missing optional peripheral (GPS, LED, audio) | Each has a disabled or retry state; see [system architecture](./system-architecture.md#failure-handling) |
@@ -102,7 +102,7 @@ Out of scope (decided or not planned):
 
 A release is accepted when all of these hold:
 
-1. `ctest` passes on a Linux core build (`-DSC_BUILD_UI=OFF`). Current: 4459 checks, 0 failed.
+1. `ctest` passes on a Linux core build (`-DSC_BUILD_UI=OFF`). Current: 4462 checks, 0 failed.
 2. The `package` workflow builds `sondechase_<version>-rev1_arm64.deb` on Debian 13 arm64 and its `ctest` passes.
 3. `tools/validate_app_builder.py` passes; `CMakeLists.txt` and `app-builder.json` have the same version.
 4. Both READMEs state the same version, keys, screens and facts.
@@ -113,7 +113,7 @@ A release is accepted when all of these hold:
 
 | Item | Constraint |
 |---|---|
-| Hardware | CardputerZero: 320×170 LCD, 46 keys, ES8389 audio codec under PipeWire, no RTC. RTL-SDR tested: Blog V4 (R828D). HackRF One tried: scan and WFM audio |
+| Hardware | CardputerZero: 320×170 LCD, 46 keys, ES8389 audio codec under PipeWire, no RTC. RTL-SDR tested: Blog V4 (R828D). HackRF One experimental: scan and WFM audio work, no RS41 reception yet ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)) |
 | Software | Debian 13 arm64; LVGL 9.5.0 (fetched at build time); `radiosonde_auto_rx` v1.9.0 decoders (fetched and SHA-256 checked) |
 | Runtime | `librtlsdr0` and `libhackrf0` (loaded with `dlopen`), `curl` for tiles, optional `gpsd` and `pulseaudio-utils` (`pacat`) |
 | Licence | GPL-3.0-or-later; bundled decoders are GPL-3.0 and LGPL-2.1; LVGL MIT; fonts SIL OFL 1.1; map data ODbL attribution |
@@ -140,5 +140,6 @@ A release is accepted when all of these hold:
   node, OSM tile download. Not yet tested in the field: GPS (no module fitted when this was written), the beeper, burst
   detection and landing on a real flight. Full list in the [roadmap](./project-roadmap.md#known-gaps).
 - Checked on hardware 2026-11-20: HackRF One scan and WFM audio, and the in-app compass calibration with tilt
-  compensation (see [device checks](./deployment-guide.md#device-checks)). HackRF RS41 decoding not tried.
+  compensation (see [device checks](./deployment-guide.md#device-checks)). A live RS41 decoded with this build on an
+  RTL-SDR V4; not received with a HackRF One ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)).
 - Version history and per-version changes are in the [roadmap](./project-roadmap.md#released-versions).

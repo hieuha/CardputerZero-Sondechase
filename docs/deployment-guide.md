@@ -81,7 +81,7 @@ ctest --test-dir build --output-on-failure
 Notes:
 - `keys.c` and the tests include `<linux/input.h>`. The build fails on macOS; use a Debian or Ubuntu host or a
   Linux container.
-- Verified on 2026-11-20 in `debian:trixie` (GCC 14.2.0): `test_core` reports **4459 checks, 0 failed**.
+- Verified on 2026-11-20 in `debian:trixie` (GCC 14.2.0): `test_core` reports **4462 checks, 0 failed**.
 - The same build prints no warnings (`-Wall -Wextra`), nor does the UI (`sc_render`, `sondechase`).
 - Also on 2026-11-20: the whole suite under AddressSanitizer + UndefinedBehaviorSanitizer + LeakSanitizer
   (`-fsanitize=address,undefined`) and under ThreadSanitizer (`-fsanitize=thread`) reports nothing; 300 000
@@ -139,7 +139,7 @@ Syntax rules, from `src/base.c`:
 | `sdr` | `auto` | Receiver: `auto` (whichever is on USB, the RTL-SDR first when both are), `rtlsdr` or `hackrf` |
 | `ppm` | `0` | Frequency correction for the receiver, ppm |
 | `gain` | unset (tuner AGC) | RTL-SDR tuner gain in dB, for example `38.6` |
-| `hackrf_gain` | unset (LNA 32 + VGA 24 dB) | HackRF gain in dB: the total, filled into the LNA (0–40 dB, 8 dB steps), then the VGA (0–62 dB, 2 dB steps), then the 14 dB amplifier. It has no AGC |
+| `hackrf_gain` | unset (LNA 32 + VGA 24 dB) | HackRF gain. `LNA,VGA,amp` sets each stage, for example `32,20,1`: LNA 0–40 dB in 8 dB steps, VGA 0–62 dB in 2 dB steps, amp 1 = the 14 dB amplifier on. A single number is a total in dB, filled into the LNA, then the VGA, then the amplifier. It has no AGC |
 | `rtl_dev` | `0` | Receiver index among those of its kind |
 | `bias_tee` | `0` | `1` powers an LNA through the RTL-SDR v4 bias-T, or the HackRF's antenna port power |
 | `rtlsdr_lib` | `librtlsdr.so.0` | librtlsdr file to load with `dlopen` |
@@ -276,12 +276,13 @@ for this document.
 | Listening (spectrum and FM audio, no decoder) | 22.6 % of one core; a broadcast FM station at 100.0 MHz heard; an empty 403 MHz channel squelched to a murmur |
 | Display, keyboard, PipeWire audio, magnetometer node, OSM tile download | Working |
 | Audio stream cost (pacat + PipeWire) | About 3.9 % of one core |
-| HackRF One (libhackrf 2024.02.1), 2026-11-20 | Scan and WFM audio clear. About 20 % of one core while decoding and playing WFM, before the DSP speed-ups (see [system architecture](./system-architecture.md#decoder-front-end-dspc)). RS41 decoding not tried |
+| HackRF One (libhackrf 2024.02.1), 2026-11-20 | Scan and WFM audio clear. About 20 % of one core while decoding and playing WFM, before the DSP speed-ups (see [system architecture](./system-architecture.md#decoder-front-end-dspc)). **RS41 not received**: sonde Y0310371 on 403.000 MHz, which the RTL-SDR V4 decoded at about 25 dB over the floor, showed no peak at any of seven gains from `32,24,0` to `40,50,0` ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)) |
+| RTL-SDR V4, 2026-11-20, this build | Sonde Y0310371 decoded on 403.000 MHz at 15.5 km, about 35 km away; swapped in for the HackRF while the app ran, it was opened without a restart |
 | Compass calibration with the lean step, 2026-11-20 (about 20° inclination, 40 s recording while leaning) | Tilt-compensated heading 2.7° RMS up to 35° of lean (flat formula 12.3°), 7.0° at 35–50° (flat 27.8°) |
 
 Not yet checked on hardware: GPS fix (no module fitted at the time), the proximity beeper in the field, burst
 detection and landing prediction on a real flight, AM and SSB on real signals, the simple map style and panning on
-the device, drawing speed with many map tiles, HackRF RS41 decoding, HackRF sensitivity against an RTL-SDR. See
+the device, drawing speed with many map tiles, RS41 reception with a HackRF (see [issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)). See
 [roadmap](./project-roadmap.md#known-gaps).
 
 ## Troubleshooting
@@ -291,7 +292,7 @@ the device, drawing speed with many map tiles, HackRF RS41 decoding, HackRF sens
 | "No SDR device found" | No RTL2832U or HackRF on USB, or it is another model. Check `lsusb` for `0bda:2838`, `0bda:2832` or `1d50:6089`. Set `sdr_check = 0` only to test without a dongle |
 | Status says the device is busy or librtlsdr is missing | Another program holds the dongle (for example `rtl_fm`), or `librtlsdr0` is not installed (`apt install librtlsdr0`) |
 | Status says `libhackrf0 not installed` | A HackRF is plugged in but its library is missing, which the package normally pulls in. Only a binary copied by hand gets there: `sudo apt install libhackrf0` |
-| HackRF: weak or no signal | It has no AGC: raise `hackrf_gain` (for example `70`, which turns on more VGA) or set `bias_tee = 1` for a powered LNA. Its 8-bit ADC and unfiltered front end make it less sensitive at 400 MHz than an RTL-SDR |
+| HackRF: weak or no signal | First check the antenna is on the `ANTENNA` port. It has no AGC: try `hackrf_gain = 32,20,1` (amplifier on) or set `bias_tee = 1` for a powered LNA. In the one live test a HackRF One did not receive a sonde an RTL-SDR V4 decoded ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)). Its 8-bit ADC and unfiltered front end make it less sensitive at 400 MHz than an RTL-SDR |
 | `GPS 0/3` in red on the top bar | The receiver is plugged in and talking, but has no fix yet. Decoding is unaffected |
 | `No GPS` | gpsd is not running on `gpsd_host:gpsd_port`, or no receiver is attached. Install `gpsd` and start it with the receiver |
 | Map shows `Map server blocked by DNS` | A DNS filter answers `tile.openstreetmap.org` with a loopback address. Allow the domain in the filter |

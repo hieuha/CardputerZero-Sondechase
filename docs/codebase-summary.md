@@ -21,8 +21,8 @@ working tree and from the line counts below. Regenerate after large changes.
 | Language | C11, one application, plus two shell and Python helper groups |
 | Application | `sondechase` (CardputerZero, Debian 13 arm64), LVGL 9.5.0 UI |
 | Core | `sc_core`, no LVGL, unit-tested on Linux |
-| Source size | `src/` 6168 lines (`src/app.c` 627 the largest, `src/sc.h` 559) |
-| Tests | `tests/test_core.c` (1612 lines), 4459 checks, all passing (GCC 14.2, Debian trixie) |
+| Source size | `src/` 6172 lines (`src/app.c` 627 the largest, `src/sc.h` 559) |
+| Tests | `tests/test_core.c` (1613 lines), 4462 checks, all passing (GCC 14.2, Debian trixie) |
 | External programs run | `fsk_demod`, `rs41mod` (built from `radiosonde_auto_rx` v1.9.0), `pacat`, `curl`, `gpsd` (socket) |
 | Runtime libraries | `librtlsdr`, or `libhackrf` for a HackRF (loaded with `dlopen`), libc, libm, pthread |
 | License | GPL-3.0-or-later (see `LICENSE`) |
@@ -61,7 +61,7 @@ working tree and from the line counts below. Regenerate after large changes.
 | `src/app.c` | 627 | `app_init`, `app_poll`, `app_tune`, `app_listen`, `app_scan`, `app_hunt`, `app_on_frame`, `app_free` | Application state machine, receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
 | `src/base.c` | 424 | `cfg_load`, `cfg_defaults`, `sc_subst`, `fb_pick`, `lr_readline`, `proc_start_feed`, `js_num`, `js_str` | Config, line reader, child process groups, flat-JSON reader |
 | `src/sdr.c` | 332 | `sdr_open`, `sdr_tune`, `sdr_read`, `sdr_range`, `iqring_*` | IQ ring, generic receiver calls, RTL-SDR back end (librtlsdr via `dlopen`, reader thread, tuner range table) |
-| `src/sdr_hackrf.c` | 314 | `sdr_hackrf_ops` | HackRF back end: libhackrf via `dlopen`, int8 to u8, half-band halving, gain split, stale-transfer drop |
+| `src/sdr_hackrf.c` | 318 | `sdr_hackrf_ops` | HackRF back end: libhackrf via `dlopen`, int8 to u8, half-band halving, gain split, stale-transfer drop |
 | `src/sdr_priv.h` | 32 | `sdr_ops_t`, `struct sdr` | Back-end interface |
 | `src/dsp.c` | 234 | `fft_spectrum`, `ddc_process`, `ddc_process_wide` | FFT with Hann window, decoder front end |
 | `src/radio.c` | 207 | `radio_init`, `radio_process`, `radio_process_wfm`, `radio_next_bw` | NFM, AM, USB, LSB, WFM demodulation and channel widths |
@@ -90,7 +90,7 @@ alert overlay and the "No SDR device found" screen stay in `ui.c` with the draw 
 
 | File | Lines | Role |
 |---|---|---|
-| `tests/test_core.c` | 1612 | Core checks: geodesy, ISA, prediction, sonde and gpsd parsers, heading, compass calibration and tilt compensation on simulated devices, config, framebuffer choice, spectrum, IQ ring, DSP, radio, sweep and hunt, tiles, flight, beeper, LED, child lifecycle |
+| `tests/test_core.c` | 1613 | Core checks: geodesy, ISA, prediction, sonde and gpsd parsers, heading, compass calibration and tilt compensation on simulated devices, config, framebuffer choice, spectrum, IQ ring, DSP, radio, sweep and hunt, tiles, flight, beeper, LED, child lifecycle |
 | `tests/fake_rtlsdr.c` | 60 | Stand-in `librtlsdr` shared library: 403.000 MHz carrier wherever it is tuned |
 | `tests/fake_hackrf.c` | 131 | Stand-in `libhackrf`: int8 transfers in real time, each with the frequency it began at; getters for rate, filter and gains |
 | `tests/fake_decoder.sh` | 11 | Stand-in decoder: prints rs41mod-style JSON lines and a non-JSON line |

@@ -51,7 +51,7 @@ Trên máy thật (chụp framebuffer, 2×):
 |---|---|
 | M5Stack CardputerZero | Raspberry Pi CM0, Debian 13 arm64, màn hình 320×170, bàn phím 46 phím, âm thanh qua PipeWire |
 | RTL-SDR | Đã thử: RTL-SDR Blog V4 (tuner R828D). Các dongle RTL2832U khác chưa được thử |
-| HackRF (thay cho RTL-SDR) | HackRF One hoặc rad1o, app tự nhận qua USB; gói cài sẵn `libhackrf0`. Đã thử với HackRF One: quét và nghe WFM; chưa thử giải mã RS41 |
+| HackRF (thử nghiệm) | HackRF One hoặc rad1o, app tự nhận qua USB; gói cài sẵn `libhackrf0`. Quét và nghe WFM chạy được; trong lần thử với sonde thật ngày 20/11/2026, HackRF không thu được sonde mà RTL-SDR V4 giải mã được ([issue 1 trên GitHub](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)). Đi săn sonde nên dùng RTL-SDR |
 | GPS (không bắt buộc) | Bất kỳ GPS nào gpsd đọc được, ví dụ GPS USB. Cần cho khoảng cách, hướng, điểm rơi và beeper |
 | Cảm biến từ trường (không bắt buộc) | Cảm biến IIO trên bo mạch, dùng làm hướng khi chưa có hướng di chuyển từ GPS |
 | Đèn ACT | Đèn đỏ nháy mỗi khi nhận được frame, ở màn Track và Map |
@@ -182,15 +182,15 @@ Tài liệu kỹ thuật viết bằng tiếng Anh:
 
 ## Tình trạng test
 
-`tests/test_core.c`: 4459 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
+`tests/test_core.c`: 4462 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
 native trên Debian 13. Một `librtlsdr` giả và một bộ giải mã giả chạy trọn quy trình quét và giải mã mà không cần
 dongle. Chi tiết và số đo trên máy thật: [hướng dẫn deploy](docs/deployment-guide.md#tests).
 
 ## Hạn chế đã biết
 
 - Chỉ hỗ trợ RS41. Các loại sonde khác cần bộ giải mã riêng.
-- HackRF không có AGC nên gain mặc định là cố định (LNA 32 + VGA 24 dB; `hackrf_gain` đặt tổng gain). Ở 400 MHz,
-  HackRF kém nhạy hơn RTL-SDR.
+- HackRF mới ở mức thử nghiệm: chưa thu được RS41 nào bằng HackRF ([issue 1 trên GitHub](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)). HackRF không có AGC; đặt gain
+  bằng `hackrf_gain = LNA,VGA,amp` (mặc định 32,24,0).
 - Ở gần một sonde phát rất mạnh, màn tổng quan có thể hiện thêm vài đỉnh phụ yếu hơn; chỉnh tới đó sẽ không có gì để
   giải mã.
 - La bàn cần hiệu chỉnh một lần (màn Info, phím `K`: xoay máy một vòng, nghiêng về bốn phía rồi hướng về phía Bắc).

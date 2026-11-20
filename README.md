@@ -51,7 +51,7 @@ On the device (framebuffer captures, 2×):
 |---|---|
 | M5Stack CardputerZero | Raspberry Pi CM0, Debian 13 arm64, 320×170 LCD, 46-key keyboard, PipeWire audio |
 | RTL-SDR | Tested: RTL-SDR Blog V4 (R828D tuner). Other RTL2832U dongles are not tested |
-| HackRF (instead) | HackRF One or rad1o, picked up from USB; the package installs `libhackrf0`. Tried with a HackRF One: scan and WFM audio; RS41 decoding not yet |
+| HackRF (experimental) | HackRF One or rad1o, picked up from USB; the package installs `libhackrf0`. Scan and WFM audio work; in the one live test it did not receive the sonde an RTL-SDR V4 decoded ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)). Use an RTL-SDR to chase |
 | GPS (optional) | Any receiver that gpsd reads, for example a USB GPS. Needed for distance, bearing, landing and the beeper |
 | Magnetometer (optional) | IIO magnetometer on the board, used for heading when there is no GPS course |
 | ACT LED | The red LED blinks on each frame on the Track and Map screens |
@@ -180,15 +180,15 @@ Everything the app keeps is in one folder, `data_dir` (default `~/sondechase`):
 
 ## Test status
 
-`tests/test_core.c`: 4459 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
+`tests/test_core.c`: 4462 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
 arm64 package build on Debian 13. A fake `librtlsdr` and a fake decoder run scanning and decoding end to end without
 a dongle. Details and the device measurements: [deployment guide](docs/deployment-guide.md#tests).
 
 ## Known limitations
 
 - RS41 only. Other sonde types need their own decoder.
-- HackRF: it has no AGC, so the default gain is fixed (LNA 32 + VGA 24 dB; `hackrf_gain` sets the total). At 400 MHz
-  it is less sensitive than an RTL-SDR.
+- HackRF support is experimental: no RS41 has been received with it yet ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)). It has no AGC; set the
+  gain with `hackrf_gain = LNA,VGA,amp` (default 32,24,0).
 - Next to a very strong sonde the overview can show weaker spurs; tuning to them shows nothing to decode.
 - The compass must be calibrated once (Info, `K`: turn a full circle, lean four ways, then point north). After that
   it is tilt-compensated with the accelerometer, so the device need not be held flat (not within about 15° of

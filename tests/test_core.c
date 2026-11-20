@@ -1560,6 +1560,7 @@ static void t_hackrf(const char *fake, const char *fakelib)
     {
         static const struct { const char *g; uint32_t lna, vga; int amp; } t[] = {
             {"0", 0, 0, 0}, {"20", 16, 4, 0}, {"50", 40, 10, 0}, {"102", 40, 62, 0}, {"116", 40, 62, 1},
+            {"32,20,1", 32, 20, 1}, {"35,21,0", 32, 20, 0}, {"99,99,5", 40, 62, 1}, /* LNA,VGA,amp given */
         };
         char err[96];
         cfg_t c;

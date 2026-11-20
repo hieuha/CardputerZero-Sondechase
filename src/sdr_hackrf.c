@@ -174,9 +174,13 @@ static int hrf_set_rate(sdr_t *s, long rate)
  * then the 14 dB front-end amplifier. */
 static void hrf_gain(hrf_t *h, const char *gain)
 {
-    int g = (int)lround(atof(gain)), lna = 32, vga = 24, amp = 0;
+    int g = (int)lround(atof(gain)), lna = 32, vga = 24, amp = 0, l, v, a;
     if (g < 0) g = 0;
-    if (gain[0]) {
+    if (sscanf(gain, "%d,%d,%d", &l, &v, &a) == 3) { /* "LNA,VGA,amp" as hackrf_transfer -l -g -a, to the steps */
+        lna = l < 0 ? 0 : (l > 40 ? 40 : l / 8 * 8);
+        vga = v < 0 ? 0 : (v > 62 ? 62 : v / 2 * 2);
+        amp = a != 0;
+    } else if (gain[0]) {
         lna = g >= 40 ? 40 : g / 8 * 8;
         vga = g - lna >= 62 ? 62 : (g - lna) / 2 * 2;
         amp = g - lna - vga >= 7;

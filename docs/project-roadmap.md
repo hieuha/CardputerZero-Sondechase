@@ -19,7 +19,7 @@ commitment to a future feature.
 | 0.5.0 | 2026-11-19 14:12 | `59e89c7`..`6f6f036` | `Tab` switches screens; SDR-style start on the Radio screen; WFM audio; automatic Scan that tries peaks; tuner-range frequency entry; frame tick and ACT LED on Track and Map; GPS satellite counts; auto_rx-format log per sonde; green compass ring within 15° |
 | 0.5.1 | 2026-11-20 | `6f6f036`..`v0.5.1` | `Z` zooms the map in; zoom range 6–18; app data grouped in `data_dir` (`~/sondechase`: `sondechase.csv`, `log/`, `tiles/`), older files moved in; map tile cache 1000 MB for offline use; one CSV header per file; auto_rx log timed by the sonde's GPS time; inline `#` comments in the config; versioned tile User-Agent; live spectrum only on the Radio screen |
 | 0.6.0 | 2026-11-20 | `v0.5.1`..`v0.6.0` | `Sym` + `R` (`-`) zooms out and `Sym` + `T` (`+`) zooms in (the driver sends them as keypad 7 and 8, which the app ignored); `Z` no longer zooms; `Q` no longer quits (hold `Esc` 3 s only, so a stray key cannot close the app); Track in plain words (distance labelled, `Go: Bear right, East`, height, drift; no degrees) and kept going from the last device fix when GPS drops out; Info 2/2 with the exact numbers; compass calibration in the app (Info, `K`, saved to `<data_dir>/compass.conf`); page number in the top-left label (`Graph 1/2`, `Info 1/2`); altitude label no longer cut off |
-| Unreleased | | `v0.6.0`.. | The LCD framebuffer is found at start (`/dev/fb_lcd`, else `/proc/fb`) instead of a fixed `/dev/fb0`, so the app stays on the LCD when HDMI is attached; a map download whose command would not fit its buffer is skipped instead of running cut; no compiler warnings under GCC 14.2 |
+| Unreleased | | `v0.6.0`.. | The LCD framebuffer is found at start (`/dev/fb_lcd`, else `/proc/fb`) instead of a fixed `/dev/fb0`, so the app stays on the LCD when HDMI is attached; a map download whose command would not fit its buffer is skipped instead of running cut; no compiler warnings under GCC 14.2; UI split into one file per screen (no visible change) |
 
 Notes:
 - Version bumps touch `CMakeLists.txt`, `app-builder.json` and both READMEs (see
@@ -56,9 +56,7 @@ Grouped by kind. Each item is something the code or the test status says is miss
 
 ### Code and configuration issues
 
-| Issue | Where | Note |
-|---|---|---|
-| `ui.c` is 1402 lines | `src/ui.c` | Candidate for a split by screen |
+None known. The core and the UI build without warnings under GCC 14.2 (`-Wall -Wextra`).
 
 ## Dropped or declined
 

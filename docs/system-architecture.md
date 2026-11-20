@@ -22,7 +22,7 @@ The core (`sc_core`) has no LVGL dependency and is unit-tested on any Linux host
 
 | File | Lines | Responsibility |
 |---|---|---|
-| `src/sc.h` | 521 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
+| `src/sc.h` | 525 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
 | `src/main.c` | 90 | Entry point, signal handling, main loop, LVGL setup, hold-Esc quit |
 | `src/app.c` | 615 | State machine (`ST_IDLE`, `ST_SCAN`, `ST_LISTEN`, `ST_DECODE`), receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
 | `src/base.c` | 346 | `sc_now`, config parser and defaults, line reader, child process groups, flat-JSON field extraction |
@@ -35,12 +35,18 @@ The core (`sc_core`) has no LVGL dependency and is unit-tested on any Linux host
 | `src/tiles.c` | 290 | Tile lookup, `curl` downloads with cache cap and failure reasons, recolouring |
 | `src/demo.c` | 139 | Simulated flight (`demo = 1`) through the same frame path |
 | `src/keys.c` | 92 | Keyboard from evdev (`/dev/input/event*`), Sym symbol keys, held-arrow repeat |
-| `src/ui.c` | 1402 | All LVGL screens and key dispatch (`ui_key`) |
+| `src/ui.c` | 249 | UI state, overlays (frequency entry, burst alert, no SDR), LVGL draw callback, key dispatch (`ui_key`) |
+| `src/ui_draw.c` | 220 | Drawing primitives (line, rectangle, label), top and nav bars, battery |
+| `src/ui_track.c` | 215 | Track screen and compass |
+| `src/ui_map.c` | 284 | Map screen, decoded tile cache, pan, zoom, follow, style |
+| `src/ui_graph.c` | 142 | Skew-T and flight profile |
+| `src/ui_radio.c` | 159 | Band overview, tuned spectrum, listening, decoding |
+| `src/ui_info.c` | 154 | Info screens and compass calibration |
+| `src/ui_priv.h` | 76 | Colours, shared UI state and prototypes for the UI files |
 | `src/ui.h` | 16 | UI entry points used by `main.c` |
 | `tools/render.c` | 209 | Headless build of the real UI for screenshots (`SC_RENDER`) |
 
-`ui.c` is the largest file and the first candidate for splitting if it grows further
-(see [code standards](./code-standards.md#file-size)).
+The UI is one file per screen (see [code standards](./code-standards.md#file-size)).
 
 ## Diagram
 
@@ -57,7 +63,7 @@ flowchart LR
     MAG["IIO magnetometer"] --> IO
     IO --> APP["app.c app_poll"]
     FRAME --> APP
-    APP --> UI["ui.c LVGL screens"]
+    APP --> UI["ui*.c LVGL screens"]
     APP --> LOGS["CSV + auto_rx logs"]
     AUDIO --> PACAT["pacat (PipeWire)"]
     APP --> LED["ACT LED sysfs"]
@@ -261,7 +267,7 @@ Ground distance `d` from the device to the sonde (or to its last fix when the si
 On the Track and Map screens each valid frame plays a 30 ms 1500 Hz tick (unless muted with `M`) and blinks the ACT
 LED for 80 ms. The LED returns to its resting state; the tick is not played when muted, the LED still blinks.
 
-### Skew-T log-P (`ui.c`)
+### Skew-T log-P (`ui_graph.c`)
 
 Pressure axis `y ∝ ln(1050 / p)` from 1050 to 100 hPa. Isotherms are skewed 45°, dry adiabats follow
 `T = θ · (p / 1000)^0.2857`. Dew point uses the Magnus formula (`dewpoint`, a = 17.62, b = 243.12 °C).

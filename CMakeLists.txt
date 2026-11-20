@@ -64,14 +64,16 @@ if(SC_BUILD_UI)
   endif()
   add_subdirectory("${lvgl_SOURCE_DIR}" "${lvgl_BINARY_DIR}" EXCLUDE_FROM_ALL)
 
+  set(SC_UI_SOURCES src/ui.c src/ui_draw.c src/ui_track.c src/ui_map.c src/ui_graph.c src/ui_radio.c src/ui_info.c
+                    src/keys.c)
   if(SC_RENDER)
-    add_executable(sc_render tools/render.c src/ui.c src/keys.c)
+    add_executable(sc_render tools/render.c ${SC_UI_SOURCES})
     target_compile_options(sc_render PRIVATE -Wall -Wextra)
     target_link_libraries(sc_render PRIVATE sc_core lvgl)
     return()
   endif()
 
-  add_executable(sondechase src/main.c src/ui.c src/keys.c)
+  add_executable(sondechase src/main.c ${SC_UI_SOURCES})
   target_compile_options(sondechase PRIVATE -Wall -Wextra)
   target_link_libraries(sondechase PRIVATE sc_core lvgl)
   if(SC_SIM)

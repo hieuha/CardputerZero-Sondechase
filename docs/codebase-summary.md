@@ -21,7 +21,7 @@ working tree and from the line counts below. Regenerate after large changes.
 | Language | C11, one application, plus two shell and Python helper groups |
 | Application | `sondechase` (CardputerZero, Debian 13 arm64), LVGL 9.5.0 UI |
 | Core | `sc_core`, no LVGL, unit-tested on Linux |
-| Source size | `src/` 4766 lines (`src/sc.h` 496, `src/ui.c` 1271 the largest) |
+| Source size | `src/` 5192 lines (`src/app.c` 615 the largest, `src/sc.h` 525) |
 | Tests | `tests/test_core.c` (1182 lines), 4363 checks, all passing (GCC 14.2, Debian trixie) |
 | External programs run | `fsk_demod`, `rs41mod` (built from `radiosonde_auto_rx` v1.9.0), `pacat`, `curl`, `gpsd` (socket) |
 | Runtime libraries | `librtlsdr` (loaded with `dlopen`), libc, libm, pthread |
@@ -56,7 +56,7 @@ working tree and from the line counts below. Regenerate after large changes.
 
 | File | Lines | Entry points (examples) | Role |
 |---|---|---|---|
-| `src/sc.h` | 521 | all | Public types (`cfg_t`, `app_t`, `sonde_t`, `wind_t`, `radio_t`, `flight_t`, `tilefetch_t`, ...) and APIs |
+| `src/sc.h` | 525 | all | Public types (`cfg_t`, `app_t`, `sonde_t`, `wind_t`, `radio_t`, `flight_t`, `tilefetch_t`, ...) and APIs |
 | `src/main.c` | 90 | `main` | Startup, signals, main loop, hold-Esc quit |
 | `src/app.c` | 615 | `app_init`, `app_poll`, `app_tune`, `app_listen`, `app_scan`, `app_hunt`, `app_on_frame`, `app_free` | Application state machine, receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
 | `src/base.c` | 364 | `cfg_load`, `cfg_defaults`, `sc_subst`, `fb_pick`, `lr_readline`, `proc_start_feed`, `js_num`, `js_str` | Config, line reader, child process groups, flat-JSON reader |
@@ -69,11 +69,19 @@ working tree and from the line counts below. Regenerate after large changes.
 | `src/tiles.c` | 290 | `tf_find`, `tf_request`, `tf_poll`, `tf_sweep`, `tile_recolor`, `tf_host_blocked`, `mkdirs` | Tile lookup, `curl` downloads, cache cap, failure reasons, recolouring |
 | `src/demo.c` | 139 | `demo_poll`, `demo_advance` | Simulated flight |
 | `src/keys.c` | 92 | `keys_open`, `keys_read`, `keys_esc_held_s` | evdev keyboard, Sym symbol keys, held-arrow repeat, Esc timing |
-| `src/ui.c` | 1402 | `ui_init`, `ui_key`, `draw_cb`, `tick_cb` | All LVGL screens, chrome, key dispatch |
+| `src/ui.c` | 249 | `ui_init`, `ui_key`, `draw_cb`, `tick_cb` | UI state, overlays (frequency entry, burst alert, no SDR), LVGL glue, key dispatch |
+| `src/ui_draw.c` | 220 | `ln`, `fill`, `txt`, `box`, `kv`, `top_bar`, `nav_bar` | Drawing primitives, top and nav bars, battery, shared helpers |
+| `src/ui_track.c` | 215 | `p_track`, `compass`, `phase_name` | Track screen, compass, plain-language directions |
+| `src/ui_map.c` | 284 | `p_map`, `map_pan`, `map_zoom_step`, `map_follow_next`, `map_style_toggle` | Map screen, decoded tile cache, pan, zoom, follow, style |
+| `src/ui_graph.c` | 142 | `p_skewt`, `p_flight` | Graph screens: Skew-T and flight profile |
+| `src/ui_radio.c` | 159 | `p_scan` | Radio screen: band overview, tuned spectrum, listening, decoding |
+| `src/ui_info.c` | 154 | `p_info`, `p_info_pos`, `p_cal` | Info screens and compass calibration |
+| `src/ui_priv.h` | 76 | all of the above | Colours, shared UI state and prototypes for the UI files |
 | `src/ui.h` | 16 | `ui_init`, `ui_key`, `keys_*` | UI interface for `main.c` and the tests |
 
-Screens inside `ui.c`: Track (`4`), Map (`5`), Graph (`6`, Skew-T and flight pages), Radio (`7`, tuned view, Scan),
-Info (`8`), frequency entry (`F`), burst alert overlay and the "No SDR device found" screen.
+One UI file per screen: Track (`4`, `ui_track.c`), Map (`5`, `ui_map.c`), Graph (`6`, Skew-T and flight pages,
+`ui_graph.c`), Radio (`7`, tuned view, Scan, `ui_radio.c`), Info (`8`, `ui_info.c`). The frequency entry (`F`), burst
+alert overlay and the "No SDR device found" screen stay in `ui.c` with the draw callback and `ui_key`.
 
 ## Tests and tools
 

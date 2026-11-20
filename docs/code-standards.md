@@ -23,7 +23,7 @@ Last updated: 2026-11-20 (version 0.6.0). Describes the conventions the code alr
 - Warnings: `-Wall -Wextra` on `sc_core`, `test_core`, `sondechase` and `sc_render`. Keep new code free of warnings
   under GCC 14. The core and the UI build without warnings (checked in `debian:trixie`, GCC 14.2).
 - Default build type is `Release` (set in `CMakeLists.txt`).
-- The core (`sc_core`, everything in `src/` except `main.c`, `ui.c`, `keys.c`) must not include `lvgl.h`. That keeps
+- The core (`sc_core`, everything in `src/` except `main.c`, `ui*.c`, `keys.c`) must not include `lvgl.h`. That keeps
   it testable on any Linux host with `-DSC_BUILD_UI=OFF`.
 - Linux-only APIs are allowed (`dlopen`, evdev, sysfs, `prctl`, process groups). `keys.c` includes `<linux/input.h>`.
 
@@ -33,6 +33,7 @@ Last updated: 2026-11-20 (version 0.6.0). Describes the conventions the code alr
 src/
   sc.h          public header: every type, constant and module API of the core
   ui.h          UI entry points (ui_init, ui_key)
+  ui_priv.h     shared by the UI files: colours, UI state, primitives, one entry point per screen
   main.c        entry point and main loop
   app.c         application state, receiver, decoder pipeline, frames, logs
   base.c        config, line reader, child processes, JSON fields
@@ -45,14 +46,21 @@ src/
   tiles.c       tile lookup, download, recolour
   demo.c        simulated flight
   keys.c        evdev keyboard
-  ui.c          LVGL screens
+  ui.c          UI state, overlays, LVGL draw callback, key dispatch
+  ui_draw.c     drawing primitives, top and nav bars
+  ui_track.c    Track screen
+  ui_map.c      Map screen and tile cache
+  ui_graph.c    Graph screens (Skew-T, flight)
+  ui_radio.c    Radio screen
+  ui_info.c     Info screens, compass calibration
 tests/          test_core.c, fake_rtlsdr.c, fake_decoder.sh
 tools/          render.c, prep_tiles.py, make_icon.py, validate_app_builder.py
 cmake/          package layout, decoders, toolchain (from the CardputerZero Template, MIT)
 conf/           sondechase.conf, installed as /etc/sondechase.conf
 ```
 
-- One module per `.c` file, named after its job in one short lowercase word (`app.c`, `geo.c`). This repo's
+- One module per `.c` file, named after its job in one short lowercase word (`app.c`, `geo.c`). UI screens are
+  `ui_<screen>.c`. This repo's
   convention is short module names, so new files follow it rather than the longer kebab-case used elsewhere.
 - Add a file only for a real boundary: a new module with its own state, or a separate program.
 
@@ -61,7 +69,7 @@ conf/           sondechase.conf, installed as /etc/sondechase.conf
 - `src/sc.h` is the only header shared by the core modules and the tests. Every type, constant and function a
   module exposes is declared there with a short comment stating units and ranges (for example `/* m, haversine */`,
   `/* deg true, 0..360 */`).
-- `ui.h` is the only header for the UI.
+- `ui.h` is the UI interface for `main.c` and the tools. `ui_priv.h` is shared only by the UI files.
 - Internal helpers are `static` in their `.c` file and are not declared in `sc.h`.
 
 ## Naming
@@ -155,9 +163,9 @@ Unknown keys are reported on stderr and ignored. `#` starts a comment at the sta
 ## File size
 
 - The project guideline is 200 lines per module as a split candidate and 800 lines per documentation file.
-- Current sizes are listed in the [codebase summary](./codebase-summary.md). `src/ui.c` (1271 lines) is the largest
-  and is the first candidate for splitting by screen (Track, Map, Graph, Radio, Info, overlays) if it keeps growing.
-  Split only where it removes real complexity, and keep `ui_key` and the draw helpers shared.
+- Current sizes are listed in the [codebase summary](./codebase-summary.md). The UI is split by screen
+  (`ui_<screen>.c`); `ui_key` and the draw callback stay in `ui.c`, the primitives in `ui_draw.c`. Split only where
+  it removes real complexity.
 
 ## Documentation with every change
 

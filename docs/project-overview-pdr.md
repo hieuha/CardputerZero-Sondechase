@@ -63,18 +63,18 @@ Out of scope (decided or not planned):
 | ID | Requirement | Where |
 |---|---|---|
 | FR-01 | Open the RTL-SDR (VID:PID `0bda:2838` or `0bda:2832`) and report a missing dongle on a blocking screen, rechecked every 2 s | `app.c`, `io.c`, `ui.c` |
-| FR-02 | Sweep 400–406 MHz continuously with peak hold; mark peaks at least 10 dB above the floor | `app.c`, `io.c`, `ui.c` |
+| FR-02 | Sweep 400–406 MHz continuously with peak hold; mark peaks at least 10 dB above the floor | `app.c`, `io.c`, `ui_radio.c` |
 | FR-03 | Scan (`S`): after two passes, try the strongest untried peak with the decoder for 10 s; stop on an RS41 frame; skip a failed peak for 2 min | `app.c` (`app_hunt`) |
 | FR-04 | Tune with arrow keys in 10 kHz (Left/Right) and 100 kHz (Up/Down) steps; hold to keep tuning | `keys.c`, `ui.c` |
 | FR-05 | Listen to the tuned frequency with NFM (default 16 kHz), AM, USB, LSB and WFM; select the channel width with `B` and the mode with `D` | `radio.c`, `ui.c` |
 | FR-06 | `Enter` decodes the tuned frequency; `F` enters a frequency in kHz within the tuner's range | `ui.c`, `app.c` |
 | FR-07 | Decode RS41 frames with `fsk_demod` and `rs41mod` in a child pipeline and restart it when it exits | `app.c` |
-| FR-08 | Show distance, bearing and elevation to the sonde, the relative arrow, and the predicted landing point, when a GPS fix exists | `app.c`, `geo.c`, `ui.c` |
-| FR-09 | Show serial, frame and battery of a sonde without a GPS fix; keep its position out of the track | `geo.c`, `ui.c` |
-| FR-10 | Show the satellite count (`GPS 0/3` while plugged in without a fix, `3D 9/12` with a fix) | `ui.c` |
-| FR-11 | Compass ring turns green while the sonde is within 15° of straight ahead | `ui.c` |
-| FR-12 | Map: tiles from the preloaded pack, the cache, then download of visible tiles only; simple and detailed styles; pan, zoom, follow modes | `tiles.c`, `ui.c` |
-| FR-13 | Skew-T log-P and altitude and vertical-speed graphs of the flight | `ui.c` |
+| FR-08 | Show distance, bearing and elevation to the sonde, the relative arrow, and the predicted landing point, when a GPS fix exists | `app.c`, `geo.c`, `ui_track.c` |
+| FR-09 | Show serial, frame and battery of a sonde without a GPS fix; keep its position out of the track | `geo.c`, `ui_track.c` |
+| FR-10 | Show the satellite count (`GPS 0/3` while plugged in without a fix, `3D 9/12` with a fix) | `ui_draw.c` |
+| FR-11 | Compass ring turns green while the sonde is within 15° of straight ahead | `ui_track.c` |
+| FR-12 | Map: tiles from the preloaded pack, the cache, then download of visible tiles only; simple and detailed styles; pan, zoom, follow modes | `tiles.c`, `ui_map.c` |
+| FR-13 | Skew-T log-P and altitude and vertical-speed graphs of the flight | `ui_graph.c` |
 | FR-14 | Burst alert when vertical speed is below −3 m/s on three frames above 1000 m after an ascent; Enter opens the Map | `track.c`, `ui.c` |
 | FR-15 | Proximity beeper inside 10 km, faster as the distance falls; silent without a position; mutable with `M` | `track.c` |
 | FR-16 | Each valid frame plays a tick and blinks the ACT LED on Track and Map | `app.c`, `track.c` |

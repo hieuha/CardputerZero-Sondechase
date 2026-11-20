@@ -18,6 +18,12 @@
 Phiên bản 0.6.0. Đã chạy trên CardputerZero thật với RTL-SDR Blog V4: phần quét và giải mã đã được kiểm với một quả
 RS41 đang bay (Y0532351). Chưa thử đi săn ngoài thực địa với GPS; xem [Hạn chế đã biết](#hạn-chế-đã-biết).
 
+![Phát lại sonde Y0310371 qua app: Track và Skew-T từ 15 lên 30 km](screenshots/replay-y0310371.gif)
+
+*Một chuyến bay thật được phát lại qua các màn hình của app: sonde Y0310371, thả từ Hà Nội ngày 20/11/2026, thu được
+trên tần số 403.000 MHz từ độ cao 15 km lên 30 km. Bên trái là Track với khoảng cách, góc ngẩng và điểm rơi dự đoán;
+bên phải là Skew-T, vẽ nhiệt độ và điểm sương khi bóng lên cao. Ảnh dựng từ log chuyến bay bằng công cụ render.*
+
 | | |
 |---|---|
 | ![Màn hình Track: la bàn, khoảng cách và hướng tới sonde](screenshots/mockup/track.png) | ![Màn hình Map, kiểu đơn giản: chỉ có sông hồ và đường](screenshots/mockup/map.png) |

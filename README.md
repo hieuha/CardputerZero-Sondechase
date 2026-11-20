@@ -18,6 +18,12 @@ RS41 radiosonde receiver, decoder and chase aid for the M5Stack CardputerZero (R
 Version 0.6.0. Tested on a real CardputerZero with an RTL-SDR Blog V4: scanning and decoding were checked with a live
 RS41 (Y0532351). GPS chasing in the field has not been tried yet; see [Known limitations](#known-limitations).
 
+![Replay of sonde Y0310371 through the app: Track and Skew-T from 15 to 30 km](screenshots/replay-y0310371.gif)
+
+*A real flight replayed through the app's screens: sonde Y0310371, launched from Hanoi on 2026-11-20 and received on
+403.000 MHz from 15 km up to 30 km. Track (left) shows the distance, the elevation and the landing estimate; the
+Skew-T (right) draws temperature and dew point as the balloon climbs. Made from the flight log by the render tool.*
+
 | | |
 |---|---|
 | ![Track screen: compass, distance and bearing to the sonde](screenshots/mockup/track.png) | ![Map screen, simple style: water and roads only](screenshots/mockup/map.png) |

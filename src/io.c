@@ -118,6 +118,11 @@ void heading_init(heading_t *h, const cfg_t *c)
         snprintf(h->mag_y, sizeof h->mag_y, "/sys/bus/iio/devices/iio:device%d/in_magn_y_raw", i);
         if (access(h->mag_x, R_OK) == 0 && access(h->mag_y, R_OK) == 0) h->mag_found = 1;
     }
+    if (h->mag_found) {
+        char p[160];
+        snprintf(p, sizeof p, "/sys/bus/iio/devices/iio:device%d/in_magn_scale", i - 1);
+        if (!read_num(p, &h->mag_scale)) h->mag_scale = 0;
+    }
 }
 
 /* Device held level. Axis orientation depends on how the sensor is mounted:
@@ -148,6 +153,90 @@ void heading_update(heading_t *h, const gps_t *g, const cfg_t *c, double now)
         }
     }
     if (h->src != HDG_NONE) h->src = HDG_HOLD;
+}
+
+int mag_read(const heading_t *h, double *x, double *y)
+{
+    return h->mag_found && read_num(h->mag_x, x) && read_num(h->mag_y, y);
+}
+
+/* A level turn traces a circle as wide as the horizontal part of the Earth's field: about 0.8 G across in Vietnam,
+ * still over 0.3 G at 60° latitude. 0.2 G is well above the sensor noise (about 0.04 G on the BMM150). */
+double mag_min_span(const heading_t *h)
+{
+    return h->mag_scale > 0 ? 0.2 / h->mag_scale : 300.0;
+}
+
+void magcal_start(magcal_t *m, double min_span)
+{
+    memset(m, 0, sizeof *m);
+    m->step = MAGCAL_TURN;
+    m->min_span = min_span;
+}
+
+static double magcal_ang(const magcal_t *m, double x, double y)
+{
+    return atan2(y - (m->ymin + m->ymax) / 2, x - (m->xmin + m->xmax) / 2) * 180.0 / M_PI;
+}
+
+void magcal_add(magcal_t *m, double x, double y)
+{
+    int i;
+    if (m->step == MAGCAL_OFF) return;
+    if (m->n == 0) { m->xmin = m->xmax = x; m->ymin = m->ymax = y; }
+    if (m->step == MAGCAL_TURN) {
+        if (x < m->xmin) m->xmin = x;
+        if (x > m->xmax) m->xmax = x;
+        if (y < m->ymin) m->ymin = y;
+        if (y > m->ymax) m->ymax = y;
+    }
+    if (m->n < MAGCAL_MAX) m->n++;
+    else { /* full: drop the oldest sample */
+        memmove(m->xs, m->xs + 1, sizeof m->xs - sizeof m->xs[0]);
+        memmove(m->ys, m->ys + 1, sizeof m->ys - sizeof m->ys[0]);
+    }
+    m->xs[m->n - 1] = (float)x;
+    m->ys[m->n - 1] = (float)y;
+    if (m->step != MAGCAL_TURN) return;
+    /* the centre moves while the circle fills in, so the sectors are recounted around the latest one; nothing counts
+     * until the readings have moved further than noise, or a device lying still would fill the ring */
+    memset(m->seen, 0, sizeof m->seen);
+    if (m->xmax - m->xmin < m->min_span / 2 || m->ymax - m->ymin < m->min_span / 2) return;
+    for (i = 0; i < m->n; i++)
+        m->seen[(int)(norm360(magcal_ang(m, m->xs[i], m->ys[i])) / (360.0 / MAGCAL_SECTORS)) % MAGCAL_SECTORS] = 1;
+    if (magcal_covered(m) == MAGCAL_SECTORS && m->xmax - m->xmin >= m->min_span && m->ymax - m->ymin >= m->min_span)
+        m->step = MAGCAL_NORTH;
+}
+
+int magcal_covered(const magcal_t *m)
+{
+    int i, k = 0;
+    for (i = 0; i < MAGCAL_SECTORS; i++) k += m->seen[i];
+    return k;
+}
+
+void magcal_apply(const magcal_t *m, cfg_t *c)
+{
+    double turned = 0, x = 0, y = 0;
+    int i, k = 0;
+    if (m->n < 2) return;
+    c->mag_off_x = (m->xmin + m->xmax) / 2;
+    c->mag_off_y = (m->ymin + m->ymax) / 2;
+    for (i = 1; i < m->n; i++) turned += norm180(magcal_ang(m, m->xs[i], m->ys[i]) - magcal_ang(m, m->xs[i - 1], m->ys[i - 1]));
+    c->mag_flip_y = turned < 0; /* turning right, the heading goes up: the raw angle must too */
+    for (i = m->n - 1; i >= 0 && k < 10; i--, k++) { x += m->xs[i]; y += m->ys[i]; } /* the last 0.5 s, pointing north */
+    c->mag_rot_deg = 0;
+    c->mag_rot_deg = norm180(-heading_from_mag(x / k, y / k, c));
+}
+
+int magcal_save(const cfg_t *c, const char *path)
+{
+    FILE *f = fopen(path, "w");
+    if (!f) return -1;
+    fprintf(f, "# Written by SondeChase compass calibration (Info, K). Read after the main config.\n");
+    fprintf(f, "mag_off_x = %.3f\nmag_off_y = %.3f\nmag_flip_y = %d\nmag_rot_deg = %.1f\n", c->mag_off_x, c->mag_off_y,
+            c->mag_flip_y, c->mag_rot_deg);
+    return fclose(f) == 0 ? 0 : -1;
 }
 
 /* ---------------- SDR presence ---------------- */

@@ -150,6 +150,64 @@ static void t_heading(void)
     NEAR(heading_from_mag(10 + 0, -5 + 1, &c), 268.5, 1e-9);
 }
 
+/* the sensor as mounted: heading h reads at raw angle (h + rot), mirrored when flipped, around a hard-iron offset */
+static void mag_at(double h, double rot, int flip, double *x, double *y)
+{
+    double a = (flip ? -(h + rot) : h + rot) * M_PI / 180.0;
+    *x = 120 + 300 * cos(a);
+    *y = -80 + 300 * sin(a);
+}
+
+static void t_magcal(void)
+{
+    int flip;
+    for (flip = 0; flip <= 1; flip++) {
+        magcal_t m;
+        cfg_t c;
+        double h, x, y;
+        cfg_defaults(&c);
+        c.declination = -1.0;
+        magcal_start(&m, 320); /* 0.2 G at the BMM150's 0.000625 G per count */
+        for (h = 0; h < 200; h += 4) { mag_at(h, 37, flip, &x, &y); magcal_add(&m, x, y); }
+        CHECK(m.step == MAGCAL_TURN); /* half a turn is not enough */
+        CHECK(magcal_covered(&m) < MAGCAL_SECTORS);
+        for (; h <= 370 && m.step == MAGCAL_TURN; h += 4) { mag_at(h, 37, flip, &x, &y); magcal_add(&m, x, y); }
+        CHECK(m.step == MAGCAL_NORTH); /* a full turn to the right moves on by itself */
+        for (h = 0; h < 12; h++) { mag_at(0, 37, flip, &x, &y); magcal_add(&m, x, y); } /* held pointing north */
+        magcal_apply(&m, &c);
+        NEAR(c.mag_off_x, 120, 2.0);
+        NEAR(c.mag_off_y, -80, 2.0);
+        CHECK(c.mag_flip_y == flip);
+        mag_at(0, 37, flip, &x, &y);
+        NEAR(norm180(heading_from_mag(x, y, &c)), 0.0, 0.5);
+        mag_at(90, 37, flip, &x, &y);
+        NEAR(heading_from_mag(x, y, &c), 90.0, 0.5);
+        mag_at(225, 37, flip, &x, &y);
+        NEAR(heading_from_mag(x, y, &c), 225.0, 0.5);
+    }
+    { /* a device lying still: noise alone (seen on the BMM150: about +-50 counts) must not fill the ring */
+        magcal_t m;
+        int i;
+        magcal_start(&m, 320);
+        for (i = 0; i < 600; i++) magcal_add(&m, -350 + 50 * cos(i * 2.4), 1930 + 50 * sin(i * 1.7));
+        CHECK(m.step == MAGCAL_TURN);
+        CHECK(magcal_covered(&m) == 0);
+    }
+    { /* saved values come back through the normal config loader */
+        cfg_t c, d;
+        cfg_defaults(&c);
+        cfg_defaults(&d);
+        c.mag_off_x = -12.5; c.mag_off_y = 40.25; c.mag_flip_y = 1; c.mag_rot_deg = -123.4;
+        CHECK(magcal_save(&c, "/tmp/sc_compass.conf") == 0);
+        CHECK(cfg_load(&d, "/tmp/sc_compass.conf") == 0);
+        NEAR(d.mag_off_x, -12.5, 1e-3);
+        NEAR(d.mag_off_y, 40.25, 1e-3);
+        CHECK(d.mag_flip_y == 1);
+        NEAR(d.mag_rot_deg, -123.4, 1e-3);
+        unlink("/tmp/sc_compass.conf");
+    }
+}
+
 static void t_subst(void)
 {
     cfg_t c;
@@ -368,8 +426,16 @@ static void t_keys(void)
     CHECK(keys_read(p[0]) == 's');
     CHECK(KEV(KEY_TAB, 1));
     CHECK(keys_read(p[0]) == K_TAB);
-    CHECK(KEV(KEY_LEFTALT, 1) && KEV(KEY_LEFTALT, 0) && KEV(KEY_Z, 1)); /* Sym, then Z (printed +): zoom in */
+    CHECK(KEV(KEY_Z, 1)); /* Z has no action of its own */
+    CHECK(keys_read(p[0]) == 0);
+    CHECK(KEV(KEY_CD, 1) && KEV(KEY_KP7, 1)); /* Sym held + R (printed -), as the driver sends it: zoom out */
+    CHECK(keys_read(p[0]) == '-');
+    CHECK(KEV(KEY_KP7, 0) && KEV(KEY_KP8, 1)); /* Sym held + T (printed +): zoom in */
     CHECK(keys_read(p[0]) == '+');
+    CHECK(KEV(KEY_KP8, 0) && KEV(KEY_CD, 0) && KEV(KEY_R, 1)); /* plain R: restart the decoder */
+    CHECK(keys_read(p[0]) == 'r');
+    CHECK(KEV(KEY_K, 1)); /* K opens the compass calibration on Info */
+    CHECK(keys_read(p[0]) == 'k');
     CHECK(KEV(KEY_KPMINUS, 1));
     CHECK(keys_read(p[0]) == '-');
     usleep(500000);
@@ -1064,6 +1130,7 @@ int main(int argc, char **argv)
     t_predict();
     t_parse();
     t_heading();
+    t_magcal();
     t_subst();
     t_cfg();
     t_spec();

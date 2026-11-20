@@ -55,21 +55,21 @@ working tree and from the line counts below. Regenerate after large changes.
 
 | File | Lines | Entry points (examples) | Role |
 |---|---|---|---|
-| `src/sc.h` | 496 | all | Public types (`cfg_t`, `app_t`, `sonde_t`, `wind_t`, `radio_t`, `flight_t`, `tilefetch_t`, ...) and APIs |
+| `src/sc.h` | 521 | all | Public types (`cfg_t`, `app_t`, `sonde_t`, `wind_t`, `radio_t`, `flight_t`, `tilefetch_t`, ...) and APIs |
 | `src/main.c` | 90 | `main` | Startup, signals, main loop, hold-Esc quit |
-| `src/app.c` | 568 | `app_init`, `app_poll`, `app_tune`, `app_listen`, `app_scan`, `app_hunt`, `app_on_frame`, `app_free` | Application state machine, receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
-| `src/base.c` | 340 | `cfg_load`, `cfg_defaults`, `sc_subst`, `lr_readline`, `proc_start_feed`, `js_num`, `js_str` | Config, line reader, child process groups, flat-JSON reader |
+| `src/app.c` | 615 | `app_init`, `app_poll`, `app_tune`, `app_listen`, `app_scan`, `app_hunt`, `app_on_frame`, `app_free` | Application state machine, receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
+| `src/base.c` | 346 | `cfg_load`, `cfg_defaults`, `sc_subst`, `lr_readline`, `proc_start_feed`, `js_num`, `js_str` | Config, line reader, child process groups, flat-JSON reader |
 | `src/sdr.c` | 273 | `sdr_open`, `sdr_tune`, `sdr_read`, `sdr_range`, `iqring_*` | librtlsdr via `dlopen`, reader thread, IQ ring, tuner range table |
 | `src/dsp.c` | 215 | `fft_spectrum`, `ddc_process`, `ddc_process_wide` | FFT with Hann window, decoder front end |
 | `src/radio.c` | 174 | `radio_init`, `radio_process`, `radio_process_wfm`, `radio_next_bw` | NFM, AM, USB, LSB, WFM demodulation and channel widths |
-| `src/io.c` | 291 | `gps_poll`, `gps_parse`, `heading_update`, `sdr_present`, `spec_add_bins`, `spec_peaks` | gpsd client, heading sources, USB presence, spectrum cells and peaks |
+| `src/io.c` | 380 | `gps_poll`, `gps_parse`, `heading_update`, `magcal_add`, `magcal_apply`, `sdr_present`, `spec_add_bins`, `spec_peaks` | gpsd client, heading sources, compass calibration, USB presence, spectrum cells and peaks |
 | `src/geo.c` | 202 | `geo_dist`, `geo_bearing`, `isa_rho`, `dewpoint`, `wind_add`, `sonde_parse`, `predict_landing` | Geodesy, ISA, dew point, wind profile, sonde JSON, landing prediction |
 | `src/track.c` | 310 | `hist_add`, `flight_update`, `prox_update`, `audio_*`, `led_*`, `tile_frac` | Flight history, burst detection, proximity beeper, PCM audio stream, frame LED, slippy-map maths |
-| `src/tiles.c` | 291 | `tf_find`, `tf_request`, `tf_poll`, `tf_sweep`, `tile_recolor`, `tf_host_blocked`, `mkdirs` | Tile lookup, `curl` downloads, cache cap, failure reasons, recolouring |
+| `src/tiles.c` | 290 | `tf_find`, `tf_request`, `tf_poll`, `tf_sweep`, `tile_recolor`, `tf_host_blocked`, `mkdirs` | Tile lookup, `curl` downloads, cache cap, failure reasons, recolouring |
 | `src/demo.c` | 139 | `demo_poll`, `demo_advance` | Simulated flight |
-| `src/keys.c` | 89 | `keys_open`, `keys_read`, `keys_esc_held_s` | evdev keyboard, held-arrow repeat, Esc timing |
-| `src/ui.c` | 1271 | `ui_init`, `ui_key`, `ui_should_quit`, `draw_cb`, `tick_cb` | All LVGL screens, chrome, key dispatch |
-| `src/ui.h` | 17 | `ui_init`, `ui_key`, `ui_should_quit`, `keys_*` | UI interface for `main.c` and the tests |
+| `src/keys.c` | 92 | `keys_open`, `keys_read`, `keys_esc_held_s` | evdev keyboard, Sym symbol keys, held-arrow repeat, Esc timing |
+| `src/ui.c` | 1402 | `ui_init`, `ui_key`, `draw_cb`, `tick_cb` | All LVGL screens, chrome, key dispatch |
+| `src/ui.h` | 16 | `ui_init`, `ui_key`, `keys_*` | UI interface for `main.c` and the tests |
 
 Screens inside `ui.c`: Track (`4`), Map (`5`), Graph (`6`, Skew-T and flight pages), Radio (`7`, tuned view, Scan),
 Info (`8`), frequency entry (`F`), burst alert overlay and the "No SDR device found" screen.
@@ -78,10 +78,10 @@ Info (`8`), frequency entry (`F`), burst alert overlay and the "No SDR device fo
 
 | File | Lines | Role |
 |---|---|---|
-| `tests/test_core.c` | 1052 | Core checks: geodesy, ISA, prediction, sonde and gpsd parsers, heading, config, spectrum, IQ ring, DSP, radio, sweep and hunt, tiles, flight, beeper, LED, child lifecycle |
+| `tests/test_core.c` | 1149 | Core checks: geodesy, ISA, prediction, sonde and gpsd parsers, heading, compass calibration, config, spectrum, IQ ring, DSP, radio, sweep and hunt, tiles, flight, beeper, LED, child lifecycle |
 | `tests/fake_rtlsdr.c` | 54 | Stand-in `librtlsdr` shared library: 403.000 MHz carrier wherever it is tuned |
 | `tests/fake_decoder.sh` | 11 | Stand-in decoder: prints rs41mod-style JSON lines and a non-JSON line |
-| `tools/render.c` | 196 | `sc_render`: headless UI on demo data, writes 320×170 PPM per screen |
+| `tools/render.c` | 209 | `sc_render`: headless UI on demo data, writes 320×170 PPM per screen |
 | `tools/validate_app_builder.py` | 77 | Store manifest check (stdlib only), run in CI |
 | `tools/prep_tiles.py` | 114 | Builds a preloaded tile pack from MBTiles or `z/x/y.png` (Pillow) |
 | `tools/make_icon.py` | 78 | Draws the app icon (Pillow) |

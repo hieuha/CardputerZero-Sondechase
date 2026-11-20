@@ -30,7 +30,9 @@ static app_t *A;
 static lv_obj_t *root;
 static lv_layer_t *LY;
 static const lv_font_t *F_S, *F_M, *F_NUM, *F_BIG, *F_TTL; /* 11, 12, Orbitron 17 / 30 / 25 */
-static int page, gpage, quit, entry, entry_len, map_follow, map_zoom = -1, batt_pct = -1;
+static int cal_saved; /* 1 saved, -1 could not write compass.conf; shown for a few seconds */
+static double cal_t;
+static int page, gpage, ipage, entry, entry_len, map_follow, map_zoom = -1, batt_pct = -1;
 static char entry_buf[8];
 static int scan_from = ST_IDLE; /* what the receiver did before S: Esc on Scan goes back to it */
 static long scan_from_hz;
@@ -210,8 +212,9 @@ static void read_battery(void)
 /* ---------------- chrome ---------------- */
 static void top_bar(const char *name, uint32_t chip, const char *mid)
 {
-    int i, cw = 44;
+    int i, cw = text_w(F_S, name) + 14; /* the chip grows to fit a page number, "Graph 1/2" */
     double now = sc_now();
+    if (cw < 44) cw = 44;
     fill(0, 0, 320, 15, C_G);
     fill(0, 0, cw, 14, chip);
     for (i = 0; i < 6; i++) ln(cw - 6 + i, 14 - (i + 1) * 14 / 6.0, cw - 6 + i, 14, C_G, 1);
@@ -333,8 +336,8 @@ static void ll(char *out, size_t n, double lat, double lon)
     snprintf(out, n, "%.5f %c  %.5f %c", fabs(lat), lat < 0 ? 'S' : 'N', fabs(lon), lon < 0 ? 'W' : 'E');
 }
 
-/* Track without a position for this device: the sonde is still decoded and shown in full;
- * distance, bearing and elevation are replaced by absolute coordinates. */
+/* Track before this device has ever had a GPS fix: the sonde is still decoded and shown in full;
+ * distance and direction are replaced by absolute coordinates. */
 static void p_track_nogps(void)
 {
     const sonde_t *s = &A->sonde;
@@ -348,11 +351,11 @@ static void p_track_nogps(void)
         fill(140, 20, 88, 14, C_RD);
         txt(140, 20, 88, F_S, C_G, AL_C, "Signal lost %.0f s", sc_now() - s->t_rx);
     }
-    if (A->gps.t_fix > 0) txt(232, 21, 82, F_S, C_RD, AL_R, "GPS lost %.0f s", sc_now() - A->gps.t_fix);
-    else txt(232, 21, 82, F_S, C_RD, AL_R, "Waiting for GPS");
+    txt(232, 21, 82, F_S, C_RD, AL_R, "Waiting for GPS");
     snprintf(c, sizeof c, "%.0f", s->alt);
     txt(140, 36, 150, F_BIG, ok ? C_TX : C_RD, AL_L, "%s", c);
-    txt(146 + text_w(F_BIG, c), 54, 70, F_M, C_DIM, AL_L, "m altitude");
+    txt(146 + text_w(F_BIG, c), 40, 50, F_S, C_DIM, AL_L, "altitude"); /* stacked: a 5-digit altitude leaves ~70 px */
+    txt(146 + text_w(F_BIG, c), 54, 50, F_M, C_DIM, AL_L, "m");
     kv(140, 76, 68, "V/S", C_TX, "%+.1f", fabs(A->vv_s) < 0.05 ? 0.0 : A->vv_s);
     kv(216, 76, 98, "Drift", C_TX, "%.1f m/s %03.0f°", s->vel_h, s->heading);
     if (s->temp > -270) kv(140, 90, 68, "Temp", C_TX, "%.1f °C", s->temp);
@@ -373,39 +376,37 @@ static const char *phase_name(void)
     return n[A->flight.phase];
 }
 
-static void p_track(void)
+/* 8-point compass name of a bearing: plain words instead of degrees on the Track screen */
+static const char *point8(double brg)
+{
+    static const char *n[] = {"North", "North-east", "East", "South-east", "South", "South-west", "West", "North-west"};
+    return n[(int)floor(norm360(brg + 22.5) / 45.0) % 8];
+}
+
+/* which way to turn, from the sonde's angle off straight ahead; green while on course */
+static const char *turn_words(double rel, uint32_t *col)
+{
+    double a = fabs(rel);
+    *col = a <= ON_COURSE_DEG ? C_GN : C_TX;
+    if (a <= ON_COURSE_DEG) return "Straight ahead";
+    if (a <= 45.0) return rel < 0 ? "Bear left" : "Bear right";
+    if (a <= 135.0) return rel < 0 ? "Turn left" : "Turn right";
+    return "Turn around";
+}
+
+/* Track with a sonde position and a device position: distance, which way to go, height and drift in plain
+ * words (the exact numbers are on Info 2/2). last = the device position is its last GPS fix, not a current one. */
+static void track_panel(double dist, double brg, int last)
 {
     const sonde_t *s = &A->sonde;
-    static const char *src[] = {"none", "GPS", "mag", "held"};
     int ok = fresh(), have_h = A->hdg.src != HDG_NONE;
-    uint32_t col = ok ? C_PK : C_RD;
-    double hdg = have_h ? A->hdg.deg : 0.0;
+    double hdg = have_h ? A->hdg.deg : 0.0, rel = norm180(brg - hdg);
     char num[16];
     const char *unit = "";
-
-    top_bar("Track", C_CY, NULL);
-    if (A->have_sonde && !A->have_geo) {
-        p_track_nogps();
-        nav_bar(PG_TRACK);
-        return;
-    }
-    /* heading towards the sonde (the arrow points at the index on top): green ring, so it shows at a glance */
-    compass(hdg, A->have_geo, A->rel, col, !ok, A->have_land && ok, norm180(A->land_brg - hdg),
-            have_h && A->have_geo && fabs(A->rel) <= ON_COURSE_DEG ? C_GN : C_L);
-    if (!A->have_sonde && A->nofix.t_rx > 0 && sc_now() - A->nofix.t_rx < 10.0) {
-        txt(140, 44, 174, F_M, C_CY, AL_L, "%s", A->nofix.id);
-        txt(140, 60, 174, F_M, C_TX, AL_L, "Frame %d   batt %.1f V", A->nofix.frame, A->nofix.batt);
-        txt(140, 80, 174, F_S, C_RD, AL_L, "Sonde has no GPS fix (%d sats)", A->nofix.sats);
-        txt(140, 94, 174, F_S, C_DIM, AL_L, "Position appears once it locks");
-        nav_bar(PG_TRACK);
-        return;
-    }
-    if (!A->have_sonde) {
-        txt(140, 60, 174, F_M, C_DIM, AL_L, A->state == ST_DECODE ? "Waiting for the first frame" : "No frequency tuned");
-        txt(140, 76, 174, F_S, C_DIM, AL_L, "7 radio     F type a frequency");
-        nav_bar(PG_TRACK);
-        return;
-    }
+    uint32_t tc;
+    /* the arrow points at the index on top when heading at the sonde: the ring turns green */
+    compass(hdg, 1, rel, ok ? C_PK : C_RD, !ok || last, A->have_land && ok, norm180(A->land_brg - hdg),
+            have_h && fabs(rel) <= ON_COURSE_DEG ? C_GN : C_L);
     if (ok) {
         box(140, 20, 62, 14, C_PK, C_G);
         txt(140, 20, 62, F_S, C_PK, AL_C, "%s", phase_name());
@@ -413,29 +414,57 @@ static void p_track(void)
         fill(140, 20, 88, 14, C_RD);
         txt(140, 20, 88, F_S, C_G, AL_C, "Signal lost %.0f s", sc_now() - s->t_rx);
     }
-    if (have_h) txt(232, 21, 82, F_S, C_DIM, AL_R, "Hdg %03.0f° %s", hdg, src[A->hdg.src]);
-    else txt(232, 21, 82, F_S, C_DIM, AL_R, "North up");
+    if (last) txt(232, 21, 82, F_S, C_RD, AL_R, "GPS lost %.0f s", sc_now() - A->gps.t_fix);
+    else if (!have_h) txt(232, 21, 82, F_S, C_DIM, AL_R, "North up");
 
-    fmt_dist(num, sizeof num, &unit, A->dist);
-    txt(140, 36, 150, F_BIG, ok ? C_TX : C_RD, AL_L, "%s", num);
+    fmt_dist(num, sizeof num, &unit, dist);
+    txt(140, 36, 150, F_BIG, last ? C_YL : (ok ? C_TX : C_RD), AL_L, "%s", num);
+    txt(146 + text_w(F_BIG, num), 40, 80, F_S, C_DIM, AL_L, last ? "from last GPS" : "to the sonde");
     txt(146 + text_w(F_BIG, num), 54, 40, F_M, C_DIM, AL_L, "%s", unit);
-    kv(140, 76, 68, "Brg", C_TX, "%03.0f°", A->brg);
-    if (have_h) kv(216, 76, 98, "Rel", C_TX, "%+04.0f°", A->rel);
-    kv(140, 90, 68, "Elev", C_TX, "%+.1f°", fabs(A->elev) < 0.05 ? 0.0 : A->elev);
-    kv(216, 90, 98, "Alt", C_TX, "%.0f m", s->alt);
-    kv(140, 104, 68, "V/S", C_TX, "%+.1f", fabs(A->vv_s) < 0.05 ? 0.0 : A->vv_s);
-    kv(216, 104, 98, "Drift", C_TX, "%.1f m/s %03.0f°", s->vel_h, s->heading);
+    if (have_h) {
+        const char *t = turn_words(rel, &tc);
+        kv(140, 76, 174, "Go", tc, "%s, %s", t, point8(brg));
+    } else kv(140, 76, 174, "Go", C_TX, "Head %s", point8(brg));
+    if (A->flight.phase == PH_LANDED) kv(140, 90, 174, "Height", C_TX, "%.0f m, landed", s->alt);
+    else {
+        kv(140, 90, 174, "Height", C_TX, "%.0f m, %s %.1f m/s", s->alt, A->vv_s < -0.05 ? "falling" : "rising",
+           fabs(A->vv_s));
+        kv(140, 104, 174, "Drifting", C_TX, "%s, %.0f km/h", point8(s->heading), s->vel_h * 3.6);
+    }
 
-    if (ok && A->have_land) {
+    if (ok && A->have_land && !last) {
         fmt_dist(num, sizeof num, &unit, A->land_dist);
         box(140, 132, 174, 18, C_YL, C_P);
-        txt(146, 134, 92, F_S, C_YL, AL_L, "Landing %s %s", num, unit);
-        txt(236, 134, 28, F_S, C_YL, AL_C, "%03.0f°", A->land_brg);
-        txt(262, 134, 46, F_S, C_YL, AL_R, "T-%02d:%02d", land_rem_s() / 60, land_rem_s() % 60);
+        txt(146, 134, 124, F_S, C_YL, AL_L, "Lands %s %s %s", num, unit, point8(A->land_brg));
+        txt(266, 134, 42, F_S, C_YL, AL_R, "in %d:%02d", land_rem_s() / 60, land_rem_s() % 60);
     } else if (!ok) {
         box(140, 132, 174, 18, C_RD, C_P);
         txt(146, 134, 40, F_S, C_DIM, AL_L, "Last fix");
         txt(186, 134, 122, F_S, C_TX, AL_R, "%.5f %c  %.5f %c", fabs(s->lat), s->lat < 0 ? 'S' : 'N', fabs(s->lon), s->lon < 0 ? 'W' : 'E');
+    }
+}
+
+static void p_track(void)
+{
+    top_bar("Track", C_CY, NULL);
+    if (A->have_sonde && A->have_geo) {
+        track_panel(A->dist, A->brg, 0);
+    } else if (A->have_sonde && A->gps.t_fix > 0) { /* GPS dropped out: work from where this device last was */
+        track_panel(geo_dist(A->gps.lat, A->gps.lon, A->sonde.lat, A->sonde.lon),
+                    geo_bearing(A->gps.lat, A->gps.lon, A->sonde.lat, A->sonde.lon), 1);
+    } else if (A->have_sonde) {
+        p_track_nogps();
+    } else {
+        compass(A->hdg.src != HDG_NONE ? A->hdg.deg : 0.0, 0, 0.0, C_PK, 0, 0, 0.0, C_L);
+        if (A->nofix.t_rx > 0 && sc_now() - A->nofix.t_rx < 10.0) {
+            txt(140, 44, 174, F_M, C_CY, AL_L, "%s", A->nofix.id);
+            txt(140, 60, 174, F_M, C_TX, AL_L, "Frame %d   batt %.1f V", A->nofix.frame, A->nofix.batt);
+            txt(140, 80, 174, F_S, C_RD, AL_L, "Sonde has no GPS fix (%d sats)", A->nofix.sats);
+            txt(140, 94, 174, F_S, C_DIM, AL_L, "Position appears once it locks");
+        } else {
+            txt(140, 60, 174, F_M, C_DIM, AL_L, A->state == ST_DECODE ? "Waiting for the first frame" : "No frequency tuned");
+            txt(140, 76, 174, F_S, C_DIM, AL_L, "7 radio     F type a frequency");
+        }
     }
     nav_bar(PG_TRACK);
 }
@@ -696,7 +725,7 @@ static void p_skewt(void)
     double zero_alt = -1, trop_alt = -1, tmin = 1e9;
     int i, th, t, p;
 
-    top_bar("Graph", C_CY, NULL);
+    top_bar("Graph 1/2", C_CY, NULL);
     fill(SK_X0, SK_YT, SK_X1 - SK_X0, SK_YB - SK_YT, C_P);
     for (th = -20; th < 180; th += 20) /* dry adiabats: T = theta (p/1000)^0.2857 */
         for (p = 1050; p > 100; p -= 50)
@@ -740,7 +769,6 @@ static void p_skewt(void)
         if (isob[i] != 850) txt(0, (int)sk_y(isob[i]) - (i == 0 ? 10 : 6), SK_X0 - 3, F_S, C_DIM, AL_R, "%d", isob[i]);
     for (t = -20; t <= 40; t += 20) txt((int)sk_x(t, 1050) - 12, 144, 24, F_S, C_DIM, AL_C, t ? "%+d" : "%d", t);
     txt(226, 144, 29, F_S, C_GN, AL_R, "m/s");
-    txt(SK_X1 - 30, 19, 30, F_S, C_DIM, AL_R, "1/2");
 
     if (A->have_sonde) {
         kv(258, 20, 60, "P", C_TX, "%s%.0f hPa", s->pres_est ? "~" : "", s->pressure);
@@ -764,7 +792,7 @@ static void p_flight(void)
     double tmax = 30, amax = 10, t_last = h->n ? h->p[h->n - 1].t_s / 60.0 : 0;
     int i, m, a;
 
-    top_bar("Graph", C_CY, NULL);
+    top_bar("Graph 2/2", C_CY, NULL);
     if (t_last * 1.15 > tmax) tmax = ceil(t_last * 1.15 / 30.0) * 30.0;
     if (A->flight.max_alt / 1000.0 > amax) amax = ceil(A->flight.max_alt / 10000.0) * 10.0;
 #define FX(tm) (X0 + (tm) / tmax * (X1 - X0))
@@ -802,7 +830,6 @@ static void p_flight(void)
         txt(106, 18, 86, F_M, C_PK, AL_L, "V/S %+.1f m/s", A->vv_s);
         if (A->pred.valid && fresh()) txt(192, 18, 96, F_M, C_YL, AL_L, "Landing T-%02d:%02d", land_rem_s() / 60, land_rem_s() % 60);
     }
-    txt(286, 19, 30, F_S, C_DIM, AL_R, "2/2");
     nav_bar(PG_GRAPH);
 }
 
@@ -963,13 +990,113 @@ static void p_scan(void)
 }
 
 /* ---------------- 8 Info ---------------- */
+/* result of the last calibration, over the bottom line of Info for 4 s */
+static void cal_toast(void)
+{
+    if (!cal_saved || sc_now() - cal_t > 4.0) return;
+    box(4, 135, 312, 17, cal_saved > 0 ? C_GN : C_RD, C_G);
+    txt(10, 137, 300, F_S, cal_saved > 0 ? C_GN : C_RD, AL_C, "%s",
+        cal_saved > 0 ? "Compass calibrated and saved" : "Calibrated, but compass.conf could not be written");
+}
+
+/* Compass calibration, opened with K on Info: turn a full circle, then point north and save. */
+static void p_cal(void)
+{
+    const magcal_t *m = &A->cal;
+    const double cx = 68, cy = 86;
+    double x0, y0, x1, y1;
+    int k, cov = magcal_covered(m);
+    top_bar("Compass", C_YL, "Calibration");
+    for (k = 0; k < MAGCAL_SECTORS; k++) { /* one lit sector per 10° the turn has passed through */
+        int on = m->step == MAGCAL_NORTH || m->seen[k];
+        pol(cx, cy, 54, k * 10 + 1, &x0, &y0);
+        pol(cx, cy, 54, k * 10 + 9, &x1, &y1);
+        ln(x0, y0, x1, y1, on ? C_GN : C_L, 5);
+    }
+    if (!A->hdg.mag_found) {
+        txt(140, 22, 174, F_M, C_RD, AL_L, "No compass sensor");
+        txt(140, 42, 174, F_S, C_TX, AL_L, "No magnetometer was found, or");
+        txt(140, 55, 174, F_S, C_TX, AL_L, "mag_enable = 0 in the config.");
+        txt(140, 73, 174, F_S, C_DIM, AL_L, "Heading comes from GPS while");
+        txt(140, 86, 174, F_S, C_DIM, AL_L, "moving faster than 5 km/h.");
+    } else if (m->step == MAGCAL_TURN) {
+        txt(18, 72, 100, F_BIG, C_TX, AL_C, "%d", cov * 100 / MAGCAL_SECTORS);
+        txt(18, 104, 100, F_S, C_DIM, AL_C, "%% of a full turn");
+        txt(140, 22, 174, F_M, C_YL, AL_L, "Step 1 of 2");
+        txt(140, 42, 174, F_S, C_TX, AL_L, "Hold the device flat, away from");
+        txt(140, 55, 174, F_S, C_TX, AL_L, "cars and metal.");
+        txt(140, 73, 174, F_S, C_TX, AL_L, "Turn slowly to your right, a full");
+        txt(140, 86, 174, F_S, C_TX, AL_L, "circle, until the ring is all green.");
+        txt(140, 106, 174, F_S, C_DIM, AL_L, "Next step starts by itself.");
+    } else {
+        ln(cx, cy - 40, cx, cy + 20, C_CY, 3);
+        ln(cx, cy - 40, cx - 8, cy - 28, C_CY, 3);
+        ln(cx, cy - 40, cx + 8, cy - 28, C_CY, 3);
+        txt((int)cx - 20, (int)cy + 26, 40, F_M, C_CY, AL_C, "N ?");
+        txt(140, 22, 174, F_M, C_YL, AL_L, "Step 2 of 2");
+        txt(140, 42, 174, F_S, C_TX, AL_L, "Point the top of the device");
+        txt(140, 55, 174, F_S, C_TX, AL_L, "North, using a phone compass,");
+        txt(140, 68, 174, F_S, C_TX, AL_L, "then press Enter.");
+        txt(140, 106, 174, F_S, C_DIM, AL_L, "Saved for next time.");
+    }
+    box(140, 132, 174, 18, C_L, C_P);
+    if (A->hdg.mag_found && m->step == MAGCAL_NORTH) txt(146, 134, 80, F_S, C_TX, AL_L, "Enter  save");
+    txt(230, 134, 78, F_S, C_DIM, AL_R, "Esc  %s", A->hdg.mag_found ? "cancel" : "close");
+    nav_bar(PG_INFO);
+}
+
+/* Info page 2/2: the exact numbers behind the plain-language Track screen */
+static void p_info_pos(void)
+{
+    const sonde_t *s = &A->sonde;
+    const gps_t *g = &A->gps;
+    char c[48];
+    top_bar("Info 2/2", C_CY, NULL);
+    box(4, 19, 154, 114, C_PK, C_P);
+    txt(11, 22, 100, F_S, C_PK, AL_L, "Sonde");
+    if (A->have_sonde) {
+        kv(11, 36, 140, "Latitude", C_TX, "%.5f %c", fabs(s->lat), s->lat < 0 ? 'S' : 'N');
+        kv(11, 48, 140, "Longitude", C_TX, "%.5f %c", fabs(s->lon), s->lon < 0 ? 'W' : 'E');
+        kv(11, 60, 140, "Altitude", C_TX, "%.0f m", s->alt);
+        kv(11, 72, 140, "Vertical speed", C_TX, "%+.1f m/s", A->vv_s);
+        kv(11, 84, 140, "Ground speed", C_TX, "%.1f m/s  %03.0f°", s->vel_h, s->heading);
+        if (s->temp > -270) kv(11, 96, 140, "Temperature", C_TX, "%.1f °C", s->temp);
+        if (s->humidity >= 0) kv(11, 108, 140, "Humidity", C_TX, "%.0f %%", s->humidity);
+        kv(11, 120, 140, "Pressure", C_TX, "%.0f hPa%s", s->pressure, s->pres_est ? " est" : "");
+    } else txt(11, 36, 140, F_S, C_DIM, AL_L, "No position yet");
+    box(162, 19, 154, 114, C_CY, C_P);
+    txt(169, 22, 140, F_S, C_CY, AL_L, "From this device");
+    if (A->have_geo) {
+        char num[16]; const char *unit = "";
+        fmt_dist(num, sizeof num, &unit, A->dist);
+        kv(169, 36, 140, "Distance", C_TX, "%s %s", num, unit);
+        kv(169, 48, 140, "Bearing", C_TX, "%03.0f°", A->brg);
+        kv(169, 60, 140, "Turn", C_TX, "%+.0f°", A->rel);
+        kv(169, 72, 140, "Elevation", C_TX, "%+.1f°", A->elev);
+    } else txt(169, 36, 140, F_S, C_DIM, AL_L, "Needs a GPS fix");
+    if (g->t_fix > 0) {
+        kv(169, 84, 140, "Device lat", C_TX, "%.5f %c", fabs(g->lat), g->lat < 0 ? 'S' : 'N');
+        kv(169, 96, 140, "Device lon", C_TX, "%.5f %c", fabs(g->lon), g->lon < 0 ? 'W' : 'E');
+        kv(169, 108, 140, "Device alt", C_TX, "%.0f m", g->alt);
+    }
+    txt(169, 120, 140, F_S, C_DIM, AL_L, "K  calibrate the compass");
+    if (A->pred.valid) {
+        snprintf(c, sizeof c, "%.5f %c  %.5f %c", fabs(A->pred.lat), A->pred.lat < 0 ? 'S' : 'N', fabs(A->pred.lon), A->pred.lon < 0 ? 'W' : 'E');
+        txt(11, 138, 110, F_S, C_YL, AL_L, "Landing");
+        if (A->have_land) txt(60, 138, 80, F_S, C_YL, AL_L, "%.1f km %03.0f°", A->land_dist / 1000, A->land_brg);
+        txt(140, 138, 170, F_S, C_TX, AL_R, "%s", c);
+    }
+    cal_toast();
+    nav_bar(PG_INFO);
+}
+
 static void p_info(void)
 {
     static const char *src[] = {"none", "from GPS", "from compass", "held"};
     const sonde_t *s = &A->sonde;
     /* until the sonde's GPS locks, its telemetry comes from the frames without a position */
     const sonde_t *t = A->have_sonde ? s : (A->nofix.t_rx > 0 ? &A->nofix : NULL);
-    top_bar("Info", C_CY, NULL);
+    top_bar("Info 1/2", C_CY, NULL);
     box(4, 19, 154, 114, C_PK, C_P);
     txt(11, 22, 100, F_S, C_PK, AL_L, "Sonde");
     if (t) {
@@ -1009,6 +1136,7 @@ static void p_info(void)
         txt(11, 138, 110, F_S, pred ? C_YL : C_RD, AL_L, pred ? "Predicted landing" : "Last fix");
         txt(120, 138, 190, F_S, C_TX, AL_R, "%.5f %c     %.5f %c", fabs(la), la < 0 ? 'S' : 'N', fabs(lo), lo < 0 ? 'W' : 'E');
     }
+    cal_toast();
     nav_bar(PG_INFO);
 }
 
@@ -1091,7 +1219,7 @@ static void p_nosdr(void)
     txt(10, 114, 12, F_M, C_RD, AL_L, "3");
     txt(24, 114, 290, F_M, C_TX, AL_L, "Reception resumes when the device appears.");
     txt(10, 142, 300, F_S, C_DIM, AL_L, "Checking USB every 2 s");
-    txt(10, 142, 300, F_S, C_DIM, AL_R, "Q  quit");
+    txt(10, 142, 300, F_S, C_DIM, AL_R, "Hold Esc  quit");
     stripes_col(164, C_RD);
 }
 
@@ -1107,6 +1235,8 @@ static void draw_cb(lv_event_t *e)
     else if (page == PG_TRACK) p_track();
     else if (page == PG_MAP) p_map();
     else if (page == PG_GRAPH) { if (gpage == 0) p_skewt(); else p_flight(); }
+    else if (page == PG_INFO && A->cal.step != MAGCAL_OFF) p_cal();
+    else if (page == PG_INFO && ipage) p_info_pos();
     else if (page == PG_RADIO) p_scan();
     else p_info();
     { /* hold-Esc-to-quit countdown over every screen; a short Esc press never shows it */
@@ -1160,11 +1290,6 @@ void ui_init(app_t *a)
     a->frame_cue = page == PG_TRACK || page == PG_MAP;
 }
 
-int ui_should_quit(void)
-{
-    return quit;
-}
-
 /* Arrow keys on the Map: move the centre a quarter of the screen, and stop following (C follows again).
  * The zoom stays where it was, so the view only slides. */
 static void map_pan(int k)
@@ -1199,11 +1324,16 @@ void ui_key(int k)
         if ((page != PG_RADIO && page != PG_MAP) || entry || A->burst_alert) return;
         k &= ~K_REPEAT;
     }
-    if (!A->sdr_ok) { /* blocking error screen */
-        if (k == 'q') quit = 1;
+    if (!A->sdr_ok) { /* blocking error screen: only holding Esc (quit) does anything */
     } else if (A->burst_alert) { /* alert overlay takes Enter / Esc only */
         if (k == K_ENTER) { A->burst_alert = 0; page = PG_MAP; map_follow = 0; map_zoom = -1; }
         else if (k == K_ESC) A->burst_alert = 0;
+    } else if (A->cal.step != MAGCAL_OFF) { /* compass calibration takes Enter / Esc only */
+        if (k == K_ESC || !A->hdg.mag_found) A->cal.step = MAGCAL_OFF;
+        else if (k == K_ENTER && A->cal.step == MAGCAL_NORTH) {
+            cal_saved = app_compass_save(A) == 0 ? 1 : -1;
+            cal_t = sc_now();
+        }
     } else if (entry) {
         if (k >= '0' && k <= '9' && entry_len < 7) { entry_buf[entry_len++] = (char)k; entry_buf[entry_len] = 0; }
         else if (k == K_BKSP && entry_len > 0) entry_buf[--entry_len] = 0;
@@ -1216,7 +1346,6 @@ void ui_key(int k)
         }
     } else if (k >= '4' && k <= '8') page = k - '4'; /* keys 4-8 sit right under the nav bar labels */
     else if (k == K_TAB) page = (page + 1) % (PG_INFO + 1); /* next screen, Info wraps to Track */
-    else if (k == 'q') quit = 1;
     else if (k == 'm') A->prox.muted = !A->prox.muted;
     else if (k == 's') {
         if (A->state != ST_SCAN && !A->hunt) {
@@ -1249,6 +1378,8 @@ void ui_key(int k)
         A->cursor_hz = f < A->cfg.scan_lo_hz ? A->cfg.scan_lo_hz : (f > A->cfg.scan_hi_hz ? A->cfg.scan_hi_hz : f);
     } else if (page == PG_RADIO && A->state == ST_SCAN && k == K_ENTER) app_tune(A, A->cursor_hz); /* -> tuned view, heard and decoded */
     else if (page == PG_GRAPH && (k == K_LEFT || k == K_RIGHT)) gpage ^= 1;
+    else if (page == PG_INFO && (k == K_LEFT || k == K_RIGHT)) ipage ^= 1;
+    else if (page == PG_INFO && k == 'k') magcal_start(&A->cal, mag_min_span(&A->hdg));
     else if (page == PG_MAP && (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN)) map_pan(k);
     else if (page == PG_MAP && (k == '+' || k == '=')) {
         if (map_zoom < 0) map_zoom = m_z;

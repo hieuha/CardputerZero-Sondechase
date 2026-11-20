@@ -33,7 +33,7 @@ Last updated: 2026-11-20 (version 0.5.1). Describes the conventions the code alr
 ```
 src/
   sc.h          public header: every type, constant and module API of the core
-  ui.h          UI entry points (ui_init, ui_key, ui_should_quit)
+  ui.h          UI entry points (ui_init, ui_key)
   main.c        entry point and main loop
   app.c         application state, receiver, decoder pipeline, frames, logs
   base.c        config, line reader, child processes, JSON fields

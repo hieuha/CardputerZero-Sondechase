@@ -40,8 +40,10 @@ static int xlate(int c)
     static const struct { unsigned short code; short key; } km[] = {
         {KEY_1, '1'}, {KEY_2, '2'}, {KEY_3, '3'}, {KEY_4, '4'}, {KEY_5, '5'}, {KEY_6, '6'}, {KEY_7, '7'},
         {KEY_8, '8'}, {KEY_9, '9'}, {KEY_0, '0'}, {KEY_S, 's'}, {KEY_F, 'f'}, {KEY_R, 'r'}, {KEY_X, 'x'},
-        {KEY_Q, 'q'}, {KEY_M, 'm'}, {KEY_C, 'c'}, {KEY_B, 'b'}, {KEY_D, 'd'}, {KEY_V, 'v'}, {KEY_MINUS, '-'}, {KEY_EQUAL, '='}, {KEY_KPPLUS, '+'},
-        {KEY_Z, '+'}, /* the CardputerZero prints + on Z: Sym is applied in user space, so only KEY_Z arrives */
+        {KEY_M, 'm'}, {KEY_C, 'c'}, {KEY_B, 'b'}, {KEY_D, 'd'}, {KEY_V, 'v'}, {KEY_K, 'k'}, {KEY_MINUS, '-'}, {KEY_EQUAL, '='}, {KEY_KPPLUS, '+'},
+        /* Sym is held like Shift (KEY_CD) and the driver sends its own codes for the symbol layer: Sym + R, printed -,
+         * arrives as KEY_KP7 and Sym + T, printed +, as KEY_KP8 (logged on the device, kernel 6.18.39) */
+        {KEY_KP7, '-'}, {KEY_KP8, '+'},
         {KEY_KPMINUS, '-'}, {KEY_UP, K_UP}, {KEY_DOWN, K_DOWN}, {KEY_LEFT, K_LEFT}, {KEY_RIGHT, K_RIGHT},
         {KEY_ENTER, K_ENTER}, {KEY_KPENTER, K_ENTER}, {KEY_ESC, K_ESC}, {KEY_BACKSPACE, K_BKSP}, {KEY_TAB, K_TAB},
     };

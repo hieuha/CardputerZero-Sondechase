@@ -145,7 +145,7 @@ Syntax rules, from `src/base.c`:
 | `gpsd_host`, `gpsd_port` | `127.0.0.1`, `2947` | gpsd address. `gpsd_port = 0` disables GPS |
 | `cog_min_speed` | `1.5` | m/s above which the GPS course is used as heading |
 | `mag_enable` | `1` | Use the IIO magnetometer when the GPS course is not valid |
-| `mag_off_x`, `mag_off_y`, `mag_rot_deg`, `mag_flip_y` | `0`, `0`, `0`, `0` | Magnetometer calibration (hard-iron offsets, rotation, axis flip) |
+| `mag_off_x`, `mag_off_y`, `mag_rot_deg`, `mag_flip_y` | `0`, `0`, `0`, `0` | Magnetometer calibration (hard-iron offsets, rotation, axis flip). Normally set in the app (Info, `K`), which writes them to `<data_dir>/compass.conf`; that file is read after the main config and wins |
 | `declination` | `0` | Magnetic declination, degrees east positive |
 | `ground_alt` | unset | Landing altitude AMSL. Unset: this device's GPS altitude |
 | `burst_alt` | `30000` | Assumed burst altitude while the sonde ascends, m |

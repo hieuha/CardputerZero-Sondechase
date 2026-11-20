@@ -8,7 +8,6 @@ enum { K_UP = 256, K_DOWN, K_LEFT, K_RIGHT, K_ENTER, K_ESC, K_BKSP, K_TAB };
 
 void ui_init(app_t *a);
 void ui_key(int key);      /* ASCII (lower case) or K_* */
-int ui_should_quit(void);
 
 int keys_open(const char *dev); /* "" = auto-detect; returns fd or -1 */
 int keys_read(int fd);          /* next key press or held-arrow repeat, 0 = none */

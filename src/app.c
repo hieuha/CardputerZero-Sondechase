@@ -35,12 +35,28 @@ static void data_paths(cfg_t *c)
     }
 }
 
+/* Keep the calibration just finished: in the running config and in <data_dir>/compass.conf for next time. */
+int app_compass_save(app_t *a)
+{
+    char p[200];
+    magcal_apply(&a->cal, &a->cfg);
+    a->cal.step = MAGCAL_OFF;
+    mkdirs(a->cfg.data_dir);
+    snprintf(p, sizeof p, "%s/compass.conf", a->cfg.data_dir);
+    return magcal_save(&a->cfg, p);
+}
+
 void app_init(app_t *a, const char *cfg_path)
 {
     memset(a, 0, sizeof *a);
     cfg_defaults(&a->cfg);
     if (cfg_path) cfg_load(&a->cfg, cfg_path);
     data_paths(&a->cfg);
+    { /* compass calibration saved by the app (Info, K) overrides the main config */
+        char p[200];
+        snprintf(p, sizeof p, "%s/compass.conf", a->cfg.data_dir);
+        if (access(p, R_OK) == 0) cfg_load(&a->cfg, p);
+    }
     proc_init(&a->proc);
     gps_init(&a->gps);
     heading_init(&a->hdg, &a->cfg);
@@ -517,6 +533,11 @@ void app_poll(app_t *a)
     }
     gps_poll(&a->gps, &a->cfg);
     heading_update(&a->hdg, &a->gps, &a->cfg, now);
+    if (a->cal.step != MAGCAL_OFF && now - a->cal.t_poll >= 0.05) { /* 20 Hz while calibrating */
+        double x, y;
+        a->cal.t_poll = now;
+        if (mag_read(&a->hdg, &x, &y)) magcal_add(&a->cal, x, y);
+    }
     if (a->cfg.sdr_check && now - a->t_sdr >= 2.0) {
         a->t_sdr = now;
         a->sdr_ok = sdr_present("/sys/bus/usb/devices");

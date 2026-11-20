@@ -81,7 +81,7 @@ Out of scope (decided or not planned):
 | FR-17 | Write `sondechase.csv` and one radiosonde_auto_rx-format log per sonde, timed by the sonde's GPS time | `app.c` |
 | FR-18 | Read configuration from `/etc/sondechase.conf`; every key optional | `base.c` |
 | FR-19 | Simulated flight with `demo = 1`, through the same frame path | `demo.c` |
-| FR-20 | Quit with `Q`, or hold `Esc` for 3 s | `keys.c`, `ui.c`, `main.c` |
+| FR-20 | Quit by holding `Esc` for 3 s (no single-key quit) | `keys.c`, `ui.c`, `main.c` |
 
 ### Non-functional
 

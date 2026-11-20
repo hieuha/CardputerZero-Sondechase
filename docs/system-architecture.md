@@ -22,22 +22,22 @@ The core (`sc_core`) has no LVGL dependency and is unit-tested on any Linux host
 
 | File | Lines | Responsibility |
 |---|---|---|
-| `src/sc.h` | 496 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
+| `src/sc.h` | 521 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
 | `src/main.c` | 90 | Entry point, signal handling, main loop, LVGL setup, hold-Esc quit |
-| `src/app.c` | 568 | State machine (`ST_IDLE`, `ST_SCAN`, `ST_LISTEN`, `ST_DECODE`), receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
-| `src/base.c` | 340 | `sc_now`, config parser and defaults, line reader, child process groups, flat-JSON field extraction |
+| `src/app.c` | 615 | State machine (`ST_IDLE`, `ST_SCAN`, `ST_LISTEN`, `ST_DECODE`), receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
+| `src/base.c` | 346 | `sc_now`, config parser and defaults, line reader, child process groups, flat-JSON field extraction |
 | `src/sdr.c` | 273 | `librtlsdr` loaded with `dlopen`, reader thread, IQ ring, tuner range table |
 | `src/dsp.c` | 215 | FFT, decoder front end (DDC: rotation, half-band decimation, droop FIR), wide 192 kHz stream |
 | `src/radio.c` | 174 | Audio demodulators for NFM, AM, USB, LSB, WFM |
-| `src/io.c` | 291 | gpsd client (TPV and SKY), magnetometer heading, USB SDR presence, spectrum cells and peaks |
+| `src/io.c` | 380 | gpsd client (TPV and SKY), magnetometer heading, USB SDR presence, spectrum cells and peaks |
 | `src/geo.c` | 202 | Geodesy, ISA, dew point, wind profile, sonde JSON parse, landing prediction |
 | `src/track.c` | 310 | Flight history, burst detection, proximity beeper, PCM audio stream to `pacat`, frame LED, slippy-map maths |
-| `src/tiles.c` | 291 | Tile lookup, `curl` downloads with cache cap and failure reasons, recolouring |
+| `src/tiles.c` | 290 | Tile lookup, `curl` downloads with cache cap and failure reasons, recolouring |
 | `src/demo.c` | 139 | Simulated flight (`demo = 1`) through the same frame path |
-| `src/keys.c` | 89 | Keyboard from evdev (`/dev/input/event*`), held-arrow repeat |
-| `src/ui.c` | 1271 | All LVGL screens and key dispatch (`ui_key`) |
-| `src/ui.h` | 17 | UI entry points used by `main.c` |
-| `tools/render.c` | 196 | Headless build of the real UI for screenshots (`SC_RENDER`) |
+| `src/keys.c` | 92 | Keyboard from evdev (`/dev/input/event*`), Sym symbol keys, held-arrow repeat |
+| `src/ui.c` | 1402 | All LVGL screens and key dispatch (`ui_key`) |
+| `src/ui.h` | 16 | UI entry points used by `main.c` |
+| `tools/render.c` | 209 | Headless build of the real UI for screenshots (`SC_RENDER`) |
 
 `ui.c` is the largest file and the first candidate for splitting if it grows further
 (see [code standards](./code-standards.md#file-size)).

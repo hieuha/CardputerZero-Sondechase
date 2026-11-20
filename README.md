@@ -21,13 +21,17 @@ RS41 (Y0532351). GPS chasing in the field has not been tried yet; see [Known lim
 | | |
 |---|---|
 | ![Track screen: compass, distance and bearing to the sonde](screenshots/mockup/track.png) | ![Map screen, simple style: water and roads only](screenshots/mockup/map.png) |
-| **Track**: distance, bearing and elevation to the sonde, landing prediction | **Map**: simple style (water and roads), flight track, landing point |
+| **Track**: distance to the sonde and which way to go, in plain words; landing prediction | **Map**: simple style (water and roads), flight track, landing point |
 | ![Radio screen decoding an RS41](screenshots/mockup/radio-decoding.png) | ![Radio screen, Scan over the band](screenshots/mockup/band-overview.png) |
 | **Radio**: tuned spectrum, NFM audio, `Enter` decodes | **Radio, Scan** (`S`): finds the peaks and tries each on the decoder; arrow keys pick by hand |
 | ![Skew-T log-P diagram of the sounding](screenshots/mockup/skew-t.png) | ![Altitude and vertical speed over time](screenshots/mockup/flight.png) |
 | **Graph**: Skew-T log-P of the sounding | **Graph**: altitude and vertical speed, burst marked |
-| ![Info screen: sonde, reception, this device](screenshots/mockup/info.png) | ![Balloon burst alert](screenshots/mockup/burst.png) |
-| **Info**: sonde, reception, this device, landing coordinates | **Burst alert**: falling speed, time and distance to landing |
+| ![Info screen: sonde, reception, this device](screenshots/mockup/info.png) | ![Info page 2: exact coordinates, angles and weather](screenshots/mockup/info-details.png) |
+| **Info 1/2**: sonde, reception, this device, landing coordinates | **Info 2/2** (`→`): exact coordinates, bearing, elevation, speeds, weather; `K` calibrates the compass |
+| ![Track screen after the device lost GPS: distance from its last fix](screenshots/mockup/track-gps-lost.png) | ![Compass calibration, step 1: turn a full circle](screenshots/mockup/compass-calibration.png) |
+| **Track, GPS lost**: distance and direction from the device's last fix, in yellow | **Compass calibration** (Info, `K`): turn a full circle, then point north |
+| ![Balloon burst alert](screenshots/mockup/burst.png) | ![Track screen on course: green ring, Straight ahead](screenshots/mockup/track-near.png) |
+| **Burst alert**: falling speed, time and distance to landing | **Track, on course**: ring and `Go` turn green within 15° |
 
 These are mockups: the app's own UI code (`tools/render.c`) drawing a simulated flight, the radio spectrum made up,
 the map from OpenStreetMap tiles. Shown at 2×.
@@ -71,18 +75,18 @@ To build the package yourself (on the device or cross-compiled), see [deployment
 
 | Key | Function |
 |---|---|
-| `4` Track | HUD compass, distance, bearing, elevation, predicted landing point. Without a GPS fix: sonde serial, frame and battery. Each frame ticks and blinks the red LED. The ring turns green while the arrow is within 15° of straight ahead |
-| `5` Map | Tiles, device position, sonde, flight track, landing point. Arrow keys pan (hold to keep moving; the map stops following, `free`). `+` (`Sym` + `Z`, or `Z`) / `-` zoom. `C` cycles both / device / sonde, or follows again after panning. `V` switches simple / detailed style. With no position yet: centred on `map_lat` / `map_lon` |
+| `4` Track | HUD compass and the distance to the sonde, with which way to go in words (`Bear right, East`, `Straight ahead`), its height and drift, and the predicted landing point. The ring and the `Go` line turn green while the arrow is within 15° of straight ahead. If GPS drops out, distance and direction come from the device's last fix (yellow, `from last GPS`). Sonde without a GPS fix: serial, frame and battery. Each frame ticks and blinks the red LED |
+| `5` Map | Tiles, device position, sonde, flight track, landing point. Arrow keys pan (hold to keep moving; the map stops following, `free`). `Sym` + `T` (`+`) zooms in, `Sym` + `R` (`-`) zooms out. `C` cycles both / device / sonde, or follows again after panning. `V` switches simple / detailed style. With no position yet: centred on `map_lat` / `map_lon` |
 | `6` Graph | `Left` / `Right` switch page: Skew-T log-P, altitude and vertical speed over time |
 | `7` Radio | Spectrum with the tuned frequency's audio. `Left` / `Right` ±10 kHz, `Up` / `Down` ±100 kHz (hold to keep tuning). `Enter` decodes here. `S` Scan, `Esc` goes back. `D` mode (NFM / AM / USB / LSB / WFM), `B` channel width |
-| `8` Info | Sonde, reception, device, one pair of target coordinates |
+| `8` Info | `K` calibrates the compass (turn a full circle to the right, then point north and press `Enter`; saved to `<data_dir>/compass.conf`). `Left` / `Right` switch page: 1/2 sonde, reception, device, landing point; 2/2 exact numbers (coordinates, bearing, turn and elevation angles, speeds, temperature, humidity, pressure, device position) |
 | `Tab` | Next screen (Track → Map → Graph → Radio → Info → Track) |
 | `F` | Enter a frequency in kHz; `Enter` tunes it (within the tuner's range) and decodes |
 | `S` | Scan 400–406 MHz and try the peaks on the decoder (see [Radio screen](#radio-screen)) |
 | `X` | Stop the receiver |
 | `R` | Restart the decoder on the current frequency |
 | `M` | Mute / unmute the beeper, frame tick and radio audio (the LED still blinks) |
-| `Q`, or hold `Esc` for 3 s | Quit (holding `Esc` shows a countdown) |
+| Hold `Esc` for 3 s | Quit (shows a countdown; a short `Esc` or a stray key never quits) |
 
 The burst alert overlays every screen: `Enter` opens Map, a short `Esc` dismisses it.
 
@@ -90,11 +94,11 @@ The burst alert overlays every screen: `Enter` opens Map, a short `Esc` dismisse
 
 | Screen | Shows |
 |---|---|
-| Track | Compass ring, arrow to the sonde, distance, bearing, elevation, landing point; top bar with the frequency, state and GPS |
+| Track | Compass ring, arrow to the sonde, distance, which way to go, height, drift, landing point; top bar with the frequency, state and GPS |
 | Map | OpenStreetMap tiles (downloaded on demand), device, sonde, track, landing point |
-| Graph | Skew-T log-P (page 1) and altitude / vertical speed with the burst marked (page 2) |
+| Graph | Skew-T log-P (`Graph 1/2`) and altitude / vertical speed with the burst marked (`Graph 2/2`) |
 | Radio | Live spectrum of the receiver's band around the tuned frequency, shaded channel width, decode status |
-| Info | Sonde ID, frame count, temperature, humidity, pressure, battery, GPS and reception details |
+| Info | Page 1: sonde ID, frame count, battery, GPS and reception details. Page 2: coordinates, bearing, elevation, speeds, temperature, humidity, pressure. The page number is in the top-left label (`Info 1/2`) |
 
 ### Radio screen
 
@@ -110,7 +114,8 @@ The burst alert overlays every screen: `Enter` opens Map, a short `Esc` dismisse
 - **No SDR on USB**: a "No SDR device found" screen. The app checks USB every 2 s and resumes when the dongle appears.
   Disable the check with `sdr_check = 0`.
 - **No GPS fix**: decoding continues. The top bar shows `GPS 0/3` in red while the receiver is plugged in without a
-  fix (satellites used / in view), `GPS lost` after a fix, or `No GPS`. With a fix it shows `3D 9/12`.
+  fix (satellites used / in view), `GPS lost` after a fix, or `No GPS`. With a fix it shows `3D 9/12`. Once the device
+  has had a fix, Track keeps showing the distance and direction, measured from that last device position.
 - **Sonde without a GPS fix** (still on the ground): its position is not used; Track and Info show serial, frame,
   satellites and battery.
 
@@ -176,8 +181,8 @@ a dongle. Details and the device measurements: [deployment guide](docs/deploymen
 
 - RS41 only. Other sonde types need their own decoder.
 - Next to a very strong sonde the overview can show weaker spurs; tuning to them shows nothing to decode.
-- Compass is not calibrated: `mag_off_x` / `mag_off_y`, `mag_rot_deg` and `mag_flip_y` must be set by hand, and there
-  is no tilt compensation.
+- The compass must be calibrated once (Info, `K`: turn a full circle, then point north) and held flat: there is no
+  tilt compensation. Until then, trust the heading only while moving faster than 5 km/h (GPS course).
 - Skew-T stops at 100 hPa; moist adiabats and mixing-ratio lines are not drawn.
 - Landing prediction during ascent depends on the assumed `burst_alt`.
 - Flight history is not restored after an app restart.

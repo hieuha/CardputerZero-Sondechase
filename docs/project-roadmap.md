@@ -17,7 +17,9 @@ commitment to a future feature.
 | 0.4.0 | 2026-11-19 03:57 | `f64e6fa`..`539c908` | In-process librtlsdr receiver (one open dongle); FFT spectrum and rtl_fm-equivalent front end; in-process sweep; decoding in process with live spectrum; manual or automatic scan with peak marks; pacat beeper; keys 4–8; hold `Esc` to quit; telemetry before the GPS fix; map before a position is known; decoders and store metadata in the package; GPL-3.0-or-later licence |
 | 0.4.1 | 2026-11-19 04:08 | `539c908`..`59e89c7` | Tune and listen like an SDR, `Enter` sets decode; NFM, AM, USB, LSB audio with selectable width (Scan tab becomes Radio); held arrow keys keep tuning; simple map style; map pan and zoom; DNS block messages for the map; CI (tests, arm64 package, store checks); launcher icon with a radiosonde; config fix for long `rtlsdr_lib` paths |
 | 0.5.0 | 2026-11-19 14:12 | `59e89c7`..`6f6f036` | `Tab` switches screens; SDR-style start on the Radio screen; WFM audio; automatic Scan that tries peaks; tuner-range frequency entry; frame tick and ACT LED on Track and Map; GPS satellite counts; auto_rx-format log per sonde; green compass ring within 15° |
-| 0.5.1 | 2026-11-20 | `6f6f036`..`v0.5.1` | `Z` (Sym+Z, printed +) zooms the map in; zoom range 6–18; app data grouped in `data_dir` (`~/sondechase`: `sondechase.csv`, `log/`, `tiles/`), older files moved in; map tile cache 1000 MB for offline use; one CSV header per file; auto_rx log timed by the sonde's GPS time; inline `#` comments in the config; versioned tile User-Agent; live spectrum only on the Radio screen |
+| 0.5.1 | 2026-11-20 | `6f6f036`..`v0.5.1` | `Z` zooms the map in; zoom range 6–18; app data grouped in `data_dir` (`~/sondechase`: `sondechase.csv`, `log/`, `tiles/`), older files moved in; map tile cache 1000 MB for offline use; one CSV header per file; auto_rx log timed by the sonde's GPS time; inline `#` comments in the config; versioned tile User-Agent; live spectrum only on the Radio screen |
+
+| Unreleased | | `v0.5.1`.. | `Sym` + `R` (`-`) zooms out and `Sym` + `T` (`+`) zooms in (the driver sends them as keypad 7 and 8, which the app ignored); `Z` no longer zooms; `Q` no longer quits (hold `Esc` 3 s only, so a stray key cannot close the app); Track in plain words (distance labelled, `Go: Bear right, East`, height, drift; no degrees) and kept going from the last device fix when GPS drops out; Info 2/2 with the exact numbers; compass calibration in the app (Info, `K`, saved to `<data_dir>/compass.conf`); page number in the top-left label (`Graph 1/2`, `Info 1/2`); altitude label no longer cut off |
 
 Notes:
 - Version bumps touch `CMakeLists.txt`, `app-builder.json` and both READMEs (see
@@ -46,7 +48,7 @@ Grouped by kind. Each item is something the code or the test status says is miss
 |---|---|
 | RS41 only | Other sonde types need their own decoder and `fsk_demod` parameters |
 | Weak spurs near a strong sonde (402.88 and 404.6 MHz seen with the sonde a few cm from the antenna) | The overview shows them; tuning to them shows nothing to decode |
-| Compass not calibrated; hard-iron offset on this board; no tilt compensation | `mag_off_x`, `mag_off_y`, `mag_rot_deg`, `mag_flip_y` must be set by hand |
+| No tilt compensation; in-app calibration (Info, `K`) not yet tried on the device's magnetometer | Hold the device flat; heading from GPS course above 5 km/h is unaffected |
 | Skew-T stops at 100 hPa; no moist adiabats or mixing-ratio lines | Upper part of the diagram is not shown |
 | Landing prediction during ascent depends on `burst_alt`; no wind above the current altitude | Estimate changes as the balloon climbs |
 | Flight history keeps 2048 samples (decimated) and is not restored after an app restart | Graphs start empty after a restart |
@@ -57,7 +59,7 @@ Grouped by kind. Each item is something the code or the test status says is miss
 | Issue | Where | Note |
 |---|---|---|
 | Four `-Wformat-truncation` sites under GCC 14.2 | `src/app.c` (lines 10, 333, 355), `src/tiles.c` (line 57) | See [code standards](./code-standards.md#known-warnings) |
-| `ui.c` is 1271 lines | `src/ui.c` | Candidate for a split by screen |
+| `ui.c` is 1402 lines | `src/ui.c` | Candidate for a split by screen |
 
 ## Dropped or declined
 

@@ -152,7 +152,20 @@ int main(int argc, char **argv)
     ui_key('6'); shot("03_graph_skewt");
     ui_key(K_RIGHT); shot("03_graph_flight");
     ui_key(K_LEFT);
-    ui_key('8'); shot("05_info");
+    ui_key('8'); shot("05_info"); ui_key(K_RIGHT); shot("05_info_pos"); ui_key(K_RIGHT);
+    { /* compass calibration: part of the turn, then the north step (fed by hand: the render has no sensor) */
+        double h;
+        app.hdg.mag_found = 1;
+        magcal_start(&app.cal, 300);
+        for (h = 0; h < 230; h += 5) magcal_add(&app.cal, 300 * cos(h * M_PI / 180), 300 * sin(h * M_PI / 180));
+        lv_obj_invalidate(lv_screen_active());
+        shot("08_compass_turn");
+        for (; h < 380; h += 5) magcal_add(&app.cal, 300 * cos(h * M_PI / 180), 300 * sin(h * M_PI / 180));
+        lv_obj_invalidate(lv_screen_active());
+        shot("08_compass_north");
+        app.cal.step = MAGCAL_OFF;
+        app.hdg.mag_found = 0;
+    }
 
     /* Radio screen tuned to the sonde. demo mode never reads from dsdr; the UI only needs it set. */
     mock_live(app.freq_hz);

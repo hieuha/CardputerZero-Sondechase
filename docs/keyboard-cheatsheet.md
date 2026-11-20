@@ -2,6 +2,9 @@
 
 Every key the app reacts to, screen by screen (version 0.5.1). Keys are not case sensitive.
 
+`Sym` works like `Shift`: hold it and press the key with the symbol (`-` on `R`, `+` on `T`). The same key without
+`Sym` keeps its letter action, so plain `R` restarts the decoder.
+
 ## Everywhere
 
 | Key | Action |
@@ -13,21 +16,22 @@ Every key the app reacts to, screen by screen (version 0.5.1). Keys are not case
 | `R` | Restart the decoder on the current frequency |
 | `X` | Stop the receiver |
 | `M` | Mute / unmute: proximity beeper, frame tick and radio audio. The red LED still blinks |
-| `Q` | Quit |
 | Hold `Esc` 3 s | Quit, with a countdown on screen. A short `Esc` does not quit |
 
 ## Track (`4`)
 
-No keys of its own. While a sonde is decoded, each frame ticks and blinks the red LED. The compass ring turns green
-when the arrow to the sonde is within 15° of straight ahead.
+No keys of its own. The big number is the distance to the sonde; `Go` says which way to walk or drive in words
+(`Bear right, East`). The compass ring and `Go` turn green when the arrow to the sonde is within 15° of straight ahead.
+While a sonde is decoded, each frame ticks and blinks the red LED. If GPS drops out, distance and direction are
+measured from the device's last fix (yellow, `from last GPS`). Exact angles are on Info 2/2.
 
 ## Map (`5`)
 
 | Key | Action |
 |---|---|
 | `←` `→` `↑` `↓` | Pan; hold to keep moving. The map stops following (`free`) |
-| `Z` (`Sym` + `Z`, printed `+`) | Zoom in (up to `zoom_max`, default 18) |
-| `-` | Zoom out (down to `zoom_min`, default 6) |
+| `Sym` + `T` (printed `+`) | Zoom in (up to `zoom_max`, default 18) |
+| `Sym` + `R` (printed `-`) | Zoom out (down to `zoom_min`, default 6) |
 | `C` | After panning: follow again as before. Otherwise cycle: both → device → sonde |
 | `V` | Simple / detailed map style |
 
@@ -37,7 +41,7 @@ Each frame ticks and blinks the red LED here too.
 
 | Key | Action |
 |---|---|
-| `←` / `→` | Page 1/2: Skew-T diagram ↔ page 2/2: altitude and vertical speed over time |
+| `←` / `→` | `Graph 1/2`: Skew-T diagram ↔ `Graph 2/2`: altitude and vertical speed over time |
 
 ## Radio (`7`)
 
@@ -62,7 +66,22 @@ Scan (after `S`):
 
 ## Info (`8`)
 
-No keys of its own.
+| Key | Action |
+|---|---|
+| `←` / `→` | `Info 1/2`: sonde, reception, device ↔ `Info 2/2`: exact numbers (bearing, elevation, coordinates, weather) |
+| `K` | Calibrate the compass (see below) |
+
+### Compass calibration (`K` on Info)
+
+Do it once, outdoors, away from cars and metal. Hold the device flat.
+
+| Step | What to do |
+|---|---|
+| 1 | Turn slowly to your right on the spot, a full circle, until the ring is all green. Step 2 starts by itself |
+| 2 | Point the top of the device north (use a phone compass), press `Enter`. Saved to `<data_dir>/compass.conf` |
+| Any time | `Esc` cancels; nothing is changed |
+
+On screens with pages, the page number is in the top-left label.
 
 ## Frequency entry
 
@@ -86,4 +105,4 @@ Shown over every screen when the balloon bursts.
 
 ## No SDR screen
 
-Shown while no RTL-SDR is plugged in. Only `Q` (quit) works; the app resumes by itself once the dongle appears.
+Shown while no RTL-SDR is plugged in. Only holding `Esc` (quit) works; the app resumes by itself once the dongle appears.

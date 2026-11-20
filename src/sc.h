@@ -154,12 +154,35 @@ typedef struct {
     double deg;
     int src;
     int mag_found;
+    double mag_scale; /* gauss per raw count (in_magn_scale), 0 = not reported */
     double t_mag;
     char mag_x[160], mag_y[160];
 } heading_t;
 void heading_init(heading_t *h, const cfg_t *c);
 void heading_update(heading_t *h, const gps_t *g, const cfg_t *c, double now);
 double heading_from_mag(double x, double y, const cfg_t *c);
+int mag_read(const heading_t *h, double *x, double *y); /* raw magnetometer x/y; 0 = no sensor or read failed */
+
+/* Compass calibration. Step 1: the device, held flat, turns right through a full circle; the centre of the raw x/y
+ * circle gives the hard-iron offsets and the direction the raw angle moved gives the axis flip. Step 2: the device
+ * points north and the rotation is set so that reading becomes 0. */
+#define MAGCAL_SECTORS 36
+#define MAGCAL_MAX 1200 /* 60 s of samples at 20 Hz */
+enum { MAGCAL_OFF, MAGCAL_TURN, MAGCAL_NORTH };
+typedef struct {
+    int step, n;
+    double min_span; /* raw counts the x and y ranges must reach: a real turn, not sensor noise */
+    double xmin, xmax, ymin, ymax;
+    float xs[MAGCAL_MAX], ys[MAGCAL_MAX];
+    unsigned char seen[MAGCAL_SECTORS]; /* 10° sectors of the raw angle the turn has passed through */
+    double t_poll;
+} magcal_t;
+void magcal_start(magcal_t *m, double min_span);
+double mag_min_span(const heading_t *h); /* min_span for this sensor */
+void magcal_add(magcal_t *m, double x, double y); /* moves to step 2 by itself once every sector is seen */
+int magcal_covered(const magcal_t *m);            /* sectors seen, 0..MAGCAL_SECTORS */
+void magcal_apply(const magcal_t *m, cfg_t *c);   /* offsets, flip, and the rotation that makes "now" read north */
+int magcal_save(const cfg_t *c, const char *path); /* 0 ok */
 
 /* 1 when an RTL2832U receiver is listed under <usb_sysfs> (normally /sys/bus/usb/devices). */
 int sdr_present(const char *usb_sysfs);
@@ -445,6 +468,7 @@ typedef struct {
     double vv_s; /* smoothed vertical velocity */
     gps_t gps;
     heading_t hdg;
+    magcal_t cal; /* compass calibration in progress (Info, K) */
     wind_t wind;
     pred_t pred;
     spectrum_t spec;
@@ -484,6 +508,7 @@ void app_scan(app_t *a);  /* band overview only */
 void app_hunt(app_t *a);  /* Scan: band overview that tries each peak until an RS41 decodes */
 int app_skipped(const app_t *a, long f_hz, double now); /* tried lately without a frame */
 void app_stop(app_t *a);
+int app_compass_save(app_t *a); /* 0 = saved to <data_dir>/compass.conf */
 void app_listen(app_t *a, long f_hz); /* tune without decoding: spectrum and radio audio; app_tune sets the decode */
 const known_t *app_known(const app_t *a, long f_hz); /* NULL: nothing known about this frequency */
 void app_free(app_t *a);

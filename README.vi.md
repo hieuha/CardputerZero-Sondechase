@@ -21,13 +21,17 @@ RS41 đang bay (Y0532351). Chưa thử đi săn ngoài thực địa với GPS; 
 | | |
 |---|---|
 | ![Màn hình Track: la bàn, khoảng cách và hướng tới sonde](screenshots/mockup/track.png) | ![Màn hình Map, kiểu đơn giản: chỉ có sông hồ và đường](screenshots/mockup/map.png) |
-| **Track**: khoảng cách, hướng và góc ngẩng tới sonde, điểm rơi dự đoán | **Map**: kiểu đơn giản (sông hồ và đường), đường bay, điểm rơi |
+| **Track**: khoảng cách tới sonde và hướng cần đi, viết bằng chữ; điểm rơi dự đoán | **Map**: kiểu đơn giản (sông hồ và đường), đường bay, điểm rơi |
 | ![Màn hình Radio đang giải mã một RS41](screenshots/mockup/radio-decoding.png) | ![Màn hình Radio, Scan cả dải](screenshots/mockup/band-overview.png) |
 | **Radio**: phổ quanh tần số đang chỉnh, nghe NFM, `Enter` để giải mã | **Radio, Scan** (`S`): tìm các đỉnh tín hiệu và thử giải mã từng đỉnh; phím mũi tên để chọn tay |
 | ![Biểu đồ Skew-T log-P của chuyến bay](screenshots/mockup/skew-t.png) | ![Độ cao và tốc độ đứng theo thời gian](screenshots/mockup/flight.png) |
 | **Graph**: Skew-T log-P của chuyến thám không | **Graph**: độ cao và tốc độ đứng, có đánh dấu điểm nổ |
-| ![Màn hình Info: sonde, thu sóng, thiết bị](screenshots/mockup/info.png) | ![Cảnh báo bóng nổ](screenshots/mockup/burst.png) |
-| **Info**: sonde, thu sóng, thiết bị, toạ độ điểm rơi | **Cảnh báo bóng nổ**: tốc độ rơi, thời gian và khoảng cách tới điểm rơi |
+| ![Màn hình Info: sonde, thu sóng, thiết bị](screenshots/mockup/info.png) | ![Info trang 2: toạ độ, góc và thời tiết chi tiết](screenshots/mockup/info-details.png) |
+| **Info 1/2**: sonde, thu sóng, thiết bị, toạ độ điểm rơi | **Info 2/2** (`→`): toạ độ, hướng, góc ngẩng, tốc độ, thời tiết; `K` để hiệu chỉnh la bàn |
+| ![Màn hình Track khi máy mất GPS: khoảng cách tính từ vị trí cuối](screenshots/mockup/track-gps-lost.png) | ![Hiệu chỉnh la bàn, bước 1: xoay một vòng](screenshots/mockup/compass-calibration.png) |
+| **Track, mất GPS**: khoảng cách và hướng tính từ vị trí GPS cuối của máy, màu vàng | **Hiệu chỉnh la bàn** (Info, `K`): xoay một vòng rồi hướng máy về phía Bắc |
+| ![Cảnh báo bóng nổ](screenshots/mockup/burst.png) | ![Màn hình Track khi đi đúng hướng: vòng xanh, Straight ahead](screenshots/mockup/track-near.png) |
+| **Cảnh báo bóng nổ**: tốc độ rơi, thời gian và khoảng cách tới điểm rơi | **Track, đúng hướng**: vòng la bàn và dòng `Go` chuyển xanh khi lệch không quá 15° |
 
 Đây là ảnh mô phỏng: chính code giao diện của app (`tools/render.c`) vẽ một chuyến bay giả lập, phổ radio là dữ liệu
 dựng sẵn, bản đồ lấy từ tile OpenStreetMap. Phóng to 2×.
@@ -71,18 +75,18 @@ Muốn tự build gói (trên máy hoặc cross-compile), xem [hướng dẫn de
 
 | Phím | Chức năng |
 |---|---|
-| `4` Track | La bàn HUD, khoảng cách, hướng, góc ngẩng, điểm rơi dự đoán. Khi sonde chưa có GPS fix: số hiệu, frame và pin. Mỗi frame kêu tít và nháy đèn đỏ. Vòng la bàn chuyển xanh khi mũi tên lệch không quá 15° so với hướng đang đi |
-| `5` Map | Tile bản đồ, vị trí máy, sonde, đường bay, điểm rơi. Phím mũi tên để kéo bản đồ (giữ để kéo liên tục; bản đồ thôi bám theo, hiện `free`). `+` (`Sym` + `Z`, hoặc `Z`) / `-` để zoom. `C` chuyển vòng giữa cả hai / theo máy / theo sonde, hoặc bám theo lại sau khi kéo. `V` đổi kiểu đơn giản / chi tiết. Khi chưa có vị trí nào: lấy tâm ở `map_lat` / `map_lon` |
+| `4` Track | La bàn HUD và khoảng cách tới sonde, kèm hướng cần đi viết bằng chữ (`Bear right, East`, `Straight ahead`), độ cao, hướng trôi và điểm rơi dự đoán. Vòng la bàn và dòng `Go` chuyển xanh khi mũi tên lệch không quá 15° so với hướng đang đi. Khi mất GPS, khoảng cách và hướng tính từ vị trí GPS cuối cùng của máy (màu vàng, `from last GPS`). Khi sonde chưa có GPS fix: số hiệu, frame và pin. Mỗi frame kêu tít và nháy đèn đỏ |
+| `5` Map | Tile bản đồ, vị trí máy, sonde, đường bay, điểm rơi. Phím mũi tên để kéo bản đồ (giữ để kéo liên tục; bản đồ thôi bám theo, hiện `free`). `Sym` + `T` (`+`) để phóng to, `Sym` + `R` (`-`) để thu nhỏ. `C` chuyển vòng giữa cả hai / theo máy / theo sonde, hoặc bám theo lại sau khi kéo. `V` đổi kiểu đơn giản / chi tiết. Khi chưa có vị trí nào: lấy tâm ở `map_lat` / `map_lon` |
 | `6` Graph | `Left` / `Right` để đổi trang: Skew-T log-P, độ cao và tốc độ đứng theo thời gian |
 | `7` Radio | Phổ kèm âm thanh của tần số đang chỉnh. `Left` / `Right` ±10 kHz, `Up` / `Down` ±100 kHz (giữ để chỉnh liên tục). `Enter` để giải mã tại đó. `S` để Scan, `Esc` để quay lại. `D` đổi chế độ (NFM / AM / USB / LSB / WFM), `B` đổi độ rộng kênh |
-| `8` Info | Sonde, thu sóng, thiết bị, một cặp toạ độ đích |
+| `8` Info | `K` để hiệu chỉnh la bàn (xoay máy một vòng sang phải, rồi hướng máy về phía Bắc và bấm `Enter`; lưu vào `<data_dir>/compass.conf`). `Left` / `Right` để chuyển trang: 1/2 sonde, thu sóng, thiết bị, điểm rơi; 2/2 số liệu chi tiết (toạ độ, hướng, góc cần rẽ, góc ngẩng, tốc độ, nhiệt độ, độ ẩm, áp suất, vị trí máy) |
 | `Tab` | Sang màn tiếp theo (Track → Map → Graph → Radio → Info → Track) |
 | `F` | Nhập tần số theo kHz; `Enter` để chỉnh tới tần số đó (trong dải của tuner) và giải mã |
 | `S` | Scan dải 400–406 MHz và thử giải mã các đỉnh tín hiệu (xem [Màn hình Radio](#màn-hình-radio)) |
 | `X` | Dừng bộ thu |
 | `R` | Khởi động lại bộ giải mã ở tần số hiện tại |
 | `M` | Tắt / bật tiếng beeper, tiếng tít mỗi frame và âm thanh radio (đèn vẫn nháy) |
-| `Q`, hoặc giữ `Esc` 3 giây | Thoát (khi giữ `Esc` sẽ hiện đếm ngược) |
+| Giữ `Esc` 3 giây | Thoát (hiện đếm ngược; bấm `Esc` nhanh hoặc bấm nhầm phím khác không bao giờ làm thoát app) |
 
 Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` để mở Map, bấm nhanh `Esc` để tắt cảnh báo.
 
@@ -90,11 +94,11 @@ Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` để mở Map
 
 | Màn hình | Nội dung |
 |---|---|
-| Track | Vòng la bàn, mũi tên chỉ tới sonde, khoảng cách, hướng, góc ngẩng, điểm rơi; thanh trên cùng có tần số, trạng thái và GPS |
+| Track | Vòng la bàn, mũi tên chỉ tới sonde, khoảng cách, hướng cần đi, độ cao, hướng trôi, điểm rơi; thanh trên cùng có tần số, trạng thái và GPS |
 | Map | Tile OpenStreetMap (tải khi cần), vị trí máy, sonde, đường bay, điểm rơi |
-| Graph | Skew-T log-P (trang 1) và độ cao / tốc độ đứng, có đánh dấu điểm nổ (trang 2) |
+| Graph | Skew-T log-P (`Graph 1/2`) và độ cao / tốc độ đứng, có đánh dấu điểm nổ (`Graph 2/2`) |
 | Radio | Phổ trực tiếp quanh tần số đang chỉnh, vùng tô màu thể hiện độ rộng kênh, trạng thái giải mã |
-| Info | ID sonde, số frame, nhiệt độ, độ ẩm, áp suất, pin, chi tiết GPS và thu sóng |
+| Info | Trang 1: ID sonde, số frame, pin, chi tiết GPS và thu sóng. Trang 2: toạ độ, hướng, góc ngẩng, tốc độ, nhiệt độ, độ ẩm, áp suất. Số trang nằm ở nhãn góc trái trên (`Info 1/2`) |
 
 ### Màn hình Radio
 
@@ -111,6 +115,7 @@ Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` để mở Map
   dongle. Tắt bước kiểm tra này bằng `sdr_check = 0`.
 - **Máy chưa có GPS fix**: vẫn giải mã bình thường. Thanh trên cùng hiện `GPS 0/3` màu đỏ khi GPS đã cắm nhưng chưa
   fix (số vệ tinh đang dùng / thấy được), `GPS lost` khi đã từng có fix, hoặc `No GPS`. Khi có fix thì hiện `3D 9/12`.
+  Nếu máy đã từng có fix, màn Track vẫn hiện khoảng cách và hướng, tính từ vị trí cuối cùng của máy.
 - **Sonde chưa có GPS fix** (còn dưới đất): không dùng vị trí của nó; Track và Info hiện số hiệu, frame, số vệ tinh và
   pin.
 
@@ -180,8 +185,8 @@ dongle. Chi tiết và số đo trên máy thật: [hướng dẫn deploy](docs/
 - Chỉ hỗ trợ RS41. Các loại sonde khác cần bộ giải mã riêng.
 - Ở gần một sonde phát rất mạnh, màn tổng quan có thể hiện thêm vài đỉnh phụ yếu hơn; chỉnh tới đó sẽ không có gì để
   giải mã.
-- La bàn chưa được hiệu chỉnh: phải tự đặt `mag_off_x` / `mag_off_y`, `mag_rot_deg` và `mag_flip_y`, và chưa bù độ
-  nghiêng.
+- La bàn cần hiệu chỉnh một lần (màn Info, phím `K`: xoay máy một vòng rồi hướng về phía Bắc) và phải cầm máy nằm
+  ngang, vì chưa bù độ nghiêng. Trước khi hiệu chỉnh, chỉ nên tin hướng khi đang di chuyển nhanh hơn 5 km/h (hướng GPS).
 - Skew-T dừng ở 100 hPa; chưa vẽ đường đoạn nhiệt ẩm và đường tỉ lệ hỗn hợp.
 - Dự đoán điểm rơi khi bóng đang lên phụ thuộc vào `burst_alt` giả định.
 - Lịch sử chuyến bay không được khôi phục sau khi mở lại app.

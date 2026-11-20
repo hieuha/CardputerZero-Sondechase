@@ -73,7 +73,7 @@ int main(int argc, char **argv)
         ui_init(&app);
     }
 #endif
-    while (!stop && !ui_should_quit()) {
+    while (!stop) {
         int k;
         uint32_t wait;
         while ((k = keys_read(kfd)) != 0) ui_key(k);

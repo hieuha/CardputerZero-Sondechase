@@ -16,13 +16,12 @@ Last updated: 2026-11-20 (version 0.6.0). Describes the conventions the code alr
 - [File size](#file-size)
 - [Documentation with every change](#documentation-with-every-change)
 - [Commits and branches](#commits-and-branches)
-- [Known warnings](#known-warnings)
 
 ## Language and build
 
 - C11 (`CMAKE_C_STANDARD 11`). No C++ and no compiler extensions beyond `_GNU_SOURCE` for POSIX APIs.
 - Warnings: `-Wall -Wextra` on `sc_core`, `test_core`, `sondechase` and `sc_render`. Keep new code free of warnings
-  under GCC 14 (see [known warnings](#known-warnings)).
+  under GCC 14. The core and the UI build without warnings (checked in `debian:trixie`, GCC 14.2).
 - Default build type is `Release` (set in `CMakeLists.txt`).
 - The core (`sc_core`, everything in `src/` except `main.c`, `ui.c`, `keys.c`) must not include `lvgl.h`. That keeps
   it testable on any Linux host with `-DSC_BUILD_UI=OFF`.
@@ -182,17 +181,3 @@ Check the docs against the code before committing; do not describe behaviour tha
 - Version bumps are their own `chore: version x.y.z` commit (see [release procedure](./deployment-guide.md#release-procedure)).
 - Work on `main` in this repository. Keep commits focused: one behaviour per commit.
 - Never commit `dist/`, `build/`, `.cache/`, dotenv files, tokens or personal data (see `.gitignore`).
-
-## Known warnings
-
-The core builds with `-Wall -Wextra` under GCC 14.2 (Debian 13) with these warnings, which are not yet fixed:
-
-| File | Warning | Why it is not a bug today |
-|---|---|---|
-| `src/app.c:10` (`set_status`) | `-Wformat-truncation`: 95-byte source into the 80-byte `status` | Status texts are short; the compiler assumes the longest possible argument |
-| `src/app.c:333` (`known_set`) | 19-byte ID into the 16-byte `known[].id` | RS41 serials seen so far are 8 characters; a longer ID would be cut |
-| `src/app.c:355` (`log_autorx`) | `%03ld` into the tail of the 32-byte timestamp | The value is a millisecond count, 0 to 999 |
-| `src/tiles.c:57` | Path built with `snprintf` into a 700-byte buffer | Paths come from config and cache names; the compiler assumes longer input |
-
-Fix by sizing the buffers to the worst case or by truncating explicitly. The warnings are tracked in the
-[roadmap](./project-roadmap.md#known-gaps).

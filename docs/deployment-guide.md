@@ -82,8 +82,7 @@ Notes:
 - `keys.c` and the tests include `<linux/input.h>`. The build fails on macOS; use a Debian or Ubuntu host or a
   Linux container.
 - Verified on 2026-11-20 in `debian:trixie` (GCC 14.2.0): `test_core` reports **4363 checks, 0 failed**.
-- The same build prints five `-Wformat-truncation` warnings (four sites in `src/app.c` and `src/tiles.c`). They are
-  listed in the [roadmap](./project-roadmap.md#known-gaps).
+- The same build prints no warnings (`-Wall -Wextra`), nor does the UI (`sc_render`, `sondechase`).
 - What the tests cover is listed in [system architecture](./system-architecture.md) by module. Test names are
   in `tests/test_core.c`.
 

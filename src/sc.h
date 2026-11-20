@@ -417,7 +417,7 @@ enum { ST_IDLE, ST_DECODE, ST_SCAN, ST_LISTEN }; /* LISTEN: tuned, spectrum and 
 #define LIVE_HALF_SPAN_HZ 384000L /* the tuned spectrum shows the frequency +- this */
 typedef struct {
     long f_hz;               /* 0 = empty slot */
-    char id[16];
+    char id[20];             /* same size as sonde_t.id */
     double t;                /* last frame */
 } known_t;
 
@@ -489,7 +489,7 @@ typedef struct {
     char log_path[256];
     FILE *rlog;              /* this sonde's auto_rx-format log */
     char rlog_id[20];
-    char status[80];
+    char status[96];         /* fits a receiver error (sdr_open writes up to 96 bytes) */
     hist_t hist;
     flight_t flight;
     prox_t prox;

@@ -394,7 +394,7 @@ static void log_autorx(app_t *a, const char *dir)
         clock_gettime(CLOCK_REALTIME, &ts);
         gmtime_r(&ts.tv_sec, &tm);
         strftime(t, sizeof t, "%Y-%m-%dT%H:%M:%S", &tm);
-        snprintf(t + 19, sizeof t - 19, ".%03ldZ", ts.tv_nsec / 1000000);
+        snprintf(t + 19, sizeof t - 19, ".%03uZ", (unsigned)(ts.tv_nsec / 1000000) % 1000u);
     }
     if (a->rlog && strcmp(a->rlog_id, s->id)) { /* another sonde: its own file */
         fclose(a->rlog);

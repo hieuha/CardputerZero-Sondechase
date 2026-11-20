@@ -1,5 +1,5 @@
 #!/bin/sh
-# Stands in for "rtl_fm | fsk_demod | rs41mod --json": a sonde descending east of Hanoi.
+# Stands in for "fsk_demod | rs41mod --json": a sonde descending east of Hanoi.
 echo "[ 5390] (S4430329) non-JSON text line that the app must ignore"
 i=0
 while [ $i -lt 3 ]; do

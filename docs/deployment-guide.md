@@ -69,8 +69,8 @@ sysroot. The cross build was not re-run for this document; the native workflow i
 ## Tests
 
 The core test suite (`tests/test_core.c`) needs no LVGL and no device. It prints `N checks, M failed` and exits
-non-zero on any failure. CI runs it with the fake librtlsdr (`tests/fake_rtlsdr.c`) and the fake decoder
-(`tests/fake_decoder.sh`) wired in by `ctest`.
+non-zero on any failure. CI runs it with the fake librtlsdr (`tests/fake_rtlsdr.c`), the fake libhackrf
+(`tests/fake_hackrf.c`) and the fake decoder (`tests/fake_decoder.sh`) wired in by `ctest`.
 
 ```sh
 cmake -S . -B build -G Ninja -DSC_BUILD_UI=OFF
@@ -268,8 +268,8 @@ All three run on `push` and `pull_request`. Badges for them are in both READMEs.
 ## Device checks
 
 Measured by the maintainer on a CardputerZero (Debian 13, RTL-SDR Blog V4 with R828D, sonde Y0532351 at 403.000 MHz),
-except the last two rows, measured on 2026-11-20 (HackRF One and the compass). The RTL-SDR rows were not re-measured
-for this document.
+except the last three rows, measured on 2026-11-20 (HackRF One, the RTL-SDR V4 with sonde Y0310371, and the
+compass). The older RTL-SDR rows were not re-measured for this document.
 
 | Check | Result |
 |---|---|
@@ -294,7 +294,7 @@ the device, drawing speed with many map tiles, RS41 reception with a HackRF (see
 
 | Symptom | Cause and fix |
 |---|---|
-| "No SDR device found" | No RTL2832U or HackRF on USB, or it is another model. Check `lsusb` for `0bda:2838`, `0bda:2832` or `1d50:6089`. Set `sdr_check = 0` only to test without a dongle |
+| "No SDR device found" | No RTL2832U or HackRF on USB, or it is another model. Check `lsusb` for `0bda:2838`, `0bda:2832`, `1d50:6089` or `1d50:cc15`. Set `sdr_check = 0` only to test without a dongle |
 | Status says the device is busy or librtlsdr is missing | Another program holds the dongle (for example `rtl_fm`), or `librtlsdr0` is not installed (`apt install librtlsdr0`) |
 | Status says `libhackrf0 not installed` | A HackRF is plugged in but its library is missing, which the package normally pulls in. Only a binary copied by hand gets there: `sudo apt install libhackrf0` |
 | HackRF: weak or no signal | First check the antenna is on the `ANTENNA` port. It has no AGC: try `hackrf_gain = 32,20,1` (amplifier on) or set `bias_tee = 1` for a powered LNA. In the one live test a HackRF One did not receive a sonde an RTL-SDR V4 decoded ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)). Its 8-bit ADC and unfiltered front end make it less sensitive at 400 MHz than an RTL-SDR |

@@ -113,7 +113,8 @@ The burst alert overlays every screen: `Enter` opens Map, a short `Esc` dismisse
   `Enter` starts the decoder on that frequency; the top bar shows `listen` or `decode`.
 - **Scan** (`S`): sweeps 400–406 MHz continuously. After two passes it tries the strongest peak on the decoder for
   10 s. An RS41 frame ends the scan there (`found RS41 …`). Otherwise that peak is left alone for 2 min and the sweep
-  continues. Arrow keys take over the choice; `Enter` tunes the cursor; `Esc` goes back to the previous frequency.
+  continues. Arrow keys take over the choice; `Enter` tunes the cursor (while a peak is being tried, the arrows tune
+  from that peak instead); `Esc` goes back to the previous frequency.
 - Decoded frames record their frequency; the spectrum labels it with the sonde serial.
 
 ### Without the receiver or GPS
@@ -134,7 +135,7 @@ after a space. Every key is optional.
 
 ```ini
 freq_hz = 403000000      # decode at start-up (unset: open on the Radio screen)
-gain = 38.6              # tuner gain in dB (unset: tuner AGC)
+gain = 38.6              # RTL-SDR tuner gain in dB (unset: tuner AGC)
 sdr = auto               # receiver: auto (from USB), rtlsdr or hackrf
 sdr_check = 1            # require a receiver on USB
 gpsd_port = 2947         # gpsd (0 disables GPS)
@@ -187,8 +188,8 @@ Everything the app keeps is in one folder, `data_dir` (default `~/sondechase`):
 ## Test status
 
 `tests/test_core.c`: 4462 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
-arm64 package build on Debian 13. A fake `librtlsdr` and a fake decoder run scanning and decoding end to end without
-a dongle. Details and the device measurements: [deployment guide](docs/deployment-guide.md#tests).
+arm64 package build on Debian 13. A fake `librtlsdr`, a fake `libhackrf` and a fake decoder run scanning and decoding
+end to end without a dongle. Details and the device measurements: [deployment guide](docs/deployment-guide.md#tests).
 
 ## Known limitations
 
@@ -197,7 +198,7 @@ a dongle. Details and the device measurements: [deployment guide](docs/deploymen
   gain with `hackrf_gain = LNA,VGA,amp` (default 32,24,0).
 - Next to a very strong sonde the overview can show weaker spurs; tuning to them shows nothing to decode.
 - The compass must be calibrated once (Info, `K`: turn a full circle, lean four ways, then point north). After that
-  it is tilt-compensated with the accelerometer, so the device need not be held flat (not within about 15° of
+  it is tilt-compensated with the accelerometer, so the device need not be held flat (not within about 14° of
   pointing straight up or down). Until then, trust the heading only while moving faster than about 5.4 km/h
   (1.5 m/s, `cog_min_speed`), where it is the GPS course.
 - Skew-T reaches 100 hPa, or 10 hPa (about 31 km) once the flight has been above 100 hPa; moist adiabats and
@@ -220,6 +221,7 @@ Third-party components:
 | `fsk_demod` ([codec2](https://github.com/drowe67/codec2), David Rowe) | LGPL-2.1 |
 | Decoder front end in `src/dsp.c`, ported from `rtl_fm.c` ([rtl-sdr](https://gitea.osmocom.org/sdr/rtl-sdr)) | GPL-2.0-or-later |
 | `librtlsdr` (loaded at run time) | GPL-2.0-or-later |
+| `libhackrf` (loaded at run time) | GPL-2.0-or-later |
 | [LVGL](https://github.com/lvgl/lvgl) v9.5 | MIT |
 | Files in `cmake/` taken from the CardputerZero Template | MIT, see `cmake/LICENSE-CardputerZero-Template.txt` |
 | Rajdhani, Orbitron fonts | SIL OFL 1.1, see `assets/fonts/OFL-*.txt` |

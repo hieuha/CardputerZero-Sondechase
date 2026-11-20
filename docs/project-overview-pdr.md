@@ -17,7 +17,7 @@ Last updated: 2026-11-20 (version 0.7.0).
 
 SondeChase turns the M5Stack CardputerZero (Raspberry Pi CM0, Debian 13 arm64, 320×170 LCD, 46-key keyboard) into a
 handheld radiosonde receiver and chase display for the Vaisala RS41. It receives the 400 MHz telemetry with an
-RTL-SDR, decodes it with the bundled `fsk_demod` and `rs41mod`, and shows the balloon's position relative to the
+RTL-SDR (a HackRF is experimental), decodes it with the bundled `fsk_demod` and `rs41mod`, and shows the balloon's position relative to the
 device. The device position comes from an optional USB GPS through gpsd, and heading from the GPS course or a
 magnetometer.
 
@@ -116,7 +116,7 @@ A release is accepted when all of these hold:
 | Hardware | CardputerZero: 320×170 LCD, 46 keys, ES8389 audio codec under PipeWire, no RTC. RTL-SDR tested: Blog V4 (R828D). HackRF One experimental: scan and WFM audio work, no RS41 reception yet ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)) |
 | Software | Debian 13 arm64; LVGL 9.5.0 (fetched at build time); `radiosonde_auto_rx` v1.9.0 decoders (fetched and SHA-256 checked) |
 | Runtime | `librtlsdr0` and `libhackrf0` (loaded with `dlopen`), `curl` for tiles, optional `gpsd` and `pulseaudio-utils` (`pacat`) |
-| Licence | GPL-3.0-or-later; bundled decoders are GPL-3.0 and LGPL-2.1; LVGL MIT; fonts SIL OFL 1.1; map data ODbL attribution |
+| Licence | GPL-3.0-or-later; bundled decoders are GPL-3.0 and LGPL-2.1; run-time `librtlsdr` and `libhackrf` GPL-2.0-or-later; LVGL MIT; fonts SIL OFL 1.1; map data ODbL attribution |
 | Store | CardputerZero store manifest (`app-builder.json`): seven permission flags, 320×170 screenshots, share code `SNDE` |
 | Time | No RTC: log timestamps come from the sonde's GPS time when it has one |
 
@@ -136,7 +136,7 @@ A release is accepted when all of these hold:
 ## Status
 
 - Version 0.7.0 (tag `v0.7.0`, GitHub release published, in the CardputerZero store).
-- Tested on hardware: scanning and decoding with a live RS41 (Y0532351), display, keyboard, PipeWire audio, magnetometer
+- Tested on hardware: scanning and decoding with live RS41s (Y0532351, Y0310371), display, keyboard, PipeWire audio, magnetometer
   node, OSM tile download. Not yet tested in the field: GPS (no module fitted when this was written), the beeper, burst
   detection and landing on a real flight. Full list in the [roadmap](./project-roadmap.md#known-gaps).
 - Checked on hardware 2026-11-20: HackRF One scan and WFM audio, and the in-app compass calibration with tilt

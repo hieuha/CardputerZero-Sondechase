@@ -35,7 +35,7 @@ All in `app-builder.json` under `store`:
 - Description: `store.description`
 - Categories (maximum 6): `Radio & Comms`, `Hardware & IoT`
 - Licence: `GPL-3.0-or-later`
-- Permissions: IMU, network, additional hardware (RTL-SDR, GPS)
+- Permissions: IMU, network, additional hardware (RTL-SDR or, experimental, HackRF; GPS)
 
 ## Assets
 

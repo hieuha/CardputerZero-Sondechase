@@ -113,7 +113,8 @@ Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` để mở Map
   `Enter` sẽ bật bộ giải mã ở tần số đó; thanh trên cùng hiện `listen` hoặc `decode`.
 - **Scan** (`S`): quét liên tục dải 400–406 MHz. Sau hai lượt quét, app thử giải mã đỉnh có tín hiệu lớn nhất trong
   10 giây. Nhận được frame RS41 thì dừng quét tại đó (`found RS41 …`). Không nhận được thì bỏ qua đỉnh đó trong 2 phút
-  và quét tiếp. Phím mũi tên để tự chọn; `Enter` để chỉnh tới vị trí con trỏ; `Esc` để quay lại tần số trước đó.
+  và quét tiếp. Phím mũi tên để tự chọn; `Enter` để chỉnh tới vị trí con trỏ (khi app đang thử một đỉnh,
+  phím mũi tên sẽ dò tiếp từ đỉnh đó); `Esc` để quay lại tần số trước đó.
 - Frame giải mã được sẽ ghi lại tần số của nó; trên phổ, tần số đó được gắn số hiệu sonde.
 
 ### Khi không có bộ thu hoặc GPS
@@ -133,7 +134,7 @@ một khoảng trắng. Mọi key đều không bắt buộc.
 
 ```ini
 freq_hz = 403000000      # giải mã ngay khi mở app (bỏ trống: mở màn Radio)
-gain = 38.6              # gain của tuner, dB (bỏ trống: AGC của tuner)
+gain = 38.6              # gain của tuner RTL-SDR, dB (bỏ trống: AGC của tuner)
 sdr = auto               # bộ thu: auto (tự nhận qua USB), rtlsdr hoặc hackrf
 sdr_check = 1            # bắt buộc có bộ thu trên USB
 gpsd_port = 2947         # gpsd (0 để tắt GPS)
@@ -189,7 +190,7 @@ Tài liệu kỹ thuật viết bằng tiếng Anh:
 ## Tình trạng test
 
 `tests/test_core.c`: 4462 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
-native trên Debian 13. Một `librtlsdr` giả và một bộ giải mã giả chạy trọn quy trình quét và giải mã mà không cần
+native trên Debian 13. Một `librtlsdr` giả, một `libhackrf` giả và một bộ giải mã giả chạy trọn quy trình quét và giải mã mà không cần
 dongle. Chi tiết và số đo trên máy thật: [hướng dẫn deploy](docs/deployment-guide.md#tests).
 
 ## Hạn chế đã biết
@@ -201,7 +202,7 @@ dongle. Chi tiết và số đo trên máy thật: [hướng dẫn deploy](docs/
   giải mã.
 - La bàn cần hiệu chỉnh một lần (màn Info, phím `K`: xoay máy một vòng, nghiêng về bốn phía rồi hướng về phía Bắc).
   Sau đó la bàn được bù độ nghiêng nhờ gia tốc kế, nên không cần cầm máy nằm ngang (trừ khi đầu máy chĩa gần thẳng lên
-  trời hoặc xuống đất, trong khoảng 15°). Trước khi hiệu chỉnh, chỉ nên tin hướng khi đang di chuyển nhanh hơn khoảng 5,4 km/h (1,5 m/s, `cog_min_speed`)
+  trời hoặc xuống đất, trong khoảng 14°). Trước khi hiệu chỉnh, chỉ nên tin hướng khi đang di chuyển nhanh hơn khoảng 5,4 km/h (1,5 m/s, `cog_min_speed`)
   (hướng GPS).
 - Skew-T vẽ tới 100 hPa, hoặc tới 10 hPa (khoảng 31 km) khi chuyến bay đã lên trên 100 hPa; chưa vẽ đường đoạn nhiệt
   ẩm và đường tỉ lệ hỗn hợp.
@@ -223,6 +224,7 @@ Thành phần của bên thứ ba:
 | `fsk_demod` ([codec2](https://github.com/drowe67/codec2), David Rowe) | LGPL-2.1 |
 | Front end của bộ giải mã trong `src/dsp.c`, port từ `rtl_fm.c` ([rtl-sdr](https://gitea.osmocom.org/sdr/rtl-sdr)) | GPL-2.0-or-later |
 | `librtlsdr` (nạp lúc chạy) | GPL-2.0-or-later |
+| `libhackrf` (nạp lúc chạy) | GPL-2.0-or-later |
 | [LVGL](https://github.com/lvgl/lvgl) v9.5 | MIT |
 | Các file trong `cmake/` lấy từ CardputerZero Template | MIT, xem `cmake/LICENSE-CardputerZero-Template.txt` |
 | Font Rajdhani, Orbitron | SIL OFL 1.1, xem `assets/fonts/OFL-*.txt` |

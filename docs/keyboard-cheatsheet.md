@@ -64,6 +64,9 @@ Scan (after `S`):
 | `Enter` | Tune to the cursor: listen and decode there |
 | `Esc` | Back to the frequency used before Scan |
 
+While Scan tries a peak (`trying 403.000 MHz`) the screen is the tuned view on that peak: the arrows tune from it
+and end Scan, as on the tuned view.
+
 ## Info (`8`)
 
 | Key | Action |

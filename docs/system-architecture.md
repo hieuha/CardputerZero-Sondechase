@@ -2,7 +2,7 @@
 
 Last updated: 2026-11-20 (version 0.7.0).
 
-SondeChase is one C11 process on the CardputerZero. It reads the RTL-SDR in process, runs the RS41 decoder as
+SondeChase is one C11 process on the CardputerZero. It reads the RTL-SDR or HackRF in process, runs the RS41 decoder as
 a child pipeline, merges GPS and magnetometer data, and draws every screen with LVGL 9.5 on the LCD framebuffer.
 The core (`sc_core`) has no LVGL dependency and is unit-tested on any Linux host.
 
@@ -83,6 +83,7 @@ flowchart LR
 |---|---|---|
 | Main process | Single thread | Keys, `app_poll`, `lv_timer_handler`, sleep of 5 to 30 ms per loop. While scanning with the sweep running, the wait is capped at 10 ms |
 | librtlsdr reader | Thread in `sdr.c` | Runs librtlsdr's async read and writes IQ bytes into a 4 MiB lock-free ring (about 1.4 s at 1.536 MS/s). Drops are counted, never block the reader |
+| libhackrf USB thread | Thread owned by libhackrf, callback in `sdr_hackrf.c` | Halves each transfer to 1.536 MS/s into the same kind of ring; the callback runs under a lock and drops transfers that began before the last retune |
 | Decoder pipeline | `sh -c` child in its own process group | `fsk_demod --cs16 ... \| rs41mod --json ...`. Stdin is fed by the app; stdout is read line by line |
 | Audio | `sh -c` child (`audio_cmd`, default `pacat`) | Receives 16 kHz S16_LE mono PCM: beeper tones and, on the Radio screen, the demodulated audio |
 | Tile fetch | `sh -c` children (`tile_fetch_cmd`, `curl`) | At most `TF_JOBS` = 2 at a time |
@@ -187,7 +188,7 @@ and decimates to 16 kHz. Output goes to `audio_radio_push`, which mixes it with 
 | Peripheral | Interface | Access | Notes |
 |---|---|---|---|
 | RTL-SDR (RTL2832U) | USB, `librtlsdr` | `dlopen` at run time; `rtl_dev` index | Matches VID:PID `0bda:2838` or `0bda:2832` for the presence check. Tested: RTL-SDR Blog V4 (R828D tuner) |
-| HackRF One / rad1o | USB, `libhackrf` | `dlopen` at run time; `rtl_dev` index | `1d50:6089` or `1d50:cc15`. 1 MHz to 6 GHz. Tried with a HackRF One on the device (libhackrf 2024.02.1): scan and WFM audio clear, about 20 % of one core while decoding and playing WFM; RS41 decoding not yet tried |
+| HackRF One / rad1o | USB, `libhackrf` | `dlopen` at run time; `rtl_dev` index | `1d50:6089` or `1d50:cc15`. 1 MHz to 6 GHz. Tried with a HackRF One on the device (libhackrf 2024.02.1): scan and WFM audio clear, about 20 % of one core while decoding and playing WFM; no RS41 received in the one live test ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)) |
 | GPS | gpsd, TCP `127.0.0.1:2947` (`gpsd_host`, `gpsd_port`) | Non-blocking socket and connect, JSON `TPV` and `SKY` (a fix with a non-finite or out-of-range position is ignored) | `gpsd_port = 0` disables it. A USB GPS can be plugged in while the app runs; gpsd picks it up |
 | Magnetometer | IIO sysfs `/sys/bus/iio/devices/iio:deviceN/in_magn_{x,y,z}_raw` (BMM150) | Read at 5 Hz | `mag_enable`, `mag_off_x/y/z`, `mag_rot_deg`, `mag_flip_y`, `declination` |
 | Accelerometer | IIO sysfs `in_accel_{x,y,z}_raw` (BMI270) | Read at 5 Hz with the magnetometer, low-passed (about 0.6 s) | Used only for tilt compensation (`mag_tilt`, `accel_axes`). Without it the compass assumes the device is flat |

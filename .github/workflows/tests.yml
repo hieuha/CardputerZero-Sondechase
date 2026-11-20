@@ -5,7 +5,7 @@ on:
 jobs:
   core:
     # The core (no LVGL): parsers, geodesy, DSP, radio audio, tiles, and scan / listen / decode end to end
-    # through the fake librtlsdr.
+    # through the fake librtlsdr and libhackrf.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

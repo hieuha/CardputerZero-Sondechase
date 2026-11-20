@@ -20,7 +20,7 @@ Last updated: 2026-11-20 (version 0.7.0). Describes the conventions the code alr
 ## Language and build
 
 - C11 (`CMAKE_C_STANDARD 11`). No C++ and no compiler extensions beyond `_GNU_SOURCE` for POSIX APIs.
-- Warnings: `-Wall -Wextra` on `sc_core`, `test_core`, `sondechase` and `sc_render`. Keep new code free of warnings
+- Warnings: `-Wall -Wextra` on `sc_core`, `sondechase` and `sc_render`. Keep new code free of warnings
   under GCC 14. The core and the UI build without warnings (checked in `debian:trixie`, GCC 14.2).
 - Default build type is `Release` (set in `CMakeLists.txt`).
 - The core (`sc_core`, everything in `src/` except `main.c`, `ui*.c`, `keys.c`) must not include `lvgl.h`. That keeps
@@ -69,10 +69,11 @@ conf/           sondechase.conf, installed as /etc/sondechase.conf
 
 ## Public header
 
-- `src/sc.h` is the only header shared by the core modules and the tests. Every type, constant and function a
+- `src/sc.h` is the only header shared by the core modules and the tests (`src/sdr_priv.h` is private to the
+  receiver back ends `sdr.c` and `sdr_hackrf.c`). Every type, constant and function a
   module exposes is declared there with a short comment stating units and ranges (for example `/* m, haversine */`,
   `/* deg true, 0..360 */`).
-- `ui.h` is the UI interface for `main.c` and the tools. `ui_priv.h` is shared only by the UI files.
+- `ui.h` is the UI interface for `main.c`, `keys.c`, `tools/render.c` and the tests. `ui_priv.h` is shared only by the UI files.
 - Internal helpers are `static` in their `.c` file and are not declared in `sc.h`.
 
 ## Naming
@@ -136,9 +137,11 @@ conf/           sondechase.conf, installed as /etc/sondechase.conf
 Adding a key takes four edits, all in the same change:
 
 1. Add the field to `cfg_t` in `src/sc.h` with a unit comment.
-2. Set its default in `cfg_defaults` (`src/base.c`).
+2. Set its default in `cfg_defaults` (`src/base.c`), or leave it empty when empty means a built-in value (as
+   `rtlsdr_lib`, `hackrf_lib`, `hackrf_gain`, `data_dir`).
 3. Add an entry to the `E(key, type)` table in `src/base.c` (`l` long, `i` int, `d` double, `s` string).
-4. Document it in `docs/deployment-guide.md` and the sample `conf/sondechase.conf`.
+4. Document it in `docs/deployment-guide.md` and, unless it is a test or expert hook (`rtlsdr_lib`, `hackrf_lib`,
+   `decoder_feed_cmd`, `tile_fetch_cmd`), in the sample `conf/sondechase.conf`.
 
 Unknown keys are reported on stderr and ignored. `#` starts a comment at the start of a line or after a space.
 

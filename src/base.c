@@ -53,6 +53,7 @@ void cfg_defaults(cfg_t *c)
     c->zoom_max = 18;
     snprintf(c->font_dir, sizeof c->font_dir, "/usr/share/sondechase/fonts");
     c->sdr_check = 1;
+    snprintf(c->sdr, sizeof c->sdr, "auto");
     snprintf(c->led_path, sizeof c->led_path, "/sys/class/leds/ACT/brightness");
     c->tile_online = 1;
     snprintf(c->tile_url, sizeof c->tile_url, "https://tile.openstreetmap.org/{z}/{x}/{y}.png");
@@ -71,6 +72,7 @@ typedef struct {
 static const cfg_ent ents[] = {
     E(freq_hz, 'l'),      E(ppm, 'i'),          E(gain, 's'),         E(rtl_dev, 'i'),
     E(bias_tee, 'i'),     E(rtlsdr_lib, 's'),   E(scan_lo_hz, 'l'),   E(scan_hi_hz, 'l'),
+    E(sdr, 's'),          E(hackrf_lib, 's'),
     E(scan_step_hz, 'l'), E(gpsd_host, 's'),    E(gpsd_port, 'i'),    E(ground_alt, 'd'),
     E(burst_alt, 'd'),    E(descent_v0, 'd'),   E(cog_min_speed, 'd'), E(mag_enable, 'i'),
     E(mag_off_x, 'd'),    E(mag_off_y, 'd'),    E(mag_rot_deg, 'd'),  E(mag_flip_y, 'i'),

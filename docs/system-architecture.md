@@ -22,11 +22,13 @@ The core (`sc_core`) has no LVGL dependency and is unit-tested on any Linux host
 
 | File | Lines | Responsibility |
 |---|---|---|
-| `src/sc.h` | 543 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
+| `src/sc.h` | 547 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
 | `src/main.c` | 90 | Entry point, signal handling, main loop, LVGL setup, hold-Esc quit |
 | `src/app.c` | 615 | State machine (`ST_IDLE`, `ST_SCAN`, `ST_LISTEN`, `ST_DECODE`), receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
 | `src/base.c` | 346 | `sc_now`, config parser and defaults, line reader, child process groups, flat-JSON field extraction |
-| `src/sdr.c` | 273 | `librtlsdr` loaded with `dlopen`, reader thread, IQ ring, tuner range table |
+| `src/sdr.c` | 332 | Receiver front: IQ ring, `sdr_*` calls dispatched to a back end; RTL-SDR back end (`librtlsdr` loaded with `dlopen`, reader thread, tuner range table) |
+| `src/sdr_hackrf.c` | 297 | HackRF back end: `libhackrf` loaded with `dlopen`, int8 to u8 IQ, halving to reach rates under 2 MS/s, retune-safe transfers |
+| `src/sdr_priv.h` | 32 | Back-end interface (`sdr_ops_t`) shared by the two |
 | `src/dsp.c` | 215 | FFT, decoder front end (DDC: rotation, half-band decimation, droop FIR), wide 192 kHz stream |
 | `src/radio.c` | 174 | Audio demodulators for NFM, AM, USB, LSB, WFM |
 | `src/io.c` | 238 | gpsd client (TPV and SKY), USB SDR presence, spectrum cells and peaks |
@@ -53,7 +55,7 @@ The UI is one file per screen (see [code standards](./code-standards.md#file-siz
 
 ```mermaid
 flowchart LR
-    RTL["RTL-SDR (USB)"] --> SDR["sdr.c<br/>librtlsdr, reader thread, IQ ring"]
+    RTL["RTL-SDR or HackRF (USB)"] --> SDR["sdr.c / sdr_hackrf.c<br/>librtlsdr or libhackrf, IQ ring"]
     SDR -->|"scan: 2.048 MS/s"| SWEEP["app.c sweep<br/>dsp.c FFT, peak hold"]
     SDR -->|"listen / decode: 1.536 MS/s"| DDC["dsp.c DDC<br/>48 kHz cs16"]
     DDC -->|"stdin"| DEC["fsk_demod | rs41mod<br/>child process group"]
@@ -114,8 +116,9 @@ job restarts only the USB stream at the other rate.
 
 ### Receive and decode
 
-1. `sdr_open` loads `librtlsdr` (`rtlsdr_lib`, default `librtlsdr.so.0`), applies `ppm`, `gain`, `bias_tee`, and
-   starts the reader thread.
+1. `sdr_open` picks the back end (`sdr`; `auto` looks at USB with `sdr_present`), which loads its library
+   (`librtlsdr.so.0` or `libhackrf.so.0`, overridable with `rtlsdr_lib` / `hackrf_lib`), applies `ppm`, `gain`,
+   `bias_tee`, and starts streaming u8 IQ into the ring. See [receiver back ends](#receiver-back-ends).
 2. `rx_poll` (in `app.c`) drains the ring in 64 KiB reads. For each read it:
    - runs `ddc_process_wide` (see [Algorithms](#algorithms)) and writes 48 kHz cs16 pairs to the decoder pipe with
      `proc_feed`. Writes the child cannot accept are dropped and counted (`wdrop`); no sample alignment is lost;
@@ -171,6 +174,7 @@ and decimates to 16 kHz. Output goes to `audio_radio_push`, which mixes it with 
 | Peripheral | Interface | Access | Notes |
 |---|---|---|---|
 | RTL-SDR (RTL2832U) | USB, `librtlsdr` | `dlopen` at run time; `rtl_dev` index | Matches VID:PID `0bda:2838` or `0bda:2832` for the presence check. Tested: RTL-SDR Blog V4 (R828D tuner) |
+| HackRF One / rad1o | USB, `libhackrf` | `dlopen` at run time; `rtl_dev` index | `1d50:6089` or `1d50:cc15`. 1 MHz to 6 GHz. Tried with a HackRF One on the device (libhackrf 2024.02.1): scan and WFM audio clear, about 20 % of one core while decoding and playing WFM; RS41 decoding not yet tried |
 | GPS | gpsd, TCP `127.0.0.1:2947` (`gpsd_host`, `gpsd_port`) | Non-blocking socket, JSON `TPV` and `SKY` | `gpsd_port = 0` disables it. A USB GPS can be plugged in while the app runs; gpsd picks it up |
 | Magnetometer | IIO sysfs `/sys/bus/iio/devices/iio:deviceN/in_magn_{x,y,z}_raw` (BMM150) | Read at 5 Hz | `mag_enable`, `mag_off_x/y/z`, `mag_rot_deg`, `mag_flip_y`, `declination` |
 | Accelerometer | IIO sysfs `in_accel_{x,y,z}_raw` (BMI270) | Read at 5 Hz with the magnetometer, low-passed (about 0.6 s) | Used only for tilt compensation (`mag_tilt`, `accel_axes`). Without it the compass assumes the device is flat |
@@ -270,6 +274,24 @@ Ground distance `d` from the device to the sonde (or to its last fix when the si
 
 On the Track and Map screens each valid frame plays a 30 ms 1500 Hz tick (unless muted with `M`) and blinks the ACT
 LED for 80 ms. The LED returns to its resting state; the tick is not played when muted, the LED still blinks.
+
+### Receiver back ends
+
+`sdr_t` is the same for every receiver: a lock-free ring of u8 IQ pairs (the rtl-sdr format, 127.5 is zero) that the
+main loop drains, plus a back end (`sdr_ops_t` in `sdr_priv.h`: open, set_rate, tune, start, stop, alive, close,
+range). The app, DSP and decoders do not know which one runs. A new receiver is one more `sdr_ops_t`.
+
+- RTL-SDR (`sdr.c`): a reader thread in `rtlsdr_read_async` with 16 KiB transfers, so little pre-retune data is in
+  flight; the sweep skips one transfer after each retune.
+- HackRF (`sdr_hackrf.c`): libhackrf runs its own thread and delivers signed 8-bit IQ in 256 KiB transfers (about
+  40 ms each). They are converted to u8 on the way into the ring. The HackRF does not sample under 2 MS/s, so the
+  decoder's 1.536 MS/s runs at 3.072 MS/s and is halved with a 7-tap half-band filter (−1 0 9 16 9 0 −1)/32; the
+  analog baseband filter is set to the step at or under 3/4 of the rate (1.75 MHz). A transfer is dropped when it
+  began before the last retune (now − its length, less 1/8 of it as margin for a late callback); the check and
+  the write share a lock with the retune's flush, so none lands after it. Without that the sweep showed the
+  carrier one step too high as well. `ppm` scales both the tuned frequency and the sample rate (one clock). The
+HackRF's DC spike at the tuning centre is a little wider than the RTL-SDR's: on the device a small spike shows just
+outside the 50 kHz zone, outside the channel being heard.
 
 ### Compass (`compass.c`)
 

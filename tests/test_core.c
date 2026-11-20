@@ -2,6 +2,7 @@
 #include "../src/sc.h"
 #include "../src/ui.h"
 #include <dirent.h>
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <linux/input.h>
 #include <math.h>
@@ -1159,9 +1160,12 @@ static void t_track(void)
                "echo 1d6b > /tmp/sc_usb/usb1/idVendor && echo 0002 > /tmp/sc_usb/usb1/idProduct && "
                "echo 1a40 > /tmp/sc_usb/1-1/idVendor && echo 0101 > /tmp/sc_usb/1-1/idProduct") == 0) {
         CHECK(sdr_present("/tmp/sc_usb") == 0);                 /* root hub and a USB hub only */
+        CHECK(system("mkdir -p /tmp/sc_usb/1-1.3 && echo 1d50 > /tmp/sc_usb/1-1.3/idVendor && "
+                     "echo 6089 > /tmp/sc_usb/1-1.3/idProduct") == 0);
+        CHECK(sdr_present("/tmp/sc_usb") == SDR_HACKRF);        /* HackRF One */
         CHECK(system("mkdir -p /tmp/sc_usb/1-1.2 && echo 0bda > /tmp/sc_usb/1-1.2/idVendor && "
                      "echo 2838 > /tmp/sc_usb/1-1.2/idProduct") == 0);
-        CHECK(sdr_present("/tmp/sc_usb") == 1);                 /* RTL-SDR Blog v4 */
+        CHECK(sdr_present("/tmp/sc_usb") == SDR_RTLSDR);        /* RTL-SDR Blog v4 too: it is used first */
     }
     CHECK(sdr_present("/nonexistent/usb") == 0);
 
@@ -1277,6 +1281,101 @@ static void t_tiles(void)
     }
 }
 
+/* The HackRF back end through the libhackrf stand-in: the decoder's 1.536 MS/s runs at 3.072 MS/s and is halved,
+ * the sweep at its own 2.048 MS/s; the carrier is heard, found by Scan at the right frequency, and decoded. */
+static void t_hackrf(const char *fake, const char *fakelib)
+{
+    static app_t a;
+    void *lib = dlopen(fakelib, RTLD_NOW | RTLD_LOCAL); /* the same copy the receiver loads: its getters */
+    double (*rate)(void) = lib ? (double (*)(void))dlsym(lib, "fake_hackrf_rate") : NULL;
+    uint32_t (*bw)(void) = lib ? (uint32_t (*)(void))dlsym(lib, "fake_hackrf_bw") : NULL;
+    uint32_t (*lna)(void) = lib ? (uint32_t (*)(void))dlsym(lib, "fake_hackrf_lna") : NULL;
+    uint32_t (*vga)(void) = lib ? (uint32_t (*)(void))dlsym(lib, "fake_hackrf_vga") : NULL;
+    int (*amp)(void) = lib ? (int (*)(void))dlsym(lib, "fake_hackrf_amp") : NULL;
+    int (*ant)(void) = lib ? (int (*)(void))dlsym(lib, "fake_hackrf_antenna") : NULL;
+    long lo, hi;
+    int i;
+    CHECK(rate && bw && lna && vga && amp && ant);
+    if (!rate || !bw || !lna || !vga || !amp || !ant) return;
+    app_init(&a, NULL);
+    a.cfg.gpsd_port = 0;
+    a.cfg.mag_enable = 0;
+    a.cfg.audio_enable = 0;
+    a.cfg.sdr_check = 0;
+    a.sdr_ok = 1;
+    snprintf(a.cfg.sdr, sizeof a.cfg.sdr, "hackrf");
+    snprintf(a.cfg.hackrf_lib, sizeof a.cfg.hackrf_lib, "%s", fakelib);
+    snprintf(a.cfg.rtlsdr_lib, sizeof a.cfg.rtlsdr_lib, "/nonexistent/librtlsdr.so.0"); /* never the RTL-SDR */
+    snprintf(a.cfg.data_dir, sizeof a.cfg.data_dir, "/tmp/sc_data");
+    a.cfg.bias_tee = 1;
+
+    app_listen(&a, 403000000L);
+    CHECK(a.state == ST_LISTEN && a.rx != NULL && a.dsdr == a.rx);
+    if (!a.rx) {
+        app_free(&a);
+        return;
+    }
+    CHECK(!strcmp(sdr_range(a.rx, &lo, &hi), "HackRF") && lo == 1000000L && hi == 6000000000L);
+    NEAR(rate(), 2.0 * DDC_RATE, 1e-6);
+    CHECK(bw() == 1750000);
+    CHECK(lna() == 32 && vga() == 24 && amp() == 0 && ant() == 1); /* no gain set: LNA 32 + VGA 24 */
+    a.radio_audio = 1;
+    for (i = 0; i < 100 && a.audio.rhead - a.audio.rtail < 4000; i++) {
+        app_poll(&a);
+        usleep(10000);
+    }
+    CHECK(a.audio.rhead - a.audio.rtail > 4000); /* the halved stream carries the carrier's audio */
+    CHECK(sdr_alive(a.rx) && sdr_dropped(a.rx) == 0);
+    a.radio_audio = 0;
+    app_poll(&a);
+
+    app_scan(&a); /* the open HackRF switches job and rate */
+    CHECK(a.state == ST_SCAN && a.sw.sdr == a.rx);
+    for (i = 0; i < 800 && a.sw.passes < 4; i++) {
+        app_poll(&a);
+        usleep(10000);
+    }
+    NEAR(rate(), SWEEP_RATE, 1e-6); /* at or above 2 MS/s: as asked, not halved */
+    CHECK(a.state == ST_SCAN && a.sw.passes >= 4);
+    { /* a transfer from before a retune would smear the carrier over other steps: one peak, in its place */
+        peak_t pk[MAX_PEAKS];
+        CHECK(spec_peaks(&a.spec, 8.0, pk, MAX_PEAKS) == 1 && pk[0].f_hz == 403000000);
+    }
+    snprintf(a.cfg.decoder_feed_cmd, sizeof a.cfg.decoder_feed_cmd, "sh %s {f_hz}", fake);
+    app_tune(&a, 403000000L);
+    for (i = 0; i < 300 && a.frames < 2; i++) {
+        app_poll(&a);
+        usleep(10000);
+    }
+    CHECK(a.state == ST_DECODE && a.frames >= 2 && a.dsdr == a.rx);
+    app_free(&a);
+
+    /* gain as a total: LNA first, then VGA, then the amplifier */
+    {
+        static const struct { const char *g; uint32_t lna, vga; int amp; } t[] = {
+            {"0", 0, 0, 0}, {"20", 16, 4, 0}, {"50", 40, 10, 0}, {"102", 40, 62, 0}, {"116", 40, 62, 1},
+        };
+        char err[96];
+        cfg_t c;
+        size_t k;
+        cfg_defaults(&c);
+        snprintf(c.sdr, sizeof c.sdr, "hackrf");
+        snprintf(c.hackrf_lib, sizeof c.hackrf_lib, "%s", fakelib);
+        for (k = 0; k < sizeof t / sizeof t[0]; k++) {
+            sdr_t *s;
+            snprintf(c.gain, sizeof c.gain, "%s", t[k].g);
+            s = sdr_open(&c, SWEEP_RATE, err, sizeof err);
+            CHECK(s != NULL && lna() == t[k].lna && vga() == t[k].vga && amp() == t[k].amp && ant() == 0);
+            sdr_close(s);
+        }
+        c.rtl_dev = 1; /* the stand-in has one HackRF */
+        CHECK(sdr_open(&c, SWEEP_RATE, err, sizeof err) == NULL && !strcmp(err, "no HackRF device"));
+        snprintf(c.hackrf_lib, sizeof c.hackrf_lib, "/nonexistent/libhackrf.so.0");
+        CHECK(sdr_open(&c, SWEEP_RATE, err, sizeof err) == NULL && !strcmp(err, "libhackrf0 not installed"));
+    }
+    dlclose(lib);
+}
+
 int main(int argc, char **argv)
 {
     t_geo();
@@ -1300,6 +1399,7 @@ int main(int argc, char **argv)
     t_track();
     t_tiles();
     t_app(argc > 1 ? argv[1] : "tests/fake_decoder.sh", argc > 2 ? argv[2] : "./libfake_rtlsdr.so");
+    t_hackrf(argc > 1 ? argv[1] : "tests/fake_decoder.sh", argc > 3 ? argv[3] : "./libfake_hackrf.so");
     printf("%d checks, %d failed\n", checks, fails);
     return fails ? 1 : 0;
 }

@@ -37,7 +37,9 @@ src/
   main.c        entry point and main loop
   app.c         application state, receiver, decoder pipeline, frames, logs
   base.c        config, line reader, child processes, JSON fields
-  sdr.c         librtlsdr loaded at run time, IQ ring
+  sdr.c         IQ ring, receiver calls, RTL-SDR back end (librtlsdr loaded at run time)
+  sdr_hackrf.c  HackRF back end (libhackrf loaded at run time)
+  sdr_priv.h    back-end interface, sdr_ops_t
   dsp.c         FFT and decoder front end
   radio.c       audio demodulators
   io.c          gpsd, USB presence, spectrum cells
@@ -54,7 +56,7 @@ src/
   ui_graph.c    Graph screens (Skew-T, flight)
   ui_radio.c    Radio screen
   ui_info.c     Info screens, compass calibration
-tests/          test_core.c, fake_rtlsdr.c, fake_decoder.sh
+tests/          test_core.c, fake_rtlsdr.c, fake_hackrf.c, fake_decoder.sh
 tools/          render.c, prep_tiles.py, make_icon.py, validate_app_builder.py
 cmake/          package layout, decoders, toolchain (from the CardputerZero Template, MIT)
 conf/           sondechase.conf, installed as /etc/sondechase.conf
@@ -147,7 +149,7 @@ Unknown keys are reported on stderr and ignored. `#` starts a comment at the sta
     rounding justifies (for example `NEAR(geo_dist(0, 0, 1, 0), 111195.1, 1.0)`).
 - Add tests in the matching `t_` function. A new module gets its own `t_` function.
 - Test the behaviour with the fake receiver and decoder where the path crosses processes: `tests/fake_rtlsdr.c`
-  (a 403.000 MHz carrier wherever it is tuned) and `tests/fake_decoder.sh` (prints rs41mod-style JSON). Do not add
+  and `tests/fake_hackrf.c` (a 403.000 MHz carrier wherever they are tuned) and `tests/fake_decoder.sh` (prints rs41mod-style JSON). Do not add
   mocks that change production behaviour.
 - Test names describe the behaviour (`CHECK(gps_sky(&g, 5.0))`), not the plan or the ticket.
 - Verify with `ctest --test-dir build --output-on-failure` after a change in the core. Run the full package build

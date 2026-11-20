@@ -17,13 +17,13 @@ option(SC_BUILD_UI "Build the LVGL application (fetches LVGL v9.5.0)" ON)
 option(SC_SIM "Desktop build: SDL2 window instead of /dev/fb0 + evdev" OFF)
 
 # Core: no LVGL dependency, unit-tested on any Linux host.
-add_library(sc_core STATIC src/base.c src/geo.c src/io.c src/compass.c src/track.c src/app.c src/demo.c src/tiles.c src/sdr.c src/dsp.c src/radio.c)
+add_library(sc_core STATIC src/base.c src/geo.c src/io.c src/compass.c src/track.c src/app.c src/demo.c src/tiles.c src/sdr.c src/sdr_hackrf.c src/dsp.c src/radio.c)
 target_include_directories(sc_core PUBLIC src)
 target_compile_definitions(sc_core PUBLIC SC_VERSION="${PROJECT_VERSION}"
   SC_DECODER_DIR="/usr/lib/${PROJECT_NAME}") # where the package installs fsk_demod and rs41mod
 target_compile_options(sc_core PRIVATE -Wall -Wextra)
 find_package(Threads REQUIRED)
-target_link_libraries(sc_core PUBLIC m Threads::Threads ${CMAKE_DL_LIBS}) # sdr.c: USB thread, dlopen(librtlsdr)
+target_link_libraries(sc_core PUBLIC m Threads::Threads ${CMAKE_DL_LIBS}) # sdr*.c: USB thread, dlopen(librtlsdr, libhackrf)
 
 enable_testing()
 add_executable(test_core tests/test_core.c src/keys.c) # keys.c: evdev only, no LVGL
@@ -31,7 +31,11 @@ target_link_libraries(test_core PRIVATE sc_core)
 # librtlsdr stand-in loaded by the tests through cfg rtlsdr_lib (never installed)
 add_library(fake_rtlsdr SHARED tests/fake_rtlsdr.c)
 target_link_libraries(fake_rtlsdr PRIVATE m)
-add_test(NAME core COMMAND test_core ${CMAKE_SOURCE_DIR}/tests/fake_decoder.sh $<TARGET_FILE:fake_rtlsdr>)
+# libhackrf stand-in, through cfg hackrf_lib
+add_library(fake_hackrf SHARED tests/fake_hackrf.c)
+target_link_libraries(fake_hackrf PRIVATE m Threads::Threads)
+add_test(NAME core COMMAND test_core ${CMAKE_SOURCE_DIR}/tests/fake_decoder.sh $<TARGET_FILE:fake_rtlsdr>
+         $<TARGET_FILE:fake_hackrf>)
 
 option(SC_RENDER "Build tools/render: headless screenshots of every screen (demo data)" OFF)
 

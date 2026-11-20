@@ -89,9 +89,9 @@ static void p_nosdr(void)
     ln(0, 15, 320, 15, C_L, 1);
     stripes_col(16, C_RD);
     txt(10, 28, 300, F_TTL, C_RD, AL_L, "No SDR device found");
-    txt(10, 60, 300, F_M, C_TX, AL_L, "An RTL-SDR on USB is required to receive.");
+    txt(10, 60, 300, F_M, C_TX, AL_L, "An RTL-SDR or a HackRF on USB is required.");
     txt(10, 82, 12, F_M, C_RD, AL_L, "1");
-    txt(24, 82, 290, F_M, C_TX, AL_L, "Plug the RTL-SDR into a USB port.");
+    txt(24, 82, 290, F_M, C_TX, AL_L, "Plug the receiver into a USB port.");
     txt(10, 98, 12, F_M, C_RD, AL_L, "2");
     txt(24, 98, 290, F_M, C_TX, AL_L, "Set the Host / Slave switch (left side) to Host.");
     txt(10, 114, 12, F_M, C_RD, AL_L, "3");

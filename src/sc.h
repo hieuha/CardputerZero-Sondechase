@@ -13,11 +13,13 @@ double sc_now(void); /* CLOCK_MONOTONIC, seconds */
 
 typedef struct {
     long freq_hz;            /* start-up frequency, 0 = none */
-    int ppm;                 /* RTL-SDR frequency correction */
-    char gain[12];           /* "" = tuner AGC, else dB value e.g. "38.6" */
-    int rtl_dev;             /* rtl-sdr device index */
-    int bias_tee;            /* 1 = power an LNA through the bias-T */
+    char sdr[8];             /* receiver: "auto" (whichever is on USB, RTL-SDR first), "rtlsdr" or "hackrf" */
+    int ppm;                 /* receiver frequency correction */
+    char gain[12];           /* "" = tuner AGC (HackRF: LNA 32 + VGA 24), else dB value e.g. "38.6" */
+    int rtl_dev;             /* receiver index among those of its kind */
+    int bias_tee;            /* 1 = power an LNA through the bias-T (HackRF: antenna port power) */
     char rtlsdr_lib[256];    /* librtlsdr to dlopen; "" = librtlsdr.so.0 (tests point it at a fake) */
+    char hackrf_lib[256];    /* libhackrf to dlopen; "" = libhackrf.so.0 */
     char decoder_feed_cmd[400]; /* reads 48 kHz cs16 IQ on stdin, prints rs41mod JSON */
     long scan_lo_hz, scan_hi_hz, scan_step_hz;
     char gpsd_host[64];
@@ -46,7 +48,7 @@ typedef struct {
     char tile_dir[160];      /* preloaded map tiles: <tile_dir>/<z>/<x>/<y>.png */
     int zoom_min, zoom_max;  /* zoom levels present in tile_dir */
     char font_dir[160];      /* Orbitron-Bold.ttf, Rajdhani-SemiBold.ttf */
-    int sdr_check;           /* 1 = require an RTL2832U on USB (0bda:2838 / 0bda:2832) */
+    int sdr_check;           /* 1 = require an RTL2832U (0bda:2838 / 0bda:2832) or a HackRF (1d50:6089 / cc15) on USB */
     int tile_online;         /* 1 = download missing map tiles over the network while the map shows them */
     char tile_url[200];      /* {z} {x} {y} template */
     char tile_user_agent[120];
@@ -207,7 +209,9 @@ int magcal_apply(const magcal_t *m, cfg_t *c); /* offsets, axes, rotation that m
 int magcal_save(const cfg_t *c, const char *path); /* 0 ok */
 
 /* 1 when an RTL2832U receiver is listed under <usb_sysfs> (normally /sys/bus/usb/devices). */
-int sdr_present(const char *usb_sysfs);
+#define SDR_RTLSDR 1
+#define SDR_HACKRF 2
+int sdr_present(const char *usb_sysfs); /* 0, SDR_RTLSDR or SDR_HACKRF (an RTL-SDR wins when both are there) */
 
 /* ---------------- DSP on u8 IQ from the RTL-SDR ---------------- */
 typedef struct {
@@ -275,7 +279,7 @@ const char *radio_mode_name(int mode);
 long radio_default_bw(int mode);
 long radio_next_bw(int mode, long bw_hz); /* the mode's next channel width, wrapping */
 
-/* ---------------- in-process RTL-SDR (librtlsdr loaded at run time) ---------------- */
+/* ---------------- in-process receiver (librtlsdr or libhackrf loaded at run time) ---------------- */
 /* Lock-free single-producer (USB thread) / single-consumer (main loop) ring of u8 IQ bytes.
  * When full, new data is dropped and counted: the producer never moves the consumer's tail. */
 typedef struct {
@@ -293,7 +297,7 @@ void iqring_flush(iqring_t *r); /* consumer: discard everything buffered (after 
 
 typedef struct sdr sdr_t; /* opaque */
 #define SDR_USB_BUF_BYTES 16384u /* one USB transfer; callers skip one of these after a retune */
-/* Open cfg->rtl_dev at `rate` S/s with cfg ppm/gain/bias_tee and start streaming.
+/* Open the cfg sdr receiver number cfg->rtl_dev at `rate` S/s with cfg ppm/gain/bias_tee and start streaming.
  * NULL on failure, with the reason in err (librtlsdr0 missing, no device, busy...). */
 sdr_t *sdr_open(const cfg_t *c, long rate, char *err, size_t n);
 void sdr_pause(sdr_t *s);                                /* stop streaming, keep the device open */
@@ -304,8 +308,8 @@ void sdr_flush(sdr_t *s);
 int sdr_alive(const sdr_t *s);                 /* 0 once the stream ended (dongle unplugged) */
 unsigned long sdr_dropped(const sdr_t *s);     /* IQ bytes lost to a full ring */
 void sdr_close(sdr_t *s);
-/* Tuning range of the dongle's tuner; its name is returned ("RTL-SDR" with the R820T's range when s is NULL or
- * the tuner unknown). */
+/* Tuning range of the receiver ("HackRF", or the RTL-SDR's tuner); its name is returned ("RTL-SDR" with the
+ * R820T's range when s is NULL or the tuner unknown). */
 const char *sdr_range(const sdr_t *s, long *lo_hz, long *hi_hz);
 
 /* ---------------- spectrum scan ---------------- */

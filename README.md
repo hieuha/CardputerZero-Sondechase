@@ -13,7 +13,7 @@
 > **New here? See the [keyboard cheatsheet](docs/keyboard-cheatsheet.md)** for every key on every screen.
 
 RS41 radiosonde receiver, decoder and chase aid for the M5Stack CardputerZero (Raspberry Pi CM0, 320×170 LCD,
-46-key keyboard), with an RTL-SDR and an optional GPS.
+46-key keyboard), with an RTL-SDR (or a HackRF) and an optional GPS.
 
 Version 0.6.0. Tested on a real CardputerZero with an RTL-SDR Blog V4: scanning and decoding were checked with a live
 RS41 (Y0532351). GPS chasing in the field has not been tried yet; see [Known limitations](#known-limitations).
@@ -51,6 +51,7 @@ On the device (framebuffer captures, 2×):
 |---|---|
 | M5Stack CardputerZero | Raspberry Pi CM0, Debian 13 arm64, 320×170 LCD, 46-key keyboard, PipeWire audio |
 | RTL-SDR | Tested: RTL-SDR Blog V4 (R828D tuner). Other RTL2832U dongles are not tested |
+| HackRF (instead) | HackRF One or rad1o, picked up from USB; the package installs `libhackrf0`. Tried with a HackRF One: scan and WFM audio; RS41 decoding not yet |
 | GPS (optional) | Any receiver that gpsd reads, for example a USB GPS. Needed for distance, bearing, landing and the beeper |
 | Magnetometer (optional) | IIO magnetometer on the board, used for heading when there is no GPS course |
 | ACT LED | The red LED blinks on each frame on the Track and Map screens |
@@ -67,7 +68,7 @@ sudo apt install --no-install-recommends ./sondechase_0.6.0-rev1_arm64.deb
 ```
 
 Open **SondeChase** from APPLaunch. The package includes the RS41 decoders (`fsk_demod` and `rs41mod`, from
-`radiosonde_auto_rx`). It needs `librtlsdr0` and `curl`; `gpsd` and `pulseaudio-utils` are recommended.
+`radiosonde_auto_rx`). It needs `librtlsdr0`, `libhackrf0` and `curl`; `gpsd` and `pulseaudio-utils` are recommended.
 
 To build the package yourself (on the device or cross-compiled), see [deployment guide](docs/deployment-guide.md).
 
@@ -111,7 +112,8 @@ The burst alert overlays every screen: `Enter` opens Map, a short `Esc` dismisse
 
 ### Without the receiver or GPS
 
-- **No SDR on USB**: a "No SDR device found" screen. The app checks USB every 2 s and resumes when the dongle appears.
+- **No SDR on USB**: a "No SDR device found" screen. The app checks USB every 2 s and resumes when an RTL-SDR or a
+  HackRF appears.
   Disable the check with `sdr_check = 0`.
 - **No GPS fix**: decoding continues. The top bar shows `GPS 0/3` in red while the receiver is plugged in without a
   fix (satellites used / in view), `GPS lost` after a fix, or `No GPS`. With a fix it shows `3D 9/12`. Once the device
@@ -127,7 +129,8 @@ after a space. Every key is optional.
 ```ini
 freq_hz = 403000000      # decode at start-up (unset: open on the Radio screen)
 gain = 38.6              # tuner gain in dB (unset: tuner AGC)
-sdr_check = 1            # require the RTL-SDR on USB
+sdr = auto               # receiver: auto (from USB), rtlsdr or hackrf
+sdr_check = 1            # require a receiver on USB
 gpsd_port = 2947         # gpsd (0 disables GPS)
 burst_alt = 30000        # assumed burst altitude while ascending, m
 tile_online = 1          # download the map tiles that are on screen
@@ -184,6 +187,8 @@ a dongle. Details and the device measurements: [deployment guide](docs/deploymen
 ## Known limitations
 
 - RS41 only. Other sonde types need their own decoder.
+- HackRF: it has no AGC, so the default gain is fixed (LNA 32 + VGA 24 dB; `gain` sets the total). At 400 MHz it is
+  less sensitive than an RTL-SDR and draws more power from the battery.
 - Next to a very strong sonde the overview can show weaker spurs; tuning to them shows nothing to decode.
 - The compass must be calibrated once (Info, `K`: turn a full circle, lean four ways, then point north). After that
   it is tilt-compensated with the accelerometer, so the device need not be held flat (not within about 15° of

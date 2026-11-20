@@ -117,11 +117,12 @@ int sdr_present(const char *usb_sysfs)
     struct dirent *e;
     int found = 0;
     if (!d) return 0;
-    while (!found && (e = readdir(d)) != NULL) {
+    while (found != SDR_RTLSDR && (e = readdir(d)) != NULL) {
         unsigned vid, pid;
         if (e->d_name[0] == '.') continue;
-        if (read_hex(usb_sysfs, e->d_name, "idVendor", &vid) && read_hex(usb_sysfs, e->d_name, "idProduct", &pid))
-            found = vid == 0x0bda && (pid == 0x2838 || pid == 0x2832);
+        if (!read_hex(usb_sysfs, e->d_name, "idVendor", &vid) || !read_hex(usb_sysfs, e->d_name, "idProduct", &pid)) continue;
+        if (vid == 0x0bda && (pid == 0x2838 || pid == 0x2832)) found = SDR_RTLSDR;
+        else if (vid == 0x1d50 && (pid == 0x6089 || pid == 0xcc15)) found = SDR_HACKRF; /* HackRF One, rad1o */
     }
     closedir(d);
     return found;

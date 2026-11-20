@@ -105,9 +105,9 @@ Installed files:
 | `/usr/lib/sondechase/fsk_demod`, `/usr/lib/sondechase/rs41mod` | Decoders from `radiosonde_auto_rx` v1.9.0 |
 | `/usr/share/doc/sondechase/` | README, font licences, `LICENSE-radiosonde_auto_rx` |
 
-Dependencies: `Depends: libc6, curl, librtlsdr0 (>= 2.0.2)`. librtlsdr is loaded at run time, not linked.
-`Recommends: gpsd, pulseaudio-utils, coreutils`. The package installs no systemd unit: the app is started from
-APPLaunch and runs as the launcher's user, which needs access to the LCD framebuffer (`/dev/fb_lcd`, `fb0` on the current image), `/dev/input/event*`, the RTL-SDR and
+Dependencies: `Depends: libc6, curl, librtlsdr0 (>= 2.0.2), libhackrf0`. librtlsdr and libhackrf are loaded at run
+time, not linked. `Recommends: gpsd, pulseaudio-utils, coreutils`. The package installs no systemd unit: the app is started from
+APPLaunch and runs as the launcher's user, which needs access to the LCD framebuffer (`/dev/fb_lcd`, `fb0` on the current image), `/dev/input/event*`, the RTL-SDR or HackRF and
 PipeWire (groups `video`, `input`, `plugdev`, `audio`).
 
 Run from a terminal with a custom config:
@@ -132,12 +132,14 @@ Syntax rules, from `src/base.c`:
 | Key | Default | Meaning |
 |---|---|---|
 | `freq_hz` | unset | Decode this frequency at start-up. Unset: open on the Radio screen, listening mid-band |
-| `ppm` | `0` | Frequency correction for the RTL-SDR, ppm |
-| `gain` | unset (tuner AGC) | Tuner gain in dB, for example `38.6` |
-| `rtl_dev` | `0` | RTL-SDR device index |
-| `bias_tee` | `0` | `1` powers an LNA through the RTL-SDR v4 bias-T |
+| `sdr` | `auto` | Receiver: `auto` (whichever is on USB, the RTL-SDR first when both are), `rtlsdr` or `hackrf` |
+| `ppm` | `0` | Frequency correction for the receiver, ppm |
+| `gain` | unset (tuner AGC) | Tuner gain in dB, for example `38.6`. HackRF: the total, filled into the LNA (0–40 dB, 8 dB steps), then the VGA (0–62 dB, 2 dB steps), then the 14 dB amplifier; unset gives LNA 32 + VGA 24 (it has no AGC) |
+| `rtl_dev` | `0` | Receiver index among those of its kind |
+| `bias_tee` | `0` | `1` powers an LNA through the RTL-SDR v4 bias-T, or the HackRF's antenna port power |
 | `rtlsdr_lib` | `librtlsdr.so.0` | librtlsdr file to load with `dlopen` |
-| `sdr_check` | `1` | `1` requires an RTL2832U on USB (VID:PID `0bda:2838` or `0bda:2832`) |
+| `hackrf_lib` | `libhackrf.so.0` | libhackrf file to load with `dlopen` |
+| `sdr_check` | `1` | `1` requires a receiver on USB: an RTL2832U (VID:PID `0bda:2838` or `0bda:2832`) or a HackRF One or rad1o (`1d50:6089`, `1d50:cc15`) |
 | `scan_lo_hz`, `scan_hi_hz` | `400000000`, `406000000` | Scan band |
 | `scan_step_hz` | `5000` | Step of the scan spectrum cells |
 | `decoder_feed_cmd` | `fsk_demod … \| rs41mod …` | Decoder pipeline; `{f_hz}` is replaced with the tuned frequency |
@@ -276,8 +278,10 @@ the device, drawing speed with many map tiles. See [roadmap](./project-roadmap.m
 
 | Symptom | Cause and fix |
 |---|---|
-| "No SDR device found" | No RTL2832U on USB, or it is another model. Check `lsusb` for `0bda:2838` or `0bda:2832`. Set `sdr_check = 0` only to test without a dongle |
+| "No SDR device found" | No RTL2832U or HackRF on USB, or it is another model. Check `lsusb` for `0bda:2838`, `0bda:2832` or `1d50:6089`. Set `sdr_check = 0` only to test without a dongle |
 | Status says the device is busy or librtlsdr is missing | Another program holds the dongle (for example `rtl_fm`), or `librtlsdr0` is not installed (`apt install librtlsdr0`) |
+| Status says `libhackrf0 not installed` | A HackRF is plugged in but its library is missing, which the package normally pulls in. Only a binary copied by hand gets there: `sudo apt install libhackrf0` |
+| HackRF: weak or no signal | It has no AGC: raise `gain` (for example `70`, which turns on more VGA) or set `bias_tee = 1` for a powered LNA. Its 8-bit ADC and unfiltered front end make it less sensitive at 400 MHz than an RTL-SDR |
 | `GPS 0/3` in red on the top bar | The receiver is plugged in and talking, but has no fix yet. Decoding is unaffected |
 | `No GPS` | gpsd is not running on `gpsd_host:gpsd_port`, or no receiver is attached. Install `gpsd` and start it with the receiver |
 | Map shows `Map server blocked by DNS` | A DNS filter answers `tile.openstreetmap.org` with a loopback address. Allow the domain in the filter |

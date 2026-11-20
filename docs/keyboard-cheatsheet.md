@@ -108,4 +108,4 @@ Shown over every screen when the balloon bursts.
 
 ## No SDR screen
 
-Shown while no RTL-SDR is plugged in. Only holding `Esc` (quit) works; the app resumes by itself once the dongle appears.
+Shown while no RTL-SDR or HackRF is plugged in. Only holding `Esc` (quit) works; the app resumes by itself once the dongle appears.

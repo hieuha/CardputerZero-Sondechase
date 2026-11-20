@@ -39,7 +39,8 @@ Graph screens show its track and profile.
 ## Scope
 
 In scope (current):
-- RS41 reception and decoding with the in-process RTL-SDR receiver (librtlsdr, loaded at run time).
+- RS41 reception and decoding with the in-process receiver: an RTL-SDR (librtlsdr) or a HackRF (libhackrf), the
+  library loaded at run time.
 - Spectrum scan of the band, tuning, listening with NFM, AM, USB, LSB and broadcast FM audio.
 - Position display, compass, distance and elevation, predicted landing, burst alert, proximity beeper, frame tick and
   LED blink.
@@ -62,7 +63,7 @@ Out of scope (decided or not planned):
 
 | ID | Requirement | Where |
 |---|---|---|
-| FR-01 | Open the RTL-SDR (VID:PID `0bda:2838` or `0bda:2832`) and report a missing dongle on a blocking screen, rechecked every 2 s | `app.c`, `io.c`, `ui.c` |
+| FR-01 | Open the RTL-SDR (VID:PID `0bda:2838` or `0bda:2832`) or HackRF (`1d50:6089`, `1d50:cc15`) and report a missing receiver on a blocking screen, rechecked every 2 s | `app.c`, `io.c`, `sdr.c`, `sdr_hackrf.c`, `ui.c` |
 | FR-02 | Sweep 400–406 MHz continuously with peak hold; mark peaks at least 10 dB above the floor | `app.c`, `io.c`, `ui_radio.c` |
 | FR-03 | Scan (`S`): after two passes, try the strongest untried peak with the decoder for 10 s; stop on an RS41 frame; skip a failed peak for 2 min | `app.c` (`app_hunt`) |
 | FR-04 | Tune with arrow keys in 10 kHz (Left/Right) and 100 kHz (Up/Down) steps; hold to keep tuning | `keys.c`, `ui.c` |
@@ -90,7 +91,7 @@ Out of scope (decided or not planned):
 | NFR-01 | Runs on the CardputerZero (4 cores, arm64) within its CPU budget while decoding | 15.6 % of one core for the whole app while decoding (device measurement, [deployment guide](./deployment-guide.md#device-checks)) |
 | NFR-02 | No dropped samples between the dongle and the decoder under normal load | 0 dropped in the IQ ring and the decoder pipe (device measurement) |
 | NFR-03 | Core logic is testable without hardware | `test_core`: 4363 checks, 0 failed |
-| NFR-04 | Package installs with no build tools, only `libc6`, `curl`, `librtlsdr0 (>= 2.0.2)` | `cmake/cm0-package.cmake` |
+| NFR-04 | Package installs with no build tools, only `libc6`, `curl`, `librtlsdr0 (>= 2.0.2)`, `libhackrf0` | `cmake/cm0-package.cmake` |
 | NFR-05 | Works offline for everything except new map tiles | Cache and preloaded pack are used first |
 | NFR-06 | Does not stop on a missing optional peripheral (GPS, LED, audio) | Each has a disabled or retry state; see [system architecture](./system-architecture.md#failure-handling) |
 | NFR-07 | Stays within the screen: 320×170, text fits its box | Screenshots from `sc_render`, see [deployment guide](./deployment-guide.md#screenshots) |
@@ -112,9 +113,9 @@ A release is accepted when all of these hold:
 
 | Item | Constraint |
 |---|---|
-| Hardware | CardputerZero: 320×170 LCD, 46 keys, ES8389 audio codec under PipeWire, no RTC. RTL-SDR tested: Blog V4 (R828D) |
+| Hardware | CardputerZero: 320×170 LCD, 46 keys, ES8389 audio codec under PipeWire, no RTC. RTL-SDR tested: Blog V4 (R828D). HackRF One tried: scan and WFM audio |
 | Software | Debian 13 arm64; LVGL 9.5.0 (fetched at build time); `radiosonde_auto_rx` v1.9.0 decoders (fetched and SHA-256 checked) |
-| Runtime | `librtlsdr0` (loaded with `dlopen`), `curl` for tiles, optional `gpsd` and `pulseaudio-utils` (`pacat`) |
+| Runtime | `librtlsdr0` and `libhackrf0` (loaded with `dlopen`), `curl` for tiles, optional `gpsd` and `pulseaudio-utils` (`pacat`) |
 | Licence | GPL-3.0-or-later; bundled decoders are GPL-3.0 and LGPL-2.1; LVGL MIT; fonts SIL OFL 1.1; map data ODbL attribution |
 | Store | CardputerZero store manifest (`app-builder.json`): seven permission flags, 320×170 screenshots, share code `SNDE` |
 | Time | No RTC: log timestamps come from the sonde's GPS time when it has one |

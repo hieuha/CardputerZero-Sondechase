@@ -76,8 +76,10 @@ set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 # librtlsdr0 is loaded with dlopen at run time; 2.0.2 is the first Debian version that drives the
 # RTL-SDR Blog V4. curl: map tile download. fsk_demod + rs41mod ship in /usr/lib/sondechase
-# (cmake/radiosonde-decoders.cmake); gpsd and pacat (pulseaudio-utils) are optional.
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, curl, librtlsdr0 (>= 2.0.2)")
+# (cmake/radiosonde-decoders.cmake); gpsd and pacat (pulseaudio-utils) are optional. libhackrf0 is loaded the
+# same way for a HackRF; a hard dependency (about 100 KB, libusb is already there for librtlsdr0) so plugging
+# one in just works.
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, curl, librtlsdr0 (>= 2.0.2), libhackrf0")
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "gpsd, pulseaudio-utils, coreutils")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION TRUE)

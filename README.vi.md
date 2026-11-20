@@ -13,7 +13,7 @@
 > **Mới dùng lần đầu? Xem [bảng phím tắt](docs/keyboard-cheatsheet.md)** (tiếng Anh) để biết mọi phím trên từng màn hình.
 
 Ứng dụng thu, giải mã và bám theo bóng thám không RS41 cho M5Stack CardputerZero (Raspberry Pi CM0, màn hình
-320×170, bàn phím 46 phím), dùng một RTL-SDR và GPS (không bắt buộc).
+320×170, bàn phím 46 phím), dùng một RTL-SDR (hoặc HackRF) và GPS (không bắt buộc).
 
 Phiên bản 0.6.0. Đã chạy trên CardputerZero thật với RTL-SDR Blog V4: phần quét và giải mã đã được kiểm với một quả
 RS41 đang bay (Y0532351). Chưa thử đi săn ngoài thực địa với GPS; xem [Hạn chế đã biết](#hạn-chế-đã-biết).
@@ -51,6 +51,7 @@ Trên máy thật (chụp framebuffer, 2×):
 |---|---|
 | M5Stack CardputerZero | Raspberry Pi CM0, Debian 13 arm64, màn hình 320×170, bàn phím 46 phím, âm thanh qua PipeWire |
 | RTL-SDR | Đã thử: RTL-SDR Blog V4 (tuner R828D). Các dongle RTL2832U khác chưa được thử |
+| HackRF (thay cho RTL-SDR) | HackRF One hoặc rad1o, app tự nhận qua USB; gói cài sẵn `libhackrf0`. Đã thử với HackRF One: quét và nghe WFM; chưa thử giải mã RS41 |
 | GPS (không bắt buộc) | Bất kỳ GPS nào gpsd đọc được, ví dụ GPS USB. Cần cho khoảng cách, hướng, điểm rơi và beeper |
 | Cảm biến từ trường (không bắt buộc) | Cảm biến IIO trên bo mạch, dùng làm hướng khi chưa có hướng di chuyển từ GPS |
 | Đèn ACT | Đèn đỏ nháy mỗi khi nhận được frame, ở màn Track và Map |
@@ -67,7 +68,7 @@ sudo apt install --no-install-recommends ./sondechase_0.6.0-rev1_arm64.deb
 ```
 
 Mở **SondeChase** từ APPLaunch. Gói cài đã kèm sẵn bộ giải mã RS41 (`fsk_demod` và `rs41mod`, lấy từ
-`radiosonde_auto_rx`). Gói cần `librtlsdr0` và `curl`; nên cài thêm `gpsd` và `pulseaudio-utils`.
+`radiosonde_auto_rx`). Gói cần `librtlsdr0`, `libhackrf0` và `curl`; nên cài thêm `gpsd` và `pulseaudio-utils`.
 
 Muốn tự build gói (trên máy hoặc cross-compile), xem [hướng dẫn deploy](docs/deployment-guide.md).
 
@@ -112,7 +113,7 @@ Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` để mở Map
 ### Khi không có bộ thu hoặc GPS
 
 - **Chưa cắm SDR vào USB**: hiện màn hình "No SDR device found". App kiểm tra USB mỗi 2 giây và chạy tiếp khi thấy
-  dongle. Tắt bước kiểm tra này bằng `sdr_check = 0`.
+  RTL-SDR hoặc HackRF. Tắt bước kiểm tra này bằng `sdr_check = 0`.
 - **Máy chưa có GPS fix**: vẫn giải mã bình thường. Thanh trên cùng hiện `GPS 0/3` màu đỏ khi GPS đã cắm nhưng chưa
   fix (số vệ tinh đang dùng / thấy được), `GPS lost` khi đã từng có fix, hoặc `No GPS`. Khi có fix thì hiện `3D 9/12`.
   Nếu máy đã từng có fix, màn Track vẫn hiện khoảng cách và hướng, tính từ vị trí cuối cùng của máy.
@@ -127,7 +128,8 @@ một khoảng trắng. Mọi key đều không bắt buộc.
 ```ini
 freq_hz = 403000000      # giải mã ngay khi mở app (bỏ trống: mở màn Radio)
 gain = 38.6              # gain của tuner, dB (bỏ trống: AGC của tuner)
-sdr_check = 1            # bắt buộc có RTL-SDR trên USB
+sdr = auto               # bộ thu: auto (tự nhận qua USB), rtlsdr hoặc hackrf
+sdr_check = 1            # bắt buộc có bộ thu trên USB
 gpsd_port = 2947         # gpsd (0 để tắt GPS)
 burst_alt = 30000        # độ cao nổ giả định khi bóng đang lên, m
 tile_online = 1          # tải các tile bản đồ đang hiện trên màn hình
@@ -187,6 +189,8 @@ dongle. Chi tiết và số đo trên máy thật: [hướng dẫn deploy](docs/
 ## Hạn chế đã biết
 
 - Chỉ hỗ trợ RS41. Các loại sonde khác cần bộ giải mã riêng.
+- HackRF không có AGC nên gain mặc định là cố định (LNA 32 + VGA 24 dB; `gain` đặt tổng gain). Ở 400 MHz, HackRF kém
+  nhạy hơn RTL-SDR và tốn pin hơn.
 - Ở gần một sonde phát rất mạnh, màn tổng quan có thể hiện thêm vài đỉnh phụ yếu hơn; chỉnh tới đó sẽ không có gì để
   giải mã.
 - La bàn cần hiệu chỉnh một lần (màn Info, phím `K`: xoay máy một vòng, nghiêng về bốn phía rồi hướng về phía Bắc).

@@ -151,13 +151,15 @@ void heading_update(heading_t *h, const gps_t *g, const cfg_t *c, double now)
         double m[3], a[3];
         if (now - h->t_mag < 0.2) return; /* 5 Hz sysfs polling */
         h->t_mag = now;
-        if (c->mag_tilt && h->acc_found) {
-            if (acc_read(h, a)) {
-                int i;
-                for (i = 0; i < 3; i++) h->acc[i] = h->acc_ok ? h->acc[i] + ACC_SMOOTH * (a[i] - h->acc[i]) : a[i];
-                h->acc_ok = 1;
-            }
-            if (h->acc_ok && mag_read(h, m)) {
+        int perm[3], sign[3];
+        /* tilt-compensated while the accelerometer reads and the saved axes make sense; a NAN from it then means
+         * the top points up or down, so the heading holds. Otherwise the flat formula, which mag_flip_y and
+         * mag_rot_deg keep in step with the tilted one. */
+        if (c->mag_tilt && h->acc_found && axes_parse(c->accel_axes, perm, sign) && acc_read(h, a)) {
+            int i;
+            for (i = 0; i < 3; i++) h->acc[i] = h->acc_ok ? h->acc[i] + ACC_SMOOTH * (a[i] - h->acc[i]) : a[i];
+            h->acc_ok = 1;
+            if (mag_read(h, m)) {
                 double d = heading_tilt(m, h->acc, c);
                 if (!isnan(d)) {
                     h->deg = d;
@@ -338,6 +340,8 @@ int magcal_apply(const magcal_t *m, cfg_t *c)
     c->mag_rot_deg = 0;
     c->mag_rot_deg = norm180(-heading_from_mag(x / k, y / k, c));
     if (m->use_acc && m->tn >= 40) {
+        const int flat_flip = c->mag_flip_y;
+        const double flat_rot = c->mag_rot_deg;
         double off[3], sz = 0, sq = 0, szz = 0, szq = 0, mean_z, var_z, spread, second, mag[3] = {x / k, y / k, z / k}, h;
         int perm[3], sign[3], s;
         /* z offset: on a sphere around the offsets, |m - off|^2 is the same for every sample; with x and y offsets
@@ -371,7 +375,11 @@ int magcal_apply(const magcal_t *m, cfg_t *c)
         c->mag_flip_y = s < 0;
         c->mag_rot_deg = 0;
         h = heading_tilt(mag, a, c);
-        if (isnan(h)) return c->mag_tilt = 0;
+        if (isnan(h)) { /* the north samples were too near vertical: keep the flat-only result from the turn */
+            c->mag_flip_y = flat_flip;
+            c->mag_rot_deg = flat_rot;
+            return c->mag_tilt = 0;
+        }
         c->mag_rot_deg = norm180(-h);
     }
     return c->mag_tilt;

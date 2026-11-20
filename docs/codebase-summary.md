@@ -21,8 +21,8 @@ working tree and from the line counts below. Regenerate after large changes.
 | Language | C11, one application, plus two shell and Python helper groups |
 | Application | `sondechase` (CardputerZero, Debian 13 arm64), LVGL 9.5.0 UI |
 | Core | `sc_core`, no LVGL, unit-tested on Linux |
-| Source size | `src/` 5876 lines (`src/app.c` 615 the largest, `src/sc.h` 547) |
-| Tests | `tests/test_core.c` (1405 lines), 4415 checks, all passing (GCC 14.2, Debian trixie) |
+| Source size | `src/` 5960 lines (`src/app.c` 615 the largest, `src/sc.h` 550) |
+| Tests | `tests/test_core.c` (1476 lines), 4426 checks, all passing (GCC 14.2, Debian trixie) |
 | External programs run | `fsk_demod`, `rs41mod` (built from `radiosonde_auto_rx` v1.9.0), `pacat`, `curl`, `gpsd` (socket) |
 | Runtime libraries | `librtlsdr`, or `libhackrf` for a HackRF (loaded with `dlopen`), libc, libm, pthread |
 | License | GPL-3.0-or-later (see `LICENSE`) |
@@ -56,29 +56,29 @@ working tree and from the line counts below. Regenerate after large changes.
 
 | File | Lines | Entry points (examples) | Role |
 |---|---|---|---|
-| `src/sc.h` | 547 | all | Public types (`cfg_t`, `app_t`, `sonde_t`, `wind_t`, `radio_t`, `flight_t`, `tilefetch_t`, ...) and APIs |
-| `src/main.c` | 90 | `main` | Startup, signals, main loop, hold-Esc quit |
+| `src/sc.h` | 550 | all | Public types (`cfg_t`, `app_t`, `sonde_t`, `wind_t`, `radio_t`, `flight_t`, `tilefetch_t`, ...) and APIs |
+| `src/main.c` | 92 | `main` | Startup, signals, main loop, hold-Esc quit |
 | `src/app.c` | 615 | `app_init`, `app_poll`, `app_tune`, `app_listen`, `app_scan`, `app_hunt`, `app_on_frame`, `app_free` | Application state machine, receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
-| `src/base.c` | 364 | `cfg_load`, `cfg_defaults`, `sc_subst`, `fb_pick`, `lr_readline`, `proc_start_feed`, `js_num`, `js_str` | Config, line reader, child process groups, flat-JSON reader |
+| `src/base.c` | 367 | `cfg_load`, `cfg_defaults`, `sc_subst`, `fb_pick`, `lr_readline`, `proc_start_feed`, `js_num`, `js_str` | Config, line reader, child process groups, flat-JSON reader |
 | `src/sdr.c` | 332 | `sdr_open`, `sdr_tune`, `sdr_read`, `sdr_range`, `iqring_*` | IQ ring, generic receiver calls, RTL-SDR back end (librtlsdr via `dlopen`, reader thread, tuner range table) |
-| `src/sdr_hackrf.c` | 297 | `sdr_hackrf_ops` | HackRF back end: libhackrf via `dlopen`, int8 to u8, half-band halving, gain split, stale-transfer drop |
+| `src/sdr_hackrf.c` | 314 | `sdr_hackrf_ops` | HackRF back end: libhackrf via `dlopen`, int8 to u8, half-band halving, gain split, stale-transfer drop |
 | `src/sdr_priv.h` | 32 | `sdr_ops_t`, `struct sdr` | Back-end interface |
-| `src/dsp.c` | 215 | `fft_spectrum`, `ddc_process`, `ddc_process_wide` | FFT with Hann window, decoder front end |
-| `src/radio.c` | 174 | `radio_init`, `radio_process`, `radio_process_wfm`, `radio_next_bw` | NFM, AM, USB, LSB, WFM demodulation and channel widths |
+| `src/dsp.c` | 234 | `fft_spectrum`, `ddc_process`, `ddc_process_wide` | FFT with Hann window, decoder front end |
+| `src/radio.c` | 207 | `radio_init`, `radio_process`, `radio_process_wfm`, `radio_next_bw` | NFM, AM, USB, LSB, WFM demodulation and channel widths |
 | `src/io.c` | 239 | `gps_poll`, `gps_parse`, `sdr_present`, `spec_add_bins`, `spec_peaks` | gpsd client, USB presence, spectrum cells and peaks |
-| `src/compass.c` | 390 | `heading_update`, `heading_tilt`, `mag_read`, `acc_read`, `magcal_add`, `magcal_apply` | Heading sources, magnetometer and accelerometer, tilt compensation, compass calibration |
+| `src/compass.c` | 398 | `heading_update`, `heading_tilt`, `mag_read`, `acc_read`, `magcal_add`, `magcal_apply` | Heading sources, magnetometer and accelerometer, tilt compensation, compass calibration |
 | `src/geo.c` | 202 | `geo_dist`, `geo_bearing`, `isa_rho`, `dewpoint`, `wind_add`, `sonde_parse`, `predict_landing` | Geodesy, ISA, dew point, wind profile, sonde JSON, landing prediction |
 | `src/track.c` | 310 | `hist_add`, `flight_update`, `prox_update`, `audio_*`, `led_*`, `tile_frac` | Flight history, burst detection, proximity beeper, PCM audio stream, frame LED, slippy-map maths |
-| `src/tiles.c` | 290 | `tf_find`, `tf_request`, `tf_poll`, `tf_sweep`, `tile_recolor`, `tf_host_blocked`, `mkdirs` | Tile lookup, `curl` downloads, cache cap, failure reasons, recolouring |
+| `src/tiles.c` | 296 | `tf_find`, `tf_request`, `tf_poll`, `tf_sweep`, `tile_recolor`, `tf_host_blocked`, `mkdirs` | Tile lookup, `curl` downloads, cache cap, failure reasons, recolouring |
 | `src/demo.c` | 139 | `demo_poll`, `demo_advance` | Simulated flight |
 | `src/keys.c` | 92 | `keys_open`, `keys_read`, `keys_esc_held_s` | evdev keyboard, Sym symbol keys, held-arrow repeat, Esc timing |
-| `src/ui.c` | 249 | `ui_init`, `ui_key`, `draw_cb`, `tick_cb` | UI state, overlays (frequency entry, burst alert, no SDR), LVGL glue, key dispatch |
+| `src/ui.c` | 252 | `ui_init`, `ui_key`, `draw_cb`, `tick_cb` | UI state, overlays (frequency entry, burst alert, no SDR), LVGL glue, key dispatch |
 | `src/ui_draw.c` | 220 | `ln`, `fill`, `txt`, `box`, `kv`, `top_bar`, `nav_bar` | Drawing primitives, top and nav bars, battery, shared helpers |
 | `src/ui_track.c` | 215 | `p_track`, `compass`, `phase_name` | Track screen, compass, plain-language directions |
 | `src/ui_map.c` | 284 | `p_map`, `map_pan`, `map_zoom_step`, `map_follow_next`, `map_style_toggle` | Map screen, decoded tile cache, pan, zoom, follow, style |
 | `src/ui_graph.c` | 142 | `p_skewt`, `p_flight` | Graph screens: Skew-T and flight profile |
 | `src/ui_radio.c` | 159 | `p_scan` | Radio screen: band overview, tuned spectrum, listening, decoding |
-| `src/ui_info.c` | 176 | `p_info`, `p_info_pos`, `p_cal` | Info screens and compass calibration |
+| `src/ui_info.c` | 177 | `p_info`, `p_info_pos`, `p_cal` | Info screens and compass calibration |
 | `src/ui_priv.h` | 76 | all of the above | Colours, shared UI state and prototypes for the UI files |
 | `src/ui.h` | 16 | `ui_init`, `ui_key`, `keys_*` | UI interface for `main.c` and the tests |
 
@@ -90,11 +90,11 @@ alert overlay and the "No SDR device found" screen stay in `ui.c` with the draw 
 
 | File | Lines | Role |
 |---|---|---|
-| `tests/test_core.c` | 1405 | Core checks: geodesy, ISA, prediction, sonde and gpsd parsers, heading, compass calibration and tilt compensation on simulated devices, config, framebuffer choice, spectrum, IQ ring, DSP, radio, sweep and hunt, tiles, flight, beeper, LED, child lifecycle |
+| `tests/test_core.c` | 1476 | Core checks: geodesy, ISA, prediction, sonde and gpsd parsers, heading, compass calibration and tilt compensation on simulated devices, config, framebuffer choice, spectrum, IQ ring, DSP, radio, sweep and hunt, tiles, flight, beeper, LED, child lifecycle |
 | `tests/fake_rtlsdr.c` | 54 | Stand-in `librtlsdr` shared library: 403.000 MHz carrier wherever it is tuned |
 | `tests/fake_hackrf.c` | 131 | Stand-in `libhackrf`: int8 transfers in real time, each with the frequency it began at; getters for rate, filter and gains |
 | `tests/fake_decoder.sh` | 11 | Stand-in decoder: prints rs41mod-style JSON lines and a non-JSON line |
-| `tools/render.c` | 209 | `sc_render`: headless UI on demo data, writes 320×170 PPM per screen |
+| `tools/render.c` | 226 | `sc_render`: headless UI on demo data, writes 320×170 PPM per screen |
 | `tools/validate_app_builder.py` | 77 | Store manifest check (stdlib only), run in CI |
 | `tools/prep_tiles.py` | 114 | Builds a preloaded tile pack from MBTiles or `z/x/y.png` (Pillow) |
 | `tools/make_icon.py` | 78 | Draws the app icon (Pillow) |
@@ -103,13 +103,13 @@ alert overlay and the "No SDR device found" screen stay in `ui.c` with the draw 
 
 | File | Lines | Role |
 |---|---|---|
-| `CMakeLists.txt` | 86 | Project `sondechase` 0.6.0, options `SC_BUILD_UI`, `SC_SIM`, `SC_RENDER`, targets |
+| `CMakeLists.txt` | 92 | Project `sondechase` 0.6.0, options `SC_BUILD_UI`, `SC_SIM`, `SC_RENDER`, targets |
 | `CMakePresets.json` | 90 | Presets `cp0-native`, `cp0-cross`, `linux-x86-64`, `render`; packages `cp0-native-deb`, `cp0-cross-deb`; workflows |
-| `cmake/cm0-package.cmake` | 92 | Install layout, `.deb` settings (CPack), desktop entry, conffile |
+| `cmake/cm0-package.cmake` | 94 | Install layout, `.deb` settings (CPack), desktop entry, conffile |
 | `cmake/radiosonde-decoders.cmake` | 45 | Downloads `radiosonde_auto_rx` v1.9.0 (SHA-256 pinned) and builds `rs41mod` and `fsk_demod` |
 | `cmake/toolchains/cp0-aarch64-linux-gnu.cmake` | - | Cross toolchain and BSP sysroot download |
 | `cmake/templates/app.desktop.in`, `conffiles.in` | - | Launcher entry and conffile templates |
-| `conf/sondechase.conf` | 64 | Shipped configuration |
+| `conf/sondechase.conf` | 69 | Shipped configuration |
 | `lv_conf.h` | 43 | LVGL build configuration |
 | `.github/workflows/tests.yml` | 15 | Core build and `ctest` on Ubuntu |
 | `.github/workflows/package.yml` | 18 | Native arm64 package on Debian 13, `ctest`, artifact |
@@ -122,7 +122,7 @@ alert overlay and the "No SDR device found" screen stay in `ui.c` with the draw 
 | `assets/fonts/` | `Rajdhani-SemiBold.ttf`, `Orbitron-Bold.ttf`, SIL OFL licence texts |
 | `assets/images/` | `sondechase.png` (100×100, APPLaunch), `sondechase_256.png` (store icon) |
 | `screenshots/*.png` | 20 images at 320×170 from `sc_render`; six are listed in the store manifest (`app-builder.json`) |
-| `screenshots/mockup/` | 10 scaled mockups for the READMEs (2×) |
+| `screenshots/mockup/` | 13 scaled mockups (2×); 12 are shown in the READMEs, `radio-listening.png` is not referenced |
 | `screenshots/device/` | 4 framebuffer captures from the CardputerZero |
 
 ## Documentation

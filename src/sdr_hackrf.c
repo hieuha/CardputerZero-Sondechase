@@ -7,7 +7,6 @@
 #include <dlfcn.h>
 #include <math.h>
 #include <pthread.h>
-#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -70,8 +69,8 @@ typedef struct {
     double corr;              /* 1 + ppm / 1e6: the clock's error, for the frequency and the sample rate */
     long hw_rate;             /* the HackRF's own rate: s->rate, or twice it when halved */
     int halve;
-    _Atomic int on;           /* transfers are written to the ring only while set */
-    pthread_mutex_t mu;       /* t_tune, and the check-then-write of a transfer against it */
+    int on;                   /* transfers are written to the ring only while set */
+    pthread_mutex_t mu;       /* on, t_tune and the conversion state, against libhackrf's thread */
     int have_mu;
     long long t_tune;         /* CLOCK_MONOTONIC ns of the last retune */
     int8_t *ext;              /* HB_KEEP pairs from the previous transfer, then the new one (cap bytes) */
@@ -100,49 +99,60 @@ static uint8_t u8(int v) /* signed sample to rtl-sdr u8 (127.5 is zero) */
  * pair through h = (-1 0 9 16 9 0 -1) / 32 (unity gain at 0 Hz, a null at half the input rate). */
 static size_t halve_pairs(hrf_t *h, size_t npairs)
 {
-    const int8_t *e = h->ext;
-    size_t c, k = 0, end = HB_KEEP + npairs - 3;
-    /* centre c of the extended buffer is input pair (pairs - HB_KEEP + c); outputs fall on even input pairs */
-    for (c = 3 + (size_t)((h->pairs - HB_KEEP + 3) & 1); c < end; c += 2) {
-        int j;
-        for (j = 0; j < 2; j++) {
-            const int8_t *x = e + 2 * c + j;
-            int v = 16 * x[0] + 9 * (x[-2] + x[2]) - (x[-6] + x[6]);
-            h->out[k++] = u8((v + 16) >> 5);
-        }
+    /* local restrict pointers: stores through h->out could otherwise alias h itself, which stops vectorising */
+    const int8_t *restrict e = h->ext;
+    uint8_t *restrict o = h->out;
+    /* centre c0 + 2m of the extended buffer is input pair (pairs - HB_KEEP + c0 + 2m); outputs fall on even ones */
+    size_t c0 = 3 + (size_t)((h->pairs - HB_KEEP + 3) & 1), end = HB_KEEP + npairs - 3, m;
+    size_t nout = end > c0 ? (end - c0 + 1) / 2 : 0;
+    for (m = 0; m < nout; m++) {
+        const int8_t *x = e + 2 * (c0 + 2 * m);
+        o[2 * m] = u8((16 * x[0] + 9 * (x[-2] + x[2]) - (x[-6] + x[6]) + 16) >> 5);
+        o[2 * m + 1] = u8((16 * x[1] + 9 * (x[-1] + x[3]) - (x[-5] + x[7]) + 16) >> 5);
     }
     memmove(h->ext, h->ext + 2 * npairs, 2 * HB_KEEP);
     h->pairs += (long long)npairs;
-    return k;
+    return 2 * nout;
 }
 
 /* libhackrf's thread. A transfer that began before the last retune would put the old frequency's signal at the
- * new one (each holds ~40 ms), so it is dropped. Its start is estimated as now minus its length, with an eighth
- * of that as margin for a callback that runs late. The check and the write hold the lock hrf_tune takes, so a
- * transfer cannot pass the check, then land after the retune's flush. Returning non-zero would end the stream. */
+ * new one (each holds ~40 ms), so it is dropped. Its start is estimated as now minus its length, with an eighth of
+ * that plus 10 ms as margin for a callback that runs late. The whole body holds the lock that hrf_tune, start and
+ * stop take: no transfer lands after a retune's flush, and libhackrf before 2023.01, whose stop_rx does not wait
+ * for a running callback, cannot race a restart. Returning non-zero would end the stream. */
 static int on_transfer(hackrf_transfer *t)
 {
     hrf_t *h = t->rx_ctx;
-    size_t n = (size_t)t->valid_length & ~(size_t)1, i, k;
-    long long t_end = now_ns(), dur = (long long)((double)(n / 2) * 1e9 / (double)h->hw_rate);
-    if (!atomic_load(&h->on)) return 0;
+    size_t n = (size_t)t->valid_length & ~(size_t)1, k;
+    long long t_end = now_ns(), dur;
+    pthread_mutex_lock(&h->mu);
+    dur = (long long)((double)(n / 2) * 1e9 / (double)h->hw_rate);
+    if (!h->on || t_end - dur < h->t_tune + dur / 8 + 10000000LL) {
+        pthread_mutex_unlock(&h->mu);
+        return 0;
+    }
     if (n > h->cap) { /* libhackrf's transfers are 256 KiB; a larger one only grows the buffers */
         int8_t *e = realloc(h->ext, n + 2 * HB_KEEP);
         uint8_t *o = e ? realloc(h->out, n) : NULL;
         if (e) h->ext = e;
-        if (!o) return 0;
+        if (!o) {
+            pthread_mutex_unlock(&h->mu);
+            return 0;
+        }
         h->out = o;
         h->cap = n;
     }
     if (h->halve) {
         memcpy(h->ext + 2 * HB_KEEP, t->buffer, n);
         k = halve_pairs(h, n / 2);
-    } else {
-        for (i = 0; i < n; i++) h->out[i] = u8((int8_t)t->buffer[i]);
+    } else { /* int8 + 128 as u8 is the sign bit flipped */
+        const uint8_t *restrict b = t->buffer;
+        uint8_t *restrict o = h->out;
+        size_t i;
+        for (i = 0; i < n; i++) o[i] = b[i] ^ 0x80;
         k = n;
     }
-    pthread_mutex_lock(&h->mu);
-    if (t_end - dur >= h->t_tune + dur / 8) iqring_write(h->ring, h->out, k);
+    iqring_write(h->ring, h->out, k);
     pthread_mutex_unlock(&h->mu);
     return 0;
 }
@@ -159,8 +169,9 @@ static int hrf_set_rate(sdr_t *s, long rate)
     return 0;
 }
 
-/* cfg gain: "" = LNA 32 dB, VGA 24 dB (the HackRF has no AGC); else the total in dB, filled into the LNA
- * (0-40, 8 dB steps) first, then the VGA (0-62, 2 dB steps), then the 14 dB front-end amplifier. */
+/* cfg hackrf_gain (not gain: an RTL-SDR's 38.6 would leave a HackRF deaf): "" = LNA 32 dB, VGA 24 dB (it has
+ * no AGC); else the total in dB, filled into the LNA (0-40, 8 dB steps) first, then the VGA (0-62, 2 dB steps),
+ * then the 14 dB front-end amplifier. */
 static void hrf_gain(hrf_t *h, const char *gain)
 {
     int g = (int)lround(atof(gain)), lna = 32, vga = 24, amp = 0;
@@ -231,7 +242,7 @@ static int hrf_open(sdr_t *s, const cfg_t *c, long rate, char *err, size_t n)
         snprintf(err, n, "sample rate %ld rejected", rate);
         return -1;
     }
-    hrf_gain(h, c->gain);
+    hrf_gain(h, c->hackrf_gain);
     h->api.set_antenna_enable(h->dev, c->bias_tee ? 1 : 0);
     return 0;
 }
@@ -250,11 +261,15 @@ static int hrf_tune(sdr_t *s, long f_hz)
 static int hrf_start(sdr_t *s)
 {
     hrf_t *h = s->be;
+    pthread_mutex_lock(&h->mu);
     memset(h->ext, 0, 2 * HB_KEEP);
     h->pairs = 0;
-    atomic_store(&h->on, 1);
+    h->on = 1;
+    pthread_mutex_unlock(&h->mu);
     if (h->api.start_rx(h->dev, on_transfer, h) != 0) {
-        atomic_store(&h->on, 0);
+        pthread_mutex_lock(&h->mu);
+        h->on = 0;
+        pthread_mutex_unlock(&h->mu);
         return -1;
     }
     return 0;
@@ -263,7 +278,9 @@ static int hrf_start(sdr_t *s)
 static void hrf_stop(sdr_t *s)
 {
     hrf_t *h = s->be;
-    atomic_store(&h->on, 0); /* older libhackrf can still deliver a transfer after stop_rx returns */
+    pthread_mutex_lock(&h->mu); /* waits out a running callback; later ones see on = 0 */
+    h->on = 0;
+    pthread_mutex_unlock(&h->mu);
     h->api.stop_rx(h->dev);
 }
 

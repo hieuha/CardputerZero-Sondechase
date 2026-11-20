@@ -76,6 +76,7 @@ void p_cal(void)
     }
     box(140, 132, 174, 18, C_L, C_P);
     if (A->hdg.mag_found && m->step == MAGCAL_NORTH) txt(146, 134, 80, F_S, C_TX, AL_L, "Enter  save");
+    else if (A->hdg.mag_found && m->step == MAGCAL_TILT) txt(146, 134, 80, F_S, C_DIM, AL_L, "Enter  skip");
     txt(230, 134, 78, F_S, C_DIM, AL_R, "Esc  %s", A->hdg.mag_found ? "cancel" : "close");
     nav_bar(PG_INFO);
 }

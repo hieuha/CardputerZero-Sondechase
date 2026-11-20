@@ -149,6 +149,47 @@ static void t_heading(void)
     NEAR(heading_from_mag(10 + 0, -5 + 1, &c), 90.0, 1e-9);
     c.mag_flip_y = 1; c.declination = -1.5;
     NEAR(heading_from_mag(10 + 0, -5 + 1, &c), 268.5, 1e-9);
+
+    { /* tilt-compensated when the accelerometer reads, else the flat formula; holds near vertical */
+        FILE *f;
+        double t = 10.0;
+        c.mag_off_x = c.mag_off_y = c.mag_off_z = 0; c.mag_rot_deg = 0; c.mag_flip_y = 0; c.declination = 0;
+        c.mag_tilt = 1;
+        snprintf(c.accel_axes, sizeof c.accel_axes, "+x+y+z");
+        memset(&h, 0, sizeof h);
+        h.mag_found = h.acc_found = 1;
+        snprintf(h.mag_x, sizeof h.mag_x, "/tmp/sc_mx"); snprintf(h.mag_y, sizeof h.mag_y, "/tmp/sc_my");
+        snprintf(h.mag_z, sizeof h.mag_z, "/tmp/sc_mz");
+        snprintf(h.acc_x, sizeof h.acc_x, "/tmp/sc_ax"); snprintf(h.acc_y, sizeof h.acc_y, "/tmp/sc_ay");
+        snprintf(h.acc_z, sizeof h.acc_z, "/tmp/sc_az_missing");
+        unlink(h.acc_z);
+        if ((f = fopen(h.mag_x, "w"))) { fputs("0\n", f); fclose(f); }
+        if ((f = fopen(h.mag_y, "w"))) { fputs("100\n", f); fclose(f); }
+        if ((f = fopen(h.mag_z, "w"))) { fputs("-300\n", f); fclose(f); }
+        if ((f = fopen(h.acc_x, "w"))) { fputs("0\n", f); fclose(f); }
+        if ((f = fopen(h.acc_y, "w"))) { fputs("0\n", f); fclose(f); }
+        g.speed = 0;
+        heading_update(&h, &g, &c, t += 1);
+        CHECK(h.src == HDG_MAG); /* accelerometer z unreadable: flat */
+        NEAR(h.deg, 90.0, 1e-6);
+        snprintf(h.acc_z, sizeof h.acc_z, "/tmp/sc_az");
+        if ((f = fopen(h.acc_z, "w"))) { fputs("4096\n", f); fclose(f); }
+        heading_update(&h, &g, &c, t += 1);
+        CHECK(h.src == HDG_MAG && h.acc_ok); /* flat and z up: the tilt formula gives the same */
+        NEAR(h.deg, 90.0, 1e-6);
+        snprintf(c.accel_axes, sizeof c.accel_axes, "+x+x+z"); /* a damaged compass.conf: flat again */
+        heading_update(&h, &g, &c, t += 1);
+        CHECK(h.src == HDG_MAG);
+        NEAR(h.deg, 90.0, 1e-6);
+        snprintf(c.accel_axes, sizeof c.accel_axes, "+x+y+z");
+        if ((f = fopen(h.acc_x, "w"))) { fputs("4096\n", f); fclose(f); }
+        if ((f = fopen(h.acc_z, "w"))) { fputs("0\n", f); fclose(f); }
+        h.acc_ok = 0; /* no smoothing: straight to the top pointing up */
+        heading_update(&h, &g, &c, t += 1);
+        CHECK(h.src == HDG_HOLD); /* x (the top) up: no heading, the last one holds */
+        NEAR(h.deg, 90.0, 1e-6);
+        unlink(h.mag_x); unlink(h.mag_y); unlink(h.mag_z); unlink(h.acc_x); unlink(h.acc_y); unlink(h.acc_z);
+    }
 }
 
 /* the sensor as mounted: heading h reads at raw angle (h + rot), mirrored when flipped, around a hard-iron offset */
@@ -514,6 +555,24 @@ static void t_dsp(void)
     int i, best = 0;
     double p12;
 
+    { /* the decoders must see rtl_fm's numbers bit for bit: FNV-1a of the output for fixed noise in uneven
+       * chunks, as the one-channel, in-place port of rtl_fm gave them (out and the 192 kHz stream) */
+        static unsigned char nz[2 * 300000];
+        static int16_t o[20000], w[80000];
+        unsigned x = 12345, h = 2166136261u, hw = 2166136261u;
+        size_t k, c, n, nw, j;
+        for (j = 0; j < sizeof nz; j++) { x = x * 1103515245u + 12345u; nz[j] = (unsigned char)(x >> 16); }
+        ddc_init(&d1);
+        for (k = 0; k < sizeof nz; k += c) {
+            c = 2 * (1 + (k / 2 * 7919) % 9001);
+            if (c > sizeof nz - k) c = sizeof nz - k;
+            n = ddc_process_wide(&d1, nz + k, c, o, w, &nw);
+            for (j = 0; j < 2 * n; j++) h = (h ^ (uint16_t)o[j]) * 16777619u;
+            for (j = 0; j < 2 * nw; j++) hw = (hw ^ (uint16_t)w[j]) * 16777619u;
+        }
+        CHECK(h == 0x98b986e4u && hw == 0x31ec2256u);
+    }
+
     /* FFT: a tone exactly on bin +100 peaks there (DC sits at N/2), ~0 dBFS at full scale */
     CHECK(fft_init(&f, 1000) == -1);
     CHECK(fft_init(&f, N) == 0);
@@ -626,6 +685,17 @@ static void carrier_cs16(int16_t *iq, int np, double offset_hz, double amp, doub
  * NFM squelches an empty channel; one sideband is kept for USB / LSB. */
 static void t_radio(void)
 {
+    { /* the demodulators' atan2: within 2e-5 rad all round the circle and over a wide range of levels */
+        double worst = 0, ang, mag;
+        for (ang = -M_PI; ang <= M_PI; ang += 0.001)
+            for (mag = 1e-3; mag < 1e6; mag *= 31.0) {
+                double e = fabs(fast_atan2f((float)(mag * sin(ang)), (float)(mag * cos(ang))) - atan2((float)(mag * sin(ang)), (float)(mag * cos(ang))));
+                if (e > M_PI) e = 2 * M_PI - e; /* +pi and -pi are the same angle */
+                if (e > worst) worst = e;
+            }
+        CHECK(worst < 2e-5);
+        CHECK(fast_atan2f(0, 0) == 0 && fabsf(fast_atan2f(1, 0) - (float)M_PI_2) < 1e-6f && fabsf(fast_atan2f(0, -1) - (float)M_PI) < 1e-6f);
+    }
     enum { NP = 48000 };
     static int16_t iq[2 * NP], pcm[NP / 3 + 1];
     static radio_t r;
@@ -1361,9 +1431,10 @@ static void t_hackrf(const char *fake, const char *fakelib)
         cfg_defaults(&c);
         snprintf(c.sdr, sizeof c.sdr, "hackrf");
         snprintf(c.hackrf_lib, sizeof c.hackrf_lib, "%s", fakelib);
+        snprintf(c.gain, sizeof c.gain, "38.6"); /* the RTL-SDR's: left alone */
         for (k = 0; k < sizeof t / sizeof t[0]; k++) {
             sdr_t *s;
-            snprintf(c.gain, sizeof c.gain, "%s", t[k].g);
+            snprintf(c.hackrf_gain, sizeof c.hackrf_gain, "%s", t[k].g);
             s = sdr_open(&c, SWEEP_RATE, err, sizeof err);
             CHECK(s != NULL && lna() == t[k].lna && vga() == t[k].vga && amp() == t[k].amp && ant() == 0);
             sdr_close(s);

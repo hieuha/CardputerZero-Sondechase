@@ -81,13 +81,28 @@ void radio_init(radio_t *r, int mode, long bw_hz)
     r->open = mode != DEMOD_NFM;
 }
 
+/* atan2 within about 1e-5 rad, 0 for (0, 0). glibc's atan2f takes about 230 ns on the CardputerZero's Cortex-A53,
+ * which was nearly all of the WFM demodulator (192 000 calls a second); the error is far below audibility. */
+float fast_atan2f(float y, float x)
+{
+    float ax = fabsf(x), ay = fabsf(y), mx = ax > ay ? ax : ay, mn = ax > ay ? ay : ax, a, s, r;
+    if (mx == 0) return 0;
+    a = mn / mx;
+    s = a * a;
+    /* atan(a) on [0, 1]: odd degree-9 near-minimax fit, error under 1.2e-5 */
+    r = a * (0.99986637f + s * (-0.33030513f + s * (0.18016075f + s * (-0.08515858f + s * 0.02084623f))));
+    if (ay > ax) r = 1.57079637f - r;
+    if (x < 0) r = 3.14159274f - r;
+    return y < 0 ? -r : r;
+}
+
 /* One demodulated 48 kHz sample from the filtered channel (fi, fq). */
 static float demod(radio_t *r, float fi, float fq)
 {
     float v;
     if (r->mode == DEMOD_NFM) {
         float re = fi * r->pi + fq * r->pq, im = fq * r->pi - fi * r->pq; /* x[n] * conj(x[n-1]) */
-        float d = (re == 0 && im == 0) ? 0 : atan2f(im, re);
+        float d = fast_atan2f(im, re);
         r->pi = fi;
         r->pq = fq;
         r->sq_sum += d * d;
@@ -128,9 +143,27 @@ int radio_process(radio_t *r, const int16_t *iq, size_t npairs, int16_t *out)
         r->pos = (r->pos + 1) % RADIO_TAPS;
         hi = r->hi + r->pos; /* oldest sample first */
         hq = r->hq + r->pos;
-        for (k = 0; k < RADIO_TAPS; k++) { /* complex taps times complex samples */
-            fi += r->tr[k] * hi[k] - r->ti[k] * hq[k];
-            fq += r->tr[k] * hq[k] + r->ti[k] * hi[k];
+        if (r->mode == DEMOD_USB || r->mode == DEMOD_LSB) {
+            for (k = 0; k < RADIO_TAPS; k++) { /* complex taps times complex samples */
+                fi += r->tr[k] * hi[k] - r->ti[k] * hq[k];
+                fq += r->tr[k] * hq[k] + r->ti[k] * hi[k];
+            }
+        } else { /* NFM, AM: the taps are real (ti is 0), half the work. Four partial sums each: one running sum
+                  * waits on every multiply-add before it, which is what limits a Cortex-A53 here, not the count */
+            float a[8] = {0};
+            for (k = 0; k + 4 <= RADIO_TAPS; k += 4) {
+                int j;
+                for (j = 0; j < 4; j++) {
+                    a[j] += r->tr[k + j] * hi[k + j];
+                    a[4 + j] += r->tr[k + j] * hq[k + j];
+                }
+            }
+            for (; k < RADIO_TAPS; k++) {
+                a[0] += r->tr[k] * hi[k];
+                a[4] += r->tr[k] * hq[k];
+            }
+            fi = (a[0] + a[1]) + (a[2] + a[3]);
+            fq = (a[4] + a[5]) + (a[6] + a[7]);
         }
         r->acc += demod(r, fi, fq);
         if (++r->nacc == 3) { /* 48 kHz -> 16 kHz; the average is the anti-alias filter */
@@ -160,7 +193,7 @@ int radio_process_wfm(radio_t *r, const int16_t *iq, size_t npairs, int16_t *out
         r->phase = (r->phase + 1) & 15;
         r->pi = si;
         r->pq = sq;
-        r->deemph += (((re == 0 && im == 0) ? 0 : atan2f(im, re)) - r->deemph) * a_de;
+        r->deemph += (fast_atan2f(im, re) - r->deemph) * a_de;
         r->lp += (r->deemph - r->lp) * a_lp;
         r->acc += r->lp;
         if (++r->nacc == WFM_DECIM) {

@@ -182,20 +182,20 @@ Tài liệu kỹ thuật viết bằng tiếng Anh:
 
 ## Tình trạng test
 
-`tests/test_core.c`: 4363 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
+`tests/test_core.c`: 4426 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
 native trên Debian 13. Một `librtlsdr` giả và một bộ giải mã giả chạy trọn quy trình quét và giải mã mà không cần
 dongle. Chi tiết và số đo trên máy thật: [hướng dẫn deploy](docs/deployment-guide.md#tests).
 
 ## Hạn chế đã biết
 
 - Chỉ hỗ trợ RS41. Các loại sonde khác cần bộ giải mã riêng.
-- HackRF không có AGC nên gain mặc định là cố định (LNA 32 + VGA 24 dB; `gain` đặt tổng gain). Ở 400 MHz, HackRF kém
-  nhạy hơn RTL-SDR và tốn pin hơn.
+- HackRF không có AGC nên gain mặc định là cố định (LNA 32 + VGA 24 dB; `hackrf_gain` đặt tổng gain). Ở 400 MHz,
+  HackRF kém nhạy hơn RTL-SDR.
 - Ở gần một sonde phát rất mạnh, màn tổng quan có thể hiện thêm vài đỉnh phụ yếu hơn; chỉnh tới đó sẽ không có gì để
   giải mã.
 - La bàn cần hiệu chỉnh một lần (màn Info, phím `K`: xoay máy một vòng, nghiêng về bốn phía rồi hướng về phía Bắc).
   Sau đó la bàn được bù độ nghiêng nhờ gia tốc kế, nên không cần cầm máy nằm ngang (trừ khi đầu máy chĩa gần thẳng lên
-  trời hoặc xuống đất, trong khoảng 15°). Trước khi hiệu chỉnh, chỉ nên tin hướng khi đang di chuyển nhanh hơn 5 km/h
+  trời hoặc xuống đất, trong khoảng 15°). Trước khi hiệu chỉnh, chỉ nên tin hướng khi đang di chuyển nhanh hơn khoảng 5,4 km/h (1,5 m/s, `cog_min_speed`)
   (hướng GPS).
 - Skew-T dừng ở 100 hPa; chưa vẽ đường đoạn nhiệt ẩm và đường tỉ lệ hỗn hợp.
 - Dự đoán điểm rơi khi bóng đang lên phụ thuộc vào `burst_alt` giả định.

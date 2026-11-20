@@ -22,32 +22,32 @@ The core (`sc_core`) has no LVGL dependency and is unit-tested on any Linux host
 
 | File | Lines | Responsibility |
 |---|---|---|
-| `src/sc.h` | 547 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
-| `src/main.c` | 90 | Entry point, signal handling, main loop, LVGL setup, hold-Esc quit |
+| `src/sc.h` | 550 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
+| `src/main.c` | 92 | Entry point, signal handling, main loop, LVGL setup, hold-Esc quit |
 | `src/app.c` | 615 | State machine (`ST_IDLE`, `ST_SCAN`, `ST_LISTEN`, `ST_DECODE`), receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
-| `src/base.c` | 346 | `sc_now`, config parser and defaults, line reader, child process groups, flat-JSON field extraction |
+| `src/base.c` | 367 | `sc_now`, config parser and defaults, line reader, child process groups, flat-JSON field extraction |
 | `src/sdr.c` | 332 | Receiver front: IQ ring, `sdr_*` calls dispatched to a back end; RTL-SDR back end (`librtlsdr` loaded with `dlopen`, reader thread, tuner range table) |
-| `src/sdr_hackrf.c` | 297 | HackRF back end: `libhackrf` loaded with `dlopen`, int8 to u8 IQ, halving to reach rates under 2 MS/s, retune-safe transfers |
+| `src/sdr_hackrf.c` | 314 | HackRF back end: `libhackrf` loaded with `dlopen`, int8 to u8 IQ, halving to reach rates under 2 MS/s, retune-safe transfers |
 | `src/sdr_priv.h` | 32 | Back-end interface (`sdr_ops_t`) shared by the two |
-| `src/dsp.c` | 215 | FFT, decoder front end (DDC: rotation, half-band decimation, droop FIR), wide 192 kHz stream |
-| `src/radio.c` | 174 | Audio demodulators for NFM, AM, USB, LSB, WFM |
-| `src/io.c` | 238 | gpsd client (TPV and SKY), USB SDR presence, spectrum cells and peaks |
-| `src/compass.c` | 390 | Heading sources, magnetometer and accelerometer, tilt compensation, compass calibration |
+| `src/dsp.c` | 234 | FFT, decoder front end (DDC: rotation, half-band decimation, droop FIR), wide 192 kHz stream |
+| `src/radio.c` | 207 | Audio demodulators for NFM, AM, USB, LSB, WFM |
+| `src/io.c` | 239 | gpsd client (TPV and SKY), USB SDR presence, spectrum cells and peaks |
+| `src/compass.c` | 398 | Heading sources, magnetometer and accelerometer, tilt compensation, compass calibration |
 | `src/geo.c` | 202 | Geodesy, ISA, dew point, wind profile, sonde JSON parse, landing prediction |
 | `src/track.c` | 310 | Flight history, burst detection, proximity beeper, PCM audio stream to `pacat`, frame LED, slippy-map maths |
-| `src/tiles.c` | 290 | Tile lookup, `curl` downloads with cache cap and failure reasons, recolouring |
+| `src/tiles.c` | 296 | Tile lookup, `curl` downloads with cache cap and failure reasons, recolouring |
 | `src/demo.c` | 139 | Simulated flight (`demo = 1`) through the same frame path |
 | `src/keys.c` | 92 | Keyboard from evdev (`/dev/input/event*`), Sym symbol keys, held-arrow repeat |
-| `src/ui.c` | 249 | UI state, overlays (frequency entry, burst alert, no SDR), LVGL draw callback, key dispatch (`ui_key`) |
+| `src/ui.c` | 252 | UI state, overlays (frequency entry, burst alert, no SDR), LVGL draw callback, key dispatch (`ui_key`) |
 | `src/ui_draw.c` | 220 | Drawing primitives (line, rectangle, label), top and nav bars, battery |
 | `src/ui_track.c` | 215 | Track screen and compass |
 | `src/ui_map.c` | 284 | Map screen, decoded tile cache, pan, zoom, follow, style |
 | `src/ui_graph.c` | 142 | Skew-T and flight profile |
 | `src/ui_radio.c` | 159 | Band overview, tuned spectrum, listening, decoding |
-| `src/ui_info.c` | 176 | Info screens and compass calibration |
+| `src/ui_info.c` | 177 | Info screens and compass calibration |
 | `src/ui_priv.h` | 76 | Colours, shared UI state and prototypes for the UI files |
 | `src/ui.h` | 16 | UI entry points used by `main.c` |
-| `tools/render.c` | 209 | Headless build of the real UI for screenshots (`SC_RENDER`) |
+| `tools/render.c` | 226 | Headless build of the real UI for screenshots (`SC_RENDER`) |
 
 The UI is one file per screen (see [code standards](./code-standards.md#file-size)).
 
@@ -117,7 +117,8 @@ job restarts only the USB stream at the other rate.
 ### Receive and decode
 
 1. `sdr_open` picks the back end (`sdr`; `auto` looks at USB with `sdr_present`), which loads its library
-   (`librtlsdr.so.0` or `libhackrf.so.0`, overridable with `rtlsdr_lib` / `hackrf_lib`), applies `ppm`, `gain`,
+   (`librtlsdr.so.0` or `libhackrf.so.0`, overridable with `rtlsdr_lib` / `hackrf_lib`), applies `ppm`, `gain`
+   (HackRF: `hackrf_gain`),
    `bias_tee`, and starts streaming u8 IQ into the ring. See [receiver back ends](#receiver-back-ends).
 2. `rx_poll` (in `app.c`) drains the ring in 64 KiB reads. For each read it:
    - runs `ddc_process_wide` (see [Algorithms](#algorithms)) and writes 48 kHz cs16 pairs to the decoder pipe with
@@ -213,17 +214,36 @@ Port of `rtl_fm -M raw -F9 -s 48000` (rtl-sdr 2.0.2 chain):
 
 The same routine also gives the 192 kHz stream after the third halving (`DDC_WIDE_RATE`) for WFM.
 
+The rotation runs four pairs at a time without a branch, and each halving filters I and Q together from a copy of
+the block (`ddc_t.work`), so the compiler vectorises it. The numbers are rtl_fm's bit for bit, including its habit of
+never using a block's last sample in the next halving: a test checks a hash of the output for fixed noise in uneven
+chunks against the in-place original.
+
+Cost per second of signal on the CardputerZero (Cortex-A53, 1 GHz), from a benchmark of each stage on the device:
+
+| Stage | Before | Now |
+|---|---|---|
+| Decoder front end (1.536 MS/s to 48 kHz) | 80 ms | 30 ms |
+| HackRF halving (3.072 to 1.536 MS/s) | 57 ms | 22.5 ms |
+| HackRF int8 to u8 (scan, 2.048 MS/s) | 43 ms | 3.4 ms |
+| NFM audio | 39 ms | 26.6 ms |
+| WFM audio | 43 ms | 26.5 ms |
+| Live spectrum (20 × 5 FFTs of 1024) | 29 ms | 29 ms |
+
 ### Radio demodulation (`radio.c`)
 
 | Mode | Input | Method | Output |
 |---|---|---|---|
-| NFM | 48 kHz | Phase-difference discriminator on a 63-tap channel filter; noise squelch on the mean square over 20 ms, threshold per channel width; closed squelch is a murmur | 16 kHz |
+| NFM | 48 kHz | Phase-difference discriminator on a 63-tap channel filter (real taps; SSB needs the complex ones); noise squelch on the mean square over 20 ms, threshold per channel width; closed squelch is a murmur | 16 kHz |
 | AM | 48 kHz | Envelope, gain follows the carrier level | 16 kHz |
 | USB / LSB | 48 kHz | Complex filter keeps one sideband; real part with AGC | 16 kHz |
 | WFM | 192 kHz | Same discriminator (±75 kHz), 50 µs de-emphasis, 10 kHz low-pass, decimate by 12 | 16 kHz |
 
 Channel widths: NFM 16 / 25 / 6 / 12 kHz (16 kHz default), AM 6 / 10 kHz, SSB 2.4 / 3 kHz, WFM 180 kHz (display only;
 the 192 kHz stream is the channel).
+
+The discriminators use `fast_atan2f`, a polynomial within 1.2e-5 rad (far below audibility): glibc's `atan2f` took
+about 230 ns per call on the device, nearly all of WFM's cost at 192 000 calls a second.
 
 ### Sonde JSON and position validity (`geo.c`)
 
@@ -287,11 +307,13 @@ range). The app, DSP and decoders do not know which one runs. A new receiver is 
   40 ms each). They are converted to u8 on the way into the ring. The HackRF does not sample under 2 MS/s, so the
   decoder's 1.536 MS/s runs at 3.072 MS/s and is halved with a 7-tap half-band filter (−1 0 9 16 9 0 −1)/32; the
   analog baseband filter is set to the step at or under 3/4 of the rate (1.75 MHz). A transfer is dropped when it
-  began before the last retune (now − its length, less 1/8 of it as margin for a late callback); the check and
-  the write share a lock with the retune's flush, so none lands after it. Without that the sweep showed the
-  carrier one step too high as well. `ppm` scales both the tuned frequency and the sample rate (one clock). The
-HackRF's DC spike at the tuning centre is a little wider than the RTL-SDR's: on the device a small spike shows just
-outside the 50 kHz zone, outside the channel being heard.
+  began before the last retune (now − its length, with 1/8 of it plus 10 ms as margin for a late callback). The
+  callback runs under the lock that retune, start and stop take, so nothing lands after a retune's flush and a
+  libhackrf older than 2023.01 (whose `stop_rx` does not wait for a running callback) cannot race a restart.
+  Without the drop the sweep showed the carrier one step too high as well. `ppm` scales both the tuned frequency
+  and the sample rate (one clock). Gain comes from `hackrf_gain`, not `gain`: an RTL-SDR's 38.6 dB would leave a
+  HackRF deaf. The HackRF's DC spike at the tuning centre is a little wider than the RTL-SDR's: on the device a
+  small spike shows just outside the 50 kHz zone, outside the channel being heard.
 
 ### Compass (`compass.c`)
 
@@ -317,7 +339,12 @@ Calibration (Info, `K`):
    The result is kept only with a clear winner (spread under 0.2 and under 0.6 × the next best); otherwise the
    compass stays flat-only (`mag_tilt = 0`).
 3. North: the device held flat pointing north sets `mag_rot_deg` so that this reads 0. With tilt compensation it also
-   sets `mag_flip_y` from the accelerometer: 1 when "up" is the magnetometer's -z.
+   sets `mag_flip_y` from the accelerometer: 1 when "up" is the magnetometer's -z. If the north samples are too near
+   vertical for the tilt formula, the flat-only result of step 1 is kept.
+
+`Enter` during step 2 skips it: the compass is then flat-only. While running, the heading falls back to the flat
+formula when the accelerometer cannot be read or `accel_axes` is not a valid mapping; with a working accelerometer a
+top pointing straight up or down holds the last heading.
 
 On the CardputerZero the BMM150 reads (-x, +y, -z) of the BMI270 (`accel_axes = -x+y-z`). A 90 s free-hand recording
 on the device picked this mapping with a spread of 0.10 to 0.14 against 0.24 to 0.28 for the next best. The tests

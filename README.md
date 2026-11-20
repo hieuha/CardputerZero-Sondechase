@@ -180,19 +180,20 @@ Everything the app keeps is in one folder, `data_dir` (default `~/sondechase`):
 
 ## Test status
 
-`tests/test_core.c`: 4363 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
+`tests/test_core.c`: 4426 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
 arm64 package build on Debian 13. A fake `librtlsdr` and a fake decoder run scanning and decoding end to end without
 a dongle. Details and the device measurements: [deployment guide](docs/deployment-guide.md#tests).
 
 ## Known limitations
 
 - RS41 only. Other sonde types need their own decoder.
-- HackRF: it has no AGC, so the default gain is fixed (LNA 32 + VGA 24 dB; `gain` sets the total). At 400 MHz it is
-  less sensitive than an RTL-SDR and draws more power from the battery.
+- HackRF: it has no AGC, so the default gain is fixed (LNA 32 + VGA 24 dB; `hackrf_gain` sets the total). At 400 MHz
+  it is less sensitive than an RTL-SDR.
 - Next to a very strong sonde the overview can show weaker spurs; tuning to them shows nothing to decode.
 - The compass must be calibrated once (Info, `K`: turn a full circle, lean four ways, then point north). After that
   it is tilt-compensated with the accelerometer, so the device need not be held flat (not within about 15° of
-  pointing straight up or down). Until then, trust the heading only while moving faster than 5 km/h (GPS course).
+  pointing straight up or down). Until then, trust the heading only while moving faster than about 5.4 km/h
+  (1.5 m/s, `cog_min_speed`), where it is the GPS course.
 - Skew-T stops at 100 hPa; moist adiabats and mixing-ratio lines are not drawn.
 - Landing prediction during ascent depends on the assumed `burst_alt`.
 - Flight history is not restored after an app restart.

@@ -79,7 +79,7 @@ CardputerZero has one); without it there are two steps and the device must be he
 | Step | What to do |
 |---|---|
 | 1 | Hold the device flat. Turn slowly to your right on the spot, a full circle, until the ring is all green. The next step starts by itself |
-| 2 | Lean the device slowly about 30° forward, back, left and right, back to flat between each, until all four arcs are green (`4/4`). This lets the compass work when the device is not held flat |
+| 2 | Lean the device slowly about 30° forward, back, left and right, back to flat between each, until all four arcs are green (`4/4`). This lets the compass work when the device is not held flat. `Enter` skips it (flat-only compass) |
 | Last | Hold it flat, point the top of the device north (use a phone compass), press `Enter`. Saved to `<data_dir>/compass.conf` |
 | Result | "works tilted": tilt compensation is on. "hold it flat": the lean step did not give a clear answer; redo it slower, or keep the device flat |
 | Any time | `Esc` cancels; nothing is changed |

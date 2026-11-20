@@ -188,7 +188,10 @@ void ui_key(int k)
         else if (k == K_ESC) A->burst_alert = 0;
     } else if (A->cal.step != MAGCAL_OFF) { /* compass calibration takes Enter / Esc only */
         if (k == K_ESC || !A->hdg.mag_found) A->cal.step = MAGCAL_OFF;
-        else if (k == K_ENTER && A->cal.step == MAGCAL_NORTH) {
+        else if (k == K_ENTER && A->cal.step == MAGCAL_TILT) { /* skip the leans: a flat-only compass */
+            A->cal.use_acc = 0;
+            A->cal.step = MAGCAL_NORTH;
+        } else if (k == K_ENTER && A->cal.step == MAGCAL_NORTH) {
             cal_saved = app_compass_save(A) == 0 ? 1 : -1;
             cal_t = sc_now();
         }

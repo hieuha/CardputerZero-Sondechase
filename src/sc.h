@@ -15,7 +15,8 @@ typedef struct {
     long freq_hz;            /* start-up frequency, 0 = none */
     char sdr[8];             /* receiver: "auto" (whichever is on USB, RTL-SDR first), "rtlsdr" or "hackrf" */
     int ppm;                 /* receiver frequency correction */
-    char gain[12];           /* "" = tuner AGC (HackRF: LNA 32 + VGA 24), else dB value e.g. "38.6" */
+    char gain[12];           /* RTL-SDR: "" = tuner AGC, else dB value e.g. "38.6" */
+    char hackrf_gain[12];    /* HackRF: "" = LNA 32 + VGA 24, else the total in dB (LNA, then VGA, then amp) */
     int rtl_dev;             /* receiver index among those of its kind */
     int bias_tee;            /* 1 = power an LNA through the bias-T (HackRF: antenna port power) */
     char rtlsdr_lib[256];    /* librtlsdr to dlopen; "" = librtlsdr.so.0 (tests point it at a fake) */
@@ -236,6 +237,7 @@ typedef struct {
     unsigned phase;            /* rotation step (0..3) of the next input pair */
     int npend;                 /* IQ pairs waiting in pend */
     int16_t pend[2 * DDC_BLOCK];
+    int16_t work[2 * DDC_BLOCK + 10]; /* a halving's input: 5 pairs of history, then the block */
     int16_t hist_i[5][6], hist_q[5][6], droop_i[9], droop_q[9];
 } ddc_t;
 void ddc_init(ddc_t *d);
@@ -276,6 +278,7 @@ int radio_process(radio_t *r, const int16_t *iq, size_t npairs, int16_t *out);
 /* WFM: npairs DDC_WIDE_RATE cs16 pairs in; at most npairs / 12 + 1 audio samples out. */
 int radio_process_wfm(radio_t *r, const int16_t *iq, size_t npairs, int16_t *out);
 const char *radio_mode_name(int mode);
+float fast_atan2f(float y, float x); /* atan2 within about 1e-5 rad; 0 for (0, 0) */
 long radio_default_bw(int mode);
 long radio_next_bw(int mode, long bw_hz); /* the mode's next channel width, wrapping */
 

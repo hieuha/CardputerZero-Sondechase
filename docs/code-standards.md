@@ -40,7 +40,8 @@ src/
   sdr.c         librtlsdr loaded at run time, IQ ring
   dsp.c         FFT and decoder front end
   radio.c       audio demodulators
-  io.c          gpsd, magnetometer, USB presence, spectrum cells
+  io.c          gpsd, USB presence, spectrum cells
+  compass.c     heading: magnetometer, accelerometer, tilt compensation, calibration
   geo.c         geodesy, sonde JSON, wind, landing prediction
   track.c       history, burst, beeper, audio stream, LED
   tiles.c       tile lookup, download, recolour

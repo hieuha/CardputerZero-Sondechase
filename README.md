@@ -29,7 +29,7 @@ RS41 (Y0532351). GPS chasing in the field has not been tried yet; see [Known lim
 | ![Info screen: sonde, reception, this device](screenshots/mockup/info.png) | ![Info page 2: exact coordinates, angles and weather](screenshots/mockup/info-details.png) |
 | **Info 1/2**: sonde, reception, this device, landing coordinates | **Info 2/2** (`→`): exact coordinates, bearing, elevation, speeds, weather; `K` calibrates the compass |
 | ![Track screen after the device lost GPS: distance from its last fix](screenshots/mockup/track-gps-lost.png) | ![Compass calibration, step 1: turn a full circle](screenshots/mockup/compass-calibration.png) |
-| **Track, GPS lost**: distance and direction from the device's last fix, in yellow | **Compass calibration** (Info, `K`): turn a full circle, then point north |
+| **Track, GPS lost**: distance and direction from the device's last fix, in yellow | **Compass calibration** (Info, `K`): turn a full circle, lean four ways, then point north |
 | ![Balloon burst alert](screenshots/mockup/burst.png) | ![Track screen on course: green ring, Straight ahead](screenshots/mockup/track-near.png) |
 | **Burst alert**: falling speed, time and distance to landing | **Track, on course**: ring and `Go` turn green within 15° |
 
@@ -79,7 +79,7 @@ To build the package yourself (on the device or cross-compiled), see [deployment
 | `5` Map | Tiles, device position, sonde, flight track, landing point. Arrow keys pan (hold to keep moving; the map stops following, `free`). `Sym` + `T` (`+`) zooms in, `Sym` + `R` (`-`) zooms out. `C` cycles both / device / sonde, or follows again after panning. `V` switches simple / detailed style. With no position yet: centred on `map_lat` / `map_lon` |
 | `6` Graph | `Left` / `Right` switch page: Skew-T log-P, altitude and vertical speed over time |
 | `7` Radio | Spectrum with the tuned frequency's audio. `Left` / `Right` ±10 kHz, `Up` / `Down` ±100 kHz (hold to keep tuning). `Enter` decodes here. `S` Scan, `Esc` goes back. `D` mode (NFM / AM / USB / LSB / WFM), `B` channel width |
-| `8` Info | `K` calibrates the compass (turn a full circle to the right, then point north and press `Enter`; saved to `<data_dir>/compass.conf`). `Left` / `Right` switch page: 1/2 sonde, reception, device, landing point; 2/2 exact numbers (coordinates, bearing, turn and elevation angles, speeds, temperature, humidity, pressure, device position) |
+| `8` Info | `K` calibrates the compass (turn a full circle to the right, lean the device forward, back, left and right, then point north and press `Enter`; saved to `<data_dir>/compass.conf`). `Left` / `Right` switch page: 1/2 sonde, reception, device, landing point; 2/2 exact numbers (coordinates, bearing, turn and elevation angles, speeds, temperature, humidity, pressure, device position) |
 | `Tab` | Next screen (Track → Map → Graph → Radio → Info → Track) |
 | `F` | Enter a frequency in kHz; `Enter` tunes it (within the tuner's range) and decodes |
 | `S` | Scan 400–406 MHz and try the peaks on the decoder (see [Radio screen](#radio-screen)) |
@@ -185,8 +185,9 @@ a dongle. Details and the device measurements: [deployment guide](docs/deploymen
 
 - RS41 only. Other sonde types need their own decoder.
 - Next to a very strong sonde the overview can show weaker spurs; tuning to them shows nothing to decode.
-- The compass must be calibrated once (Info, `K`: turn a full circle, then point north) and held flat: there is no
-  tilt compensation. Until then, trust the heading only while moving faster than 5 km/h (GPS course).
+- The compass must be calibrated once (Info, `K`: turn a full circle, lean four ways, then point north). After that
+  it is tilt-compensated with the accelerometer, so the device need not be held flat (not within about 15° of
+  pointing straight up or down). Until then, trust the heading only while moving faster than 5 km/h (GPS course).
 - Skew-T stops at 100 hPa; moist adiabats and mixing-ratio lines are not drawn.
 - Landing prediction during ascent depends on the assumed `burst_alt`.
 - Flight history is not restored after an app restart.

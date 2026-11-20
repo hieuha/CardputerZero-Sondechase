@@ -74,6 +74,7 @@ static const cfg_ent ents[] = {
     E(scan_step_hz, 'l'), E(gpsd_host, 's'),    E(gpsd_port, 'i'),    E(ground_alt, 'd'),
     E(burst_alt, 'd'),    E(descent_v0, 'd'),   E(cog_min_speed, 'd'), E(mag_enable, 'i'),
     E(mag_off_x, 'd'),    E(mag_off_y, 'd'),    E(mag_rot_deg, 'd'),  E(mag_flip_y, 'i'),
+    E(mag_off_z, 'd'),    E(mag_tilt, 'i'),     E(accel_axes, 's'),
     E(declination, 'd'),  E(stale_s, 'd'),      E(data_dir, 's'),     E(kbd_dev, 's'),
     E(fb_dev, 's'),       E(prox_radius_m, 'd'), E(prox_hyst_m, 'd'), E(audio_enable, 'i'),
     E(led_path, 's'),

@@ -73,12 +73,15 @@ Scan (after `S`):
 
 ### Compass calibration (`K` on Info)
 
-Do it once, outdoors, away from cars and metal. Hold the device flat.
+Do it once, outdoors, away from cars and metal. Step 2 appears only on a device with an accelerometer (the
+CardputerZero has one); without it there are two steps and the device must be held flat when used.
 
 | Step | What to do |
 |---|---|
-| 1 | Turn slowly to your right on the spot, a full circle, until the ring is all green. Step 2 starts by itself |
-| 2 | Point the top of the device north (use a phone compass), press `Enter`. Saved to `<data_dir>/compass.conf` |
+| 1 | Hold the device flat. Turn slowly to your right on the spot, a full circle, until the ring is all green. The next step starts by itself |
+| 2 | Lean the device slowly about 30° forward, back, left and right, back to flat between each, until all four arcs are green (`4/4`). This lets the compass work when the device is not held flat |
+| Last | Hold it flat, point the top of the device north (use a phone compass), press `Enter`. Saved to `<data_dir>/compass.conf` |
+| Result | "works tilted": tilt compensation is on. "hold it flat": the lean step did not give a clear answer; redo it slower, or keep the device flat |
 | Any time | `Esc` cancels; nothing is changed |
 
 On screens with pages, the page number is in the top-left label.

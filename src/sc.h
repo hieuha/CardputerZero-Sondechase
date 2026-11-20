@@ -27,8 +27,10 @@ typedef struct {
     double descent_v0;       /* assumed sea-level descent rate while ascending, m/s */
     double cog_min_speed;    /* m/s above which GPS course is used as heading */
     int mag_enable;
-    double mag_off_x, mag_off_y, mag_rot_deg;
+    double mag_off_x, mag_off_y, mag_off_z, mag_rot_deg;
     int mag_flip_y;
+    int mag_tilt;            /* 1 = tilt-compensated with the accelerometer (set by calibration when it can be) */
+    char accel_axes[8];      /* accelerometer axes as magnetometer axes, e.g. "+y-x+z" (set by calibration) */
     double declination;      /* magnetic declination, degrees east positive */
     double map_lat, map_lon; /* Map centre while neither this device nor a sonde has a position */
     int map_simple;          /* 1: downloaded tiles show only water and roads (V on the Map toggles) */
@@ -158,34 +160,50 @@ typedef struct {
     double deg;
     int src;
     int mag_found;
+    int acc_found;    /* accelerometer x/y/z and magnetometer z found: tilt compensation possible */
     double mag_scale; /* gauss per raw count (in_magn_scale), 0 = not reported */
     double t_mag;
-    char mag_x[160], mag_y[160];
+    double acc[3];    /* accelerometer, low-passed, raw counts */
+    int acc_ok;
+    char mag_x[160], mag_y[160], mag_z[160], acc_x[160], acc_y[160], acc_z[160];
 } heading_t;
 void heading_init(heading_t *h, const cfg_t *c);
 void heading_update(heading_t *h, const gps_t *g, const cfg_t *c, double now);
-double heading_from_mag(double x, double y, const cfg_t *c);
-int mag_read(const heading_t *h, double *x, double *y); /* raw magnetometer x/y; 0 = no sensor or read failed */
+double heading_from_mag(double x, double y, const cfg_t *c); /* held flat */
+double heading_tilt(const double mag[3], const double acc[3], const cfg_t *c); /* any attitude; NAN near vertical */
+int mag_read(const heading_t *h, double mag[3]); /* raw magnetometer; z = 0 without tilt support; 0 = no sensor */
+int acc_read(const heading_t *h, double acc[3]); /* raw accelerometer; 0 = none or read failed */
 
 /* Compass calibration. Step 1: the device, held flat, turns right through a full circle; the centre of the raw x/y
- * circle gives the hard-iron offsets and the direction the raw angle moved gives the axis flip. Step 2: the device
- * points north and the rotation is set so that reading becomes 0. */
+ * circle gives the hard-iron offsets and the direction the raw angle moved gives the axis flip. Step 2 (with an
+ * accelerometer): the device leans forward, back, left and right; that gives the z offset and how the accelerometer's
+ * axes line up with the magnetometer's. Last step: the device points north and the rotation is set so that reading
+ * becomes 0. */
 #define MAGCAL_SECTORS 36
 #define MAGCAL_MAX 1200 /* 60 s of samples at 20 Hz */
-enum { MAGCAL_OFF, MAGCAL_TURN, MAGCAL_NORTH };
+#define MAGCAL_TILT_MAX 400
+#define MAGCAL_TILT_DEG 25.0 /* lean that counts for one of the four tilt directions */
+enum { MAGCAL_OFF, MAGCAL_TURN, MAGCAL_TILT, MAGCAL_NORTH };
 typedef struct {
     int step, n;
+    int use_acc;     /* 1 = tilt step too */
     double min_span; /* raw counts the x and y ranges must reach: a real turn, not sensor noise */
     double xmin, xmax, ymin, ymax;
-    float xs[MAGCAL_MAX], ys[MAGCAL_MAX];
+    float xs[MAGCAL_MAX], ys[MAGCAL_MAX], zs[MAGCAL_MAX], as[MAGCAL_MAX][3];
     unsigned char seen[MAGCAL_SECTORS]; /* 10° sectors of the raw angle the turn has passed through */
+    double acc_level[3];                /* accelerometer summed over the level turn: "up" while flat */
+    int acc_level_n;
+    float tm[MAGCAL_TILT_MAX][3], ta[MAGCAL_TILT_MAX][3]; /* magnetometer and accelerometer while leaning */
+    int tn, tn_all;
+    unsigned char tilt_seen[4];
     double t_poll;
 } magcal_t;
-void magcal_start(magcal_t *m, double min_span);
+void magcal_start(magcal_t *m, double min_span, int use_acc);
 double mag_min_span(const heading_t *h); /* min_span for this sensor */
-void magcal_add(magcal_t *m, double x, double y); /* moves to step 2 by itself once every sector is seen */
-int magcal_covered(const magcal_t *m);            /* sectors seen, 0..MAGCAL_SECTORS */
-void magcal_apply(const magcal_t *m, cfg_t *c);   /* offsets, flip, and the rotation that makes "now" read north */
+void magcal_add(magcal_t *m, const double mag[3], const double *acc); /* acc NULL = none; steps on by itself */
+int magcal_covered(const magcal_t *m);      /* turn sectors seen, 0..MAGCAL_SECTORS */
+int magcal_tilt_covered(const magcal_t *m); /* tilt directions seen, 0..4 */
+int magcal_apply(const magcal_t *m, cfg_t *c); /* offsets, axes, rotation that makes "now" read north; 1 = tilt */
 int magcal_save(const cfg_t *c, const char *path); /* 0 ok */
 
 /* 1 when an RTL2832U receiver is listed under <usb_sysfs> (normally /sys/bus/usb/devices). */

@@ -534,9 +534,9 @@ void app_poll(app_t *a)
     gps_poll(&a->gps, &a->cfg);
     heading_update(&a->hdg, &a->gps, &a->cfg, now);
     if (a->cal.step != MAGCAL_OFF && now - a->cal.t_poll >= 0.05) { /* 20 Hz while calibrating */
-        double x, y;
+        double m[3], acc[3];
         a->cal.t_poll = now;
-        if (mag_read(&a->hdg, &x, &y)) magcal_add(&a->cal, x, y);
+        if (mag_read(&a->hdg, m)) magcal_add(&a->cal, m, acc_read(&a->hdg, acc) ? acc : NULL);
     }
     if (a->cfg.sdr_check && now - a->t_sdr >= 2.0) {
         a->t_sdr = now;

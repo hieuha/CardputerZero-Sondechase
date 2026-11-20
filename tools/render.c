@@ -153,14 +153,31 @@ int main(int argc, char **argv)
     ui_key(K_RIGHT); shot("03_graph_flight");
     ui_key(K_LEFT);
     ui_key('8'); shot("05_info"); ui_key(K_RIGHT); shot("05_info_pos"); ui_key(K_RIGHT);
-    { /* compass calibration: part of the turn, then the north step (fed by hand: the render has no sensor) */
-        double h;
+    { /* compass calibration: part of the turn, two of the four leans, then the north step (fed by hand: the render
+       * has no sensor) */
+        static const double flat[3] = {0, 0, 4096};
+        double h, m[3];
+        int k;
         app.hdg.mag_found = 1;
-        magcal_start(&app.cal, 300);
-        for (h = 0; h < 230; h += 5) magcal_add(&app.cal, 300 * cos(h * M_PI / 180), 300 * sin(h * M_PI / 180));
+        magcal_start(&app.cal, 300, 1);
+        for (h = 0; h < 230; h += 5) {
+            m[0] = 300 * cos(h * M_PI / 180); m[1] = 300 * sin(h * M_PI / 180); m[2] = 500;
+            magcal_add(&app.cal, m, flat);
+        }
         lv_obj_invalidate(lv_screen_active());
         shot("08_compass_turn");
-        for (; h < 380; h += 5) magcal_add(&app.cal, 300 * cos(h * M_PI / 180), 300 * sin(h * M_PI / 180));
+        for (; h < 380; h += 5) {
+            m[0] = 300 * cos(h * M_PI / 180); m[1] = 300 * sin(h * M_PI / 180); m[2] = 500;
+            magcal_add(&app.cal, m, flat);
+        }
+        for (k = 0; k < 2; k++) { /* lean forward, then right, 30 degrees */
+            double a[3] = {k ? 2048 : 0, k ? 0 : 2048, 3547};
+            int i;
+            for (i = 0; i < 30; i++) magcal_add(&app.cal, m, a);
+        }
+        lv_obj_invalidate(lv_screen_active());
+        shot("08_compass_tilt");
+        app.cal.step = MAGCAL_NORTH;
         lv_obj_invalidate(lv_screen_active());
         shot("08_compass_north");
         app.cal.step = MAGCAL_OFF;

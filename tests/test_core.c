@@ -167,14 +167,14 @@ static void t_magcal(void)
         double h, x, y;
         cfg_defaults(&c);
         c.declination = -1.0;
-        magcal_start(&m, 320); /* 0.2 G at the BMM150's 0.000625 G per count */
-        for (h = 0; h < 200; h += 4) { mag_at(h, 37, flip, &x, &y); magcal_add(&m, x, y); }
+        magcal_start(&m, 320, 0); /* 0.2 G at the BMM150's 0.000625 G per count */
+        for (h = 0; h < 200; h += 4) { mag_at(h, 37, flip, &x, &y); magcal_add(&m, (double[3]){x, y, 0}, NULL); }
         CHECK(m.step == MAGCAL_TURN); /* half a turn is not enough */
         CHECK(magcal_covered(&m) < MAGCAL_SECTORS);
-        for (; h <= 370 && m.step == MAGCAL_TURN; h += 4) { mag_at(h, 37, flip, &x, &y); magcal_add(&m, x, y); }
+        for (; h <= 370 && m.step == MAGCAL_TURN; h += 4) { mag_at(h, 37, flip, &x, &y); magcal_add(&m, (double[3]){x, y, 0}, NULL); }
         CHECK(m.step == MAGCAL_NORTH); /* a full turn to the right moves on by itself */
-        for (h = 0; h < 12; h++) { mag_at(0, 37, flip, &x, &y); magcal_add(&m, x, y); } /* held pointing north */
-        magcal_apply(&m, &c);
+        for (h = 0; h < 12; h++) { mag_at(0, 37, flip, &x, &y); magcal_add(&m, (double[3]){x, y, 0}, NULL); } /* north */
+        CHECK(magcal_apply(&m, &c) == 0 && c.mag_tilt == 0); /* no accelerometer: flat only */
         NEAR(c.mag_off_x, 120, 2.0);
         NEAR(c.mag_off_y, -80, 2.0);
         CHECK(c.mag_flip_y == flip);
@@ -188,8 +188,8 @@ static void t_magcal(void)
     { /* a device lying still: noise alone (seen on the BMM150: about +-50 counts) must not fill the ring */
         magcal_t m;
         int i;
-        magcal_start(&m, 320);
-        for (i = 0; i < 600; i++) magcal_add(&m, -350 + 50 * cos(i * 2.4), 1930 + 50 * sin(i * 1.7));
+        magcal_start(&m, 320, 0);
+        for (i = 0; i < 600; i++) magcal_add(&m, (double[3]){-350 + 50 * cos(i * 2.4), 1930 + 50 * sin(i * 1.7), 0}, NULL);
         CHECK(m.step == MAGCAL_TURN);
         CHECK(magcal_covered(&m) == 0);
     }
@@ -198,13 +198,135 @@ static void t_magcal(void)
         cfg_defaults(&c);
         cfg_defaults(&d);
         c.mag_off_x = -12.5; c.mag_off_y = 40.25; c.mag_flip_y = 1; c.mag_rot_deg = -123.4;
+        c.mag_off_z = 866.5; c.mag_tilt = 1; snprintf(c.accel_axes, sizeof c.accel_axes, "-x+y-z");
         CHECK(magcal_save(&c, "/tmp/sc_compass.conf") == 0);
         CHECK(cfg_load(&d, "/tmp/sc_compass.conf") == 0);
         NEAR(d.mag_off_x, -12.5, 1e-3);
         NEAR(d.mag_off_y, 40.25, 1e-3);
         CHECK(d.mag_flip_y == 1);
         NEAR(d.mag_rot_deg, -123.4, 1e-3);
+        NEAR(d.mag_off_z, 866.5, 1e-3);
+        CHECK(d.mag_tilt == 1 && !strcmp(d.accel_axes, "-x+y-z"));
         unlink("/tmp/sc_compass.conf");
+    }
+}
+
+
+/* A simulated device for tilt compensation. World axes east, north, up; the field points north and down by the
+ * inclination. The device's top (+y) points at yaw (clockwise from north), then it pitches (top up) and rolls
+ * (right side down). Each chip sees the device axes through its own signed permutation (both chips flat on the
+ * board), the magnetometer around a hard-iron offset. */
+typedef struct { int acc[3][3], mag[3][3]; double bh, bv; } simdev_t;
+
+static void rot3(double v[3], int axis, double deg)
+{
+    double a = deg * M_PI / 180.0, c = cos(a), s = sin(a), r[3] = {v[0], v[1], v[2]};
+    int i = (axis + 1) % 3, j = (axis + 2) % 3;
+    v[i] = c * r[i] - s * r[j];
+    v[j] = s * r[i] + c * r[j];
+}
+
+/* world vector -> device axes: undo yaw, then pitch (about x), then roll (about y) */
+static void sim_dev(const double w[3], double yaw, double pitch, double roll, double d[3])
+{
+    d[0] = w[0]; d[1] = w[1]; d[2] = w[2];
+    rot3(d, 2, yaw);    /* device turned clockwise by yaw: the world turns counter-clockwise under it */
+    rot3(d, 0, -pitch);
+    rot3(d, 1, roll);
+}
+
+static void sim_read(const simdev_t *s, double yaw, double pitch, double roll, double mag[3], double acc[3])
+{
+    const double up[3] = {0, 0, 4096}, b[3] = {0, s->bh, -s->bv}, off[3] = {235, 205, 867};
+    double du[3], db[3];
+    int i, j;
+    sim_dev(up, yaw, pitch, roll, du);
+    sim_dev(b, yaw, pitch, roll, db);
+    for (i = 0; i < 3; i++) {
+        acc[i] = 0;
+        mag[i] = off[i];
+        for (j = 0; j < 3; j++) { acc[i] += s->acc[i][j] * du[j]; mag[i] += s->mag[i][j] * db[j]; }
+    }
+}
+
+/* the true heading of the device's top, from the same rotations applied forwards */
+static double sim_heading(double yaw, double pitch, double roll)
+{
+    double f[3] = {0, 1, 0};
+    rot3(f, 1, -roll);
+    rot3(f, 0, pitch);
+    rot3(f, 2, -yaw);
+    return norm360(atan2(f[0], f[1]) * 180.0 / M_PI);
+}
+
+static void t_magcal_tilt(void)
+{
+    static const simdev_t devs[] = {
+        /* CardputerZero as measured: BMM150 = (-x, +y, -z) of the BMI270, 0.465 G at about 20° inclination */
+        {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {{-1, 0, 0}, {0, 1, 0}, {0, 0, -1}}, 700, 255},
+        /* both chips the same way round, 65° inclination (northern Europe) */
+        {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, 340, 730},
+        /* accelerometer x/y swapped, a mirrored (left-handed) magnetometer, southern hemisphere (field points up) */
+        {{{0, 1, 0}, {-1, 0, 0}, {0, 0, 1}}, {{1, 0, 0}, {0, -1, 0}, {0, 0, 1}}, 420, -520},
+    };
+    size_t k;
+    for (k = 0; k < sizeof devs / sizeof devs[0]; k++) {
+        static magcal_t m;
+        const simdev_t *s = &devs[k];
+        cfg_t c;
+        double h, mag[3], acc[3], worst = 0, worst_flat = 0;
+        int d, i, p, r;
+        cfg_defaults(&c);
+        c.declination = 2.0;
+        magcal_start(&m, 320, 1);
+        for (h = 0; h <= 380 && m.step == MAGCAL_TURN; h += 4) { sim_read(s, h, 0, 0, mag, acc); magcal_add(&m, mag, acc); }
+        CHECK(m.step == MAGCAL_TILT); /* with an accelerometer the turn leads to the tilt step */
+        sim_read(s, 30, 0, 40, mag, acc);
+        magcal_add(&m, mag, (double[3]){acc[0] * 1.3, acc[1] * 1.3, acc[2] * 1.3}); /* jolted: not a lean */
+        CHECK(m.tn == 0);
+        for (d = 0; d < 4; d++) /* forward, back, left, right: out to 35° and back */
+            for (i = -35; i <= 35; i += 2) {
+                double a = 35 - abs(i);
+                sim_read(s, 30, d == 0 ? -a : (d == 1 ? a : 0), d == 2 ? -a : (d == 3 ? a : 0), mag, acc);
+                magcal_add(&m, mag, acc);
+            }
+        CHECK(magcal_tilt_covered(&m) == 4 && m.step == MAGCAL_NORTH);
+        for (i = 0; i < 12; i++) { sim_read(s, 0, 0, 0, mag, acc); magcal_add(&m, mag, acc); } /* flat, north */
+        CHECK(magcal_apply(&m, &c) == 1 && c.mag_tilt == 1);
+        NEAR(c.mag_off_z, 867, 5.0);
+        for (h = 0; h < 360; h += 23)
+            for (p = -30; p <= 30; p += 15)
+                for (r = -30; r <= 30; r += 15) {
+                    double e;
+                    sim_read(s, h, p, r, mag, acc);
+                    /* "north" is where the device pointed in the last step, declination included */
+                    e = fabs(norm180(heading_tilt(mag, acc, &c) - sim_heading(h, p, r)));
+                    if (e > worst) worst = e;
+                    if (p == 0 && r == 0) { /* held flat the tilt compensated heading is the plain one, and so is the
+                                             * flat-only fallback (used if the accelerometer goes away) */
+                        e = fabs(norm180(heading_tilt(mag, acc, &c) - h));
+                        if (e > worst_flat) worst_flat = e;
+                        e = fabs(norm180(heading_from_mag(mag[0], mag[1], &c) - h));
+                        if (e > worst_flat) worst_flat = e;
+                    }
+                }
+        CHECK(worst < 1.0);
+        CHECK(worst_flat < 0.5);
+        sim_read(s, 0, 89, 0, mag, acc); /* top pointing at the sky: no heading */
+        CHECK(isnan(heading_tilt(mag, acc, &c)));
+    }
+    { /* the flat-only heading is what the tilt step fixes: 20° of pitch at 65° inclination is far off */
+        static magcal_t m;
+        const simdev_t *s = &devs[1];
+        cfg_t c;
+        double h, mag[3], acc[3];
+        cfg_defaults(&c);
+        magcal_start(&m, 320, 0);
+        for (h = 0; h <= 380 && m.step == MAGCAL_TURN; h += 4) { sim_read(s, h, 0, 0, mag, acc); magcal_add(&m, mag, NULL); }
+        for (h = 0; h < 12; h++) { sim_read(s, 0, 0, 0, mag, acc); magcal_add(&m, mag, NULL); }
+        CHECK(magcal_apply(&m, &c) == 0);
+        sim_read(s, 90, 20, 0, mag, acc);
+        CHECK(fabs(norm180(heading_from_mag(mag[0], mag[1], &c) - 90)) > 20);
     }
 }
 
@@ -1163,6 +1285,7 @@ int main(int argc, char **argv)
     t_parse();
     t_heading();
     t_magcal();
+    t_magcal_tilt();
     t_subst();
     t_cfg();
     t_fb();

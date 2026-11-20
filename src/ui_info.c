@@ -9,23 +9,36 @@ static void cal_toast(void)
     if (!cal_saved || sc_now() - cal_t > 4.0) return;
     box(4, 135, 312, 17, cal_saved > 0 ? C_GN : C_RD, C_G);
     txt(10, 137, 300, F_S, cal_saved > 0 ? C_GN : C_RD, AL_C, "%s",
-        cal_saved > 0 ? "Compass calibrated and saved" : "Calibrated, but compass.conf could not be written");
+        cal_saved < 0 ? "Calibrated, but compass.conf could not be written"
+        : A->cfg.mag_tilt ? "Compass calibrated and saved, works tilted"
+                          : "Compass calibrated and saved: hold it flat");
 }
 
-/* Compass calibration, opened with K on Info: turn a full circle, then point north and save. */
+/* Compass calibration, opened with K on Info: turn a full circle, lean four ways (with an accelerometer), then
+ * point north and save. */
 void p_cal(void)
 {
     const magcal_t *m = &A->cal;
     const double cx = 68, cy = 86;
     double x0, y0, x1, y1;
-    int k, cov = magcal_covered(m);
+    int k, cov = magcal_covered(m), steps = m->use_acc ? 3 : 2;
     top_bar("Compass", C_YL, "Calibration");
-    for (k = 0; k < MAGCAL_SECTORS; k++) { /* one lit sector per 10° the turn has passed through */
-        int on = m->step == MAGCAL_NORTH || m->seen[k];
-        pol(cx, cy, 54, k * 10 + 1, &x0, &y0);
-        pol(cx, cy, 54, k * 10 + 9, &x1, &y1);
-        ln(x0, y0, x1, y1, on ? C_GN : C_L, 5);
-    }
+    if (m->step == MAGCAL_TILT) { /* four arcs: forward, right, back, left, lit once leaned that way far enough */
+        for (k = 0; k < 4; k++) {
+            int d, on = m->tilt_seen[k];
+            for (d = -36; d < 36; d += 8) {
+                pol(cx, cy, 54, k * 90 + d + 1, &x0, &y0);
+                pol(cx, cy, 54, k * 90 + d + 7, &x1, &y1);
+                ln(x0, y0, x1, y1, on ? C_GN : C_L, 5);
+            }
+        }
+    } else
+        for (k = 0; k < MAGCAL_SECTORS; k++) { /* one lit sector per 10° the turn has passed through */
+            int on = m->step == MAGCAL_NORTH || m->seen[k];
+            pol(cx, cy, 54, k * 10 + 1, &x0, &y0);
+            pol(cx, cy, 54, k * 10 + 9, &x1, &y1);
+            ln(x0, y0, x1, y1, on ? C_GN : C_L, 5);
+        }
     if (!A->hdg.mag_found) {
         txt(140, 22, 174, F_M, C_RD, AL_L, "No compass sensor");
         txt(140, 42, 174, F_S, C_TX, AL_L, "No magnetometer was found, or");
@@ -35,21 +48,30 @@ void p_cal(void)
     } else if (m->step == MAGCAL_TURN) {
         txt(18, 72, 100, F_BIG, C_TX, AL_C, "%d", cov * 100 / MAGCAL_SECTORS);
         txt(18, 104, 100, F_S, C_DIM, AL_C, "%% of a full turn");
-        txt(140, 22, 174, F_M, C_YL, AL_L, "Step 1 of 2");
+        txt(140, 22, 174, F_M, C_YL, AL_L, "Step 1 of %d", steps);
         txt(140, 42, 174, F_S, C_TX, AL_L, "Hold the device flat, away from");
         txt(140, 55, 174, F_S, C_TX, AL_L, "cars and metal.");
         txt(140, 73, 174, F_S, C_TX, AL_L, "Turn slowly to your right, a full");
         txt(140, 86, 174, F_S, C_TX, AL_L, "circle, until the ring is all green.");
         txt(140, 106, 174, F_S, C_DIM, AL_L, "Next step starts by itself.");
+    } else if (m->step == MAGCAL_TILT) {
+        txt(18, 72, 100, F_BIG, C_TX, AL_C, "%d/4", magcal_tilt_covered(m));
+        txt(18, 104, 100, F_S, C_DIM, AL_C, "directions");
+        txt(140, 22, 174, F_M, C_YL, AL_L, "Step 2 of 3");
+        txt(140, 42, 174, F_S, C_TX, AL_L, "Lean the device slowly about 30°");
+        txt(140, 55, 174, F_S, C_TX, AL_L, "forward, back, left and right,");
+        txt(140, 68, 174, F_S, C_TX, AL_L, "back to flat between each.");
+        txt(140, 86, 174, F_S, C_DIM, AL_L, "This lets the compass work");
+        txt(140, 99, 174, F_S, C_DIM, AL_L, "when it is not held flat.");
     } else {
         ln(cx, cy - 40, cx, cy + 20, C_CY, 3);
         ln(cx, cy - 40, cx - 8, cy - 28, C_CY, 3);
         ln(cx, cy - 40, cx + 8, cy - 28, C_CY, 3);
         txt((int)cx - 20, (int)cy + 26, 40, F_M, C_CY, AL_C, "N ?");
-        txt(140, 22, 174, F_M, C_YL, AL_L, "Step 2 of 2");
+        txt(140, 22, 174, F_M, C_YL, AL_L, "Step %d of %d", steps, steps);
         txt(140, 42, 174, F_S, C_TX, AL_L, "Point the top of the device");
         txt(140, 55, 174, F_S, C_TX, AL_L, "North, using a phone compass,");
-        txt(140, 68, 174, F_S, C_TX, AL_L, "then press Enter.");
+        txt(140, 68, 174, F_S, C_TX, AL_L, "hold it flat, press Enter.");
         txt(140, 106, 174, F_S, C_DIM, AL_L, "Saved for next time.");
     }
     box(140, 132, 174, 18, C_L, C_P);

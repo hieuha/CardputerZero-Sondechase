@@ -22,14 +22,15 @@ The core (`sc_core`) has no LVGL dependency and is unit-tested on any Linux host
 
 | File | Lines | Responsibility |
 |---|---|---|
-| `src/sc.h` | 525 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
+| `src/sc.h` | 543 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
 | `src/main.c` | 90 | Entry point, signal handling, main loop, LVGL setup, hold-Esc quit |
 | `src/app.c` | 615 | State machine (`ST_IDLE`, `ST_SCAN`, `ST_LISTEN`, `ST_DECODE`), receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
 | `src/base.c` | 346 | `sc_now`, config parser and defaults, line reader, child process groups, flat-JSON field extraction |
 | `src/sdr.c` | 273 | `librtlsdr` loaded with `dlopen`, reader thread, IQ ring, tuner range table |
 | `src/dsp.c` | 215 | FFT, decoder front end (DDC: rotation, half-band decimation, droop FIR), wide 192 kHz stream |
 | `src/radio.c` | 174 | Audio demodulators for NFM, AM, USB, LSB, WFM |
-| `src/io.c` | 380 | gpsd client (TPV and SKY), magnetometer heading, USB SDR presence, spectrum cells and peaks |
+| `src/io.c` | 238 | gpsd client (TPV and SKY), USB SDR presence, spectrum cells and peaks |
+| `src/compass.c` | 390 | Heading sources, magnetometer and accelerometer, tilt compensation, compass calibration |
 | `src/geo.c` | 202 | Geodesy, ISA, dew point, wind profile, sonde JSON parse, landing prediction |
 | `src/track.c` | 310 | Flight history, burst detection, proximity beeper, PCM audio stream to `pacat`, frame LED, slippy-map maths |
 | `src/tiles.c` | 290 | Tile lookup, `curl` downloads with cache cap and failure reasons, recolouring |
@@ -41,7 +42,7 @@ The core (`sc_core`) has no LVGL dependency and is unit-tested on any Linux host
 | `src/ui_map.c` | 284 | Map screen, decoded tile cache, pan, zoom, follow, style |
 | `src/ui_graph.c` | 142 | Skew-T and flight profile |
 | `src/ui_radio.c` | 159 | Band overview, tuned spectrum, listening, decoding |
-| `src/ui_info.c` | 154 | Info screens and compass calibration |
+| `src/ui_info.c` | 176 | Info screens and compass calibration |
 | `src/ui_priv.h` | 76 | Colours, shared UI state and prototypes for the UI files |
 | `src/ui.h` | 16 | UI entry points used by `main.c` |
 | `tools/render.c` | 209 | Headless build of the real UI for screenshots (`SC_RENDER`) |
@@ -60,7 +61,8 @@ flowchart LR
     DDC --> RADIO["radio.c demod"]
     RADIO --> AUDIO["track.c audio queue"]
     GPS["gpsd TCP 2947"] --> IO["io.c gps_poll"]
-    MAG["IIO magnetometer"] --> IO
+    MAG["IIO magnetometer + accelerometer"] --> HDG["compass.c heading"]
+    HDG --> APP
     IO --> APP["app.c app_poll"]
     FRAME --> APP
     APP --> UI["ui*.c LVGL screens"]
@@ -145,7 +147,8 @@ steps through the band. `spec_peaks` returns the peaks for the Radio screen and 
 - `gps_poll` reads gpsd. A fix is valid for 5 s after its last TPV report (`gps_ok`). SKY reports give satellites
   in view and used (`gps_sky`).
 - `heading_update` picks the compass source in this order: GPS course when speed ≥ `cog_min_speed`, the magnetometer
-  when found (read at 5 Hz), otherwise hold the last heading (`HDG_HOLD`).
+  when found (read at 5 Hz), otherwise hold the last heading (`HDG_HOLD`). With `mag_tilt = 1` the magnetometer
+  heading is tilt-compensated (see [compass](#compass-compassc)).
 - With a sonde and a valid GPS fix: ground distance, bearing, elevation angle and the relative bearing for the
   arrow. Landing point distance and bearing when a prediction exists.
 - The proximity beeper (`prox_update`) and the telemetry tones use the ground distance.
@@ -169,7 +172,8 @@ and decimates to 16 kHz. Output goes to `audio_radio_push`, which mixes it with 
 |---|---|---|---|
 | RTL-SDR (RTL2832U) | USB, `librtlsdr` | `dlopen` at run time; `rtl_dev` index | Matches VID:PID `0bda:2838` or `0bda:2832` for the presence check. Tested: RTL-SDR Blog V4 (R828D tuner) |
 | GPS | gpsd, TCP `127.0.0.1:2947` (`gpsd_host`, `gpsd_port`) | Non-blocking socket, JSON `TPV` and `SKY` | `gpsd_port = 0` disables it. A USB GPS can be plugged in while the app runs; gpsd picks it up |
-| Magnetometer | IIO sysfs `/sys/bus/iio/devices/iio:deviceN/in_magn_{x,y}_raw` | Read at 5 Hz | `mag_enable`, `mag_off_x/y`, `mag_rot_deg`, `mag_flip_y`, `declination`. Not tilt-compensated |
+| Magnetometer | IIO sysfs `/sys/bus/iio/devices/iio:deviceN/in_magn_{x,y,z}_raw` (BMM150) | Read at 5 Hz | `mag_enable`, `mag_off_x/y/z`, `mag_rot_deg`, `mag_flip_y`, `declination` |
+| Accelerometer | IIO sysfs `in_accel_{x,y,z}_raw` (BMI270) | Read at 5 Hz with the magnetometer, low-passed (about 0.6 s) | Used only for tilt compensation (`mag_tilt`, `accel_axes`). Without it the compass assumes the device is flat |
 | ACT LED | sysfs `led_path` (default `/sys/class/leds/ACT/brightness`) | One-byte write per blink | Writable by the `input` group. The first blink drops the kernel's `actpwr` trigger until reboot |
 | Audio | `pacat` via `audio_cmd` (PipeWire) | Child stdin, 16 kHz S16_LE mono | `audio_enable`. Without PipeWire, `aplay` can be used through `audio_cmd` |
 | Display | `/dev/fb_lcd` (found by `fb_pick`), `fb_dev` | LVGL `lv_linux_fbdev` | 320×170 |
@@ -266,6 +270,49 @@ Ground distance `d` from the device to the sonde (or to its last fix when the si
 
 On the Track and Map screens each valid frame plays a 30 ms 1500 Hz tick (unless muted with `M`) and blinks the ACT
 LED for 80 ms. The LED returns to its resting state; the tick is not played when muted, the LED still blinks.
+
+### Compass (`compass.c`)
+
+Held flat, the heading is the angle of the magnetometer's x/y reading around the hard-iron centre (`heading_from_mag`).
+That is off when the device leans: the field's vertical part leaks into x and y, by about tilt × tan(inclination),
+small near the equator and 20° or more for a 10° lean at 65° inclination.
+
+`heading_tilt` works at any attitude. The accelerometer, mapped into the magnetometer's axes by `accel_axes`, gives
+"up"; the field minus its vertical part points to magnetic north; east is north × up; the heading is the angle from
+north to the top of the device, a fixed vector in the magnetometer's x/y plane (`mag_rot_deg`). `mag_flip_y` says the
+magnetometer's z points down when the device is flat, so the same `mag_rot_deg` turns the right way seen from above;
+held flat the tilt formula then equals the flat one, which is the fallback if the accelerometer cannot be read. It
+returns no heading within about 14° of the top pointing straight up or down.
+
+Calibration (Info, `K`):
+
+1. Level turn, a full circle to the right: x/y offsets from the circle's centre (as before), and "up" while flat.
+2. Lean step (only with an accelerometer): samples leaning 10° or more, taken while the device is not being jolted
+   (within 5 % of 1 g), until it has leaned 25° each way. The z offset comes from a fit that keeps |field| constant.
+   The accelerometer-to-magnetometer mapping is found by trying all 48 signed axis permutations: the angle between
+   gravity and the Earth's field does not change with attitude, so the right mapping keeps the dot product of the
+   two unit vectors constant. Of a mapping and its negative, step 1's right turn picks the one where "up" is up.
+   The result is kept only with a clear winner (spread under 0.2 and under 0.6 × the next best); otherwise the
+   compass stays flat-only (`mag_tilt = 0`).
+3. North: the device held flat pointing north sets `mag_rot_deg` so that this reads 0. With tilt compensation it also
+   sets `mag_flip_y` from the accelerometer: 1 when "up" is the magnetometer's -z.
+
+On the CardputerZero the BMM150 reads (-x, +y, -z) of the BMI270 (`accel_axes = -x+y-z`). A 90 s free-hand recording
+on the device picked this mapping with a spread of 0.10 to 0.14 against 0.24 to 0.28 for the next best. The tests
+run the whole calibration on simulated devices (this mapping, identical chips at 65° inclination, a mirrored
+magnetometer in the southern hemisphere) and check the heading within 1° for pitch and roll up to ±30°.
+
+On the device, after the in-app calibration (2026-11-20, Vietnam, about 20° inclination), a 40 s recording pointed in
+one direction while leaning gave these heading errors against the flat reading:
+
+| Lean | Samples | Tilt-compensated, RMS / max | Flat formula, RMS / max |
+|---|---|---|---|
+| Under 35° | 155 | 2.7° / 8.2° | 12.3° / 35.2° |
+| 35–50° | 128 | 7.0° / 14.3° | 27.8° / 46.6° |
+| Over 50° | 19 | 15.5° / 37° | 21.6° / 42.6° |
+
+What remains is mostly soft iron (the field's sphere is about 11 % out of round), the hand turning a little while
+leaning, and the two sensors being read a few milliseconds apart.
 
 ### Skew-T log-P (`ui_graph.c`)
 

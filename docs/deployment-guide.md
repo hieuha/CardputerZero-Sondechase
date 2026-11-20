@@ -145,6 +145,7 @@ Syntax rules, from `src/base.c`:
 | `cog_min_speed` | `1.5` | m/s above which the GPS course is used as heading |
 | `mag_enable` | `1` | Use the IIO magnetometer when the GPS course is not valid |
 | `mag_off_x`, `mag_off_y`, `mag_rot_deg`, `mag_flip_y` | `0`, `0`, `0`, `0` | Magnetometer calibration (hard-iron offsets, rotation, axis flip). Normally set in the app (Info, `K`), which writes them to `<data_dir>/compass.conf`; that file is read after the main config and wins |
+| `mag_off_z`, `mag_tilt`, `accel_axes` | `0`, `0`, `+x+y+z` | Tilt compensation: z hard-iron offset, on/off, and how the accelerometer's axes map to the magnetometer's (`-x+y-z` on the CardputerZero, which also gets `mag_flip_y = 1`). Set by the calibration's lean step; a `compass.conf` without them keeps the flat-only compass |
 | `declination` | `0` | Magnetic declination, degrees east positive |
 | `ground_alt` | unset | Landing altitude AMSL. Unset: this device's GPS altitude |
 | `burst_alt` | `30000` | Assumed burst altitude while the sonde ascends, m |

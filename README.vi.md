@@ -29,7 +29,7 @@ RS41 đang bay (Y0532351). Chưa thử đi săn ngoài thực địa với GPS; 
 | ![Màn hình Info: sonde, thu sóng, thiết bị](screenshots/mockup/info.png) | ![Info trang 2: toạ độ, góc và thời tiết chi tiết](screenshots/mockup/info-details.png) |
 | **Info 1/2**: sonde, thu sóng, thiết bị, toạ độ điểm rơi | **Info 2/2** (`→`): toạ độ, hướng, góc ngẩng, tốc độ, thời tiết; `K` để hiệu chỉnh la bàn |
 | ![Màn hình Track khi máy mất GPS: khoảng cách tính từ vị trí cuối](screenshots/mockup/track-gps-lost.png) | ![Hiệu chỉnh la bàn, bước 1: xoay một vòng](screenshots/mockup/compass-calibration.png) |
-| **Track, mất GPS**: khoảng cách và hướng tính từ vị trí GPS cuối của máy, màu vàng | **Hiệu chỉnh la bàn** (Info, `K`): xoay một vòng rồi hướng máy về phía Bắc |
+| **Track, mất GPS**: khoảng cách và hướng tính từ vị trí GPS cuối của máy, màu vàng | **Hiệu chỉnh la bàn** (Info, `K`): xoay một vòng, nghiêng về bốn phía rồi hướng máy về phía Bắc |
 | ![Cảnh báo bóng nổ](screenshots/mockup/burst.png) | ![Màn hình Track khi đi đúng hướng: vòng xanh, Straight ahead](screenshots/mockup/track-near.png) |
 | **Cảnh báo bóng nổ**: tốc độ rơi, thời gian và khoảng cách tới điểm rơi | **Track, đúng hướng**: vòng la bàn và dòng `Go` chuyển xanh khi lệch không quá 15° |
 
@@ -79,7 +79,7 @@ Muốn tự build gói (trên máy hoặc cross-compile), xem [hướng dẫn de
 | `5` Map | Tile bản đồ, vị trí máy, sonde, đường bay, điểm rơi. Phím mũi tên để kéo bản đồ (giữ để kéo liên tục; bản đồ thôi bám theo, hiện `free`). `Sym` + `T` (`+`) để phóng to, `Sym` + `R` (`-`) để thu nhỏ. `C` chuyển vòng giữa cả hai / theo máy / theo sonde, hoặc bám theo lại sau khi kéo. `V` đổi kiểu đơn giản / chi tiết. Khi chưa có vị trí nào: lấy tâm ở `map_lat` / `map_lon` |
 | `6` Graph | `Left` / `Right` để đổi trang: Skew-T log-P, độ cao và tốc độ đứng theo thời gian |
 | `7` Radio | Phổ kèm âm thanh của tần số đang chỉnh. `Left` / `Right` ±10 kHz, `Up` / `Down` ±100 kHz (giữ để chỉnh liên tục). `Enter` để giải mã tại đó. `S` để Scan, `Esc` để quay lại. `D` đổi chế độ (NFM / AM / USB / LSB / WFM), `B` đổi độ rộng kênh |
-| `8` Info | `K` để hiệu chỉnh la bàn (xoay máy một vòng sang phải, rồi hướng máy về phía Bắc và bấm `Enter`; lưu vào `<data_dir>/compass.conf`). `Left` / `Right` để chuyển trang: 1/2 sonde, thu sóng, thiết bị, điểm rơi; 2/2 số liệu chi tiết (toạ độ, hướng, góc cần rẽ, góc ngẩng, tốc độ, nhiệt độ, độ ẩm, áp suất, vị trí máy) |
+| `8` Info | `K` để hiệu chỉnh la bàn (xoay máy một vòng sang phải, nghiêng máy về trước, sau, trái, phải, rồi hướng máy về phía Bắc và bấm `Enter`; lưu vào `<data_dir>/compass.conf`). `Left` / `Right` để chuyển trang: 1/2 sonde, thu sóng, thiết bị, điểm rơi; 2/2 số liệu chi tiết (toạ độ, hướng, góc cần rẽ, góc ngẩng, tốc độ, nhiệt độ, độ ẩm, áp suất, vị trí máy) |
 | `Tab` | Sang màn tiếp theo (Track → Map → Graph → Radio → Info → Track) |
 | `F` | Nhập tần số theo kHz; `Enter` để chỉnh tới tần số đó (trong dải của tuner) và giải mã |
 | `S` | Scan dải 400–406 MHz và thử giải mã các đỉnh tín hiệu (xem [Màn hình Radio](#màn-hình-radio)) |
@@ -189,8 +189,10 @@ dongle. Chi tiết và số đo trên máy thật: [hướng dẫn deploy](docs/
 - Chỉ hỗ trợ RS41. Các loại sonde khác cần bộ giải mã riêng.
 - Ở gần một sonde phát rất mạnh, màn tổng quan có thể hiện thêm vài đỉnh phụ yếu hơn; chỉnh tới đó sẽ không có gì để
   giải mã.
-- La bàn cần hiệu chỉnh một lần (màn Info, phím `K`: xoay máy một vòng rồi hướng về phía Bắc) và phải cầm máy nằm
-  ngang, vì chưa bù độ nghiêng. Trước khi hiệu chỉnh, chỉ nên tin hướng khi đang di chuyển nhanh hơn 5 km/h (hướng GPS).
+- La bàn cần hiệu chỉnh một lần (màn Info, phím `K`: xoay máy một vòng, nghiêng về bốn phía rồi hướng về phía Bắc).
+  Sau đó la bàn được bù độ nghiêng nhờ gia tốc kế, nên không cần cầm máy nằm ngang (trừ khi đầu máy chĩa gần thẳng lên
+  trời hoặc xuống đất, trong khoảng 15°). Trước khi hiệu chỉnh, chỉ nên tin hướng khi đang di chuyển nhanh hơn 5 km/h
+  (hướng GPS).
 - Skew-T dừng ở 100 hPa; chưa vẽ đường đoạn nhiệt ẩm và đường tỉ lệ hỗn hợp.
 - Dự đoán điểm rơi khi bóng đang lên phụ thuộc vào `burst_alt` giả định.
 - Lịch sử chuyến bay không được khôi phục sau khi mở lại app.

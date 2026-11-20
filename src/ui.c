@@ -237,7 +237,7 @@ void ui_key(int k)
     } else if (page == PG_RADIO && A->state == ST_SCAN && k == K_ENTER) app_tune(A, A->cursor_hz); /* -> tuned view, heard and decoded */
     else if (page == PG_GRAPH && (k == K_LEFT || k == K_RIGHT)) gpage ^= 1;
     else if (page == PG_INFO && (k == K_LEFT || k == K_RIGHT)) ipage ^= 1;
-    else if (page == PG_INFO && k == 'k') magcal_start(&A->cal, mag_min_span(&A->hdg));
+    else if (page == PG_INFO && k == 'k') magcal_start(&A->cal, mag_min_span(&A->hdg), A->hdg.acc_found);
     else if (page == PG_MAP && (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN)) map_pan(k);
     else if (page == PG_MAP && (k == '+' || k == '=')) map_zoom_step(1);
     else if (page == PG_MAP && k == '-') map_zoom_step(-1);

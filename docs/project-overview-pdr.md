@@ -1,6 +1,6 @@
 # Project Overview and PDR
 
-Last updated: 2026-11-20 (version 0.7.0).
+Last updated: 2026-11-21 (version 0.8.0).
 
 ## Contents
 - [Overview](#overview)
@@ -136,9 +136,9 @@ A release is accepted when all of these hold:
 
 ## Status
 
-- Version 0.7.0 (tag `v0.7.0`, GitHub release published, in the CardputerZero store).
+- Version 0.8.0 (tag `v0.8.0`, GitHub release published, in the CardputerZero store).
 - Tested on hardware: scanning and decoding with live RS41s (Y0532351, Y0310371), display, keyboard, PipeWire audio, magnetometer
-  node, OSM tile download. Not yet tested in the field: GPS (no module fitted when this was written), the beeper, burst
+  node, OSM tile download. GPS fix with the LoRa-1262 cap. Not yet tested in the field: chasing with GPS, the beeper, burst
   detection and landing on a real flight. Full list in the [roadmap](./project-roadmap.md#known-gaps).
 - Checked on hardware 2026-11-20: HackRF One scan and WFM audio, and the in-app compass calibration with tilt
   compensation (see [device checks](./deployment-guide.md#device-checks)). A live RS41 decoded with this build on an

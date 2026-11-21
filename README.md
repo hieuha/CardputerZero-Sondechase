@@ -15,8 +15,9 @@
 RS41 radiosonde receiver, decoder and chase aid for the M5Stack CardputerZero (Raspberry Pi CM0, 320×170 LCD,
 46-key keyboard), with an RTL-SDR (or a HackRF) and an optional GPS.
 
-Version 0.7.0. Tested on a real CardputerZero with an RTL-SDR Blog V4: scanning and decoding were checked with live
-RS41s (Y0532351, Y0310371). GPS chasing in the field has not been tried yet; see [Known limitations](#known-limitations).
+Version 0.8.0. Tested on a real CardputerZero with an RTL-SDR Blog V4: scanning and decoding were checked with live
+RS41s (Y0532351, Y0310371), and the GPS on a LoRa-1262 cap got a 3D fix outdoors (15 satellites used). Chasing a sonde
+in the field has not been tried yet; see [Known limitations](#known-limitations).
 
 ![Replay of sonde Y0310371 through the app: Track and Skew-T from 15 to 30 km](screenshots/replay-y0310371.gif)
 
@@ -79,11 +80,11 @@ Details and checks: [deployment guide](docs/deployment-guide.md#gps).
 
 ## Install
 
-Download `sondechase_0.7.0-rev1_arm64.deb` from the [latest release](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest),
+Download `sondechase_0.8.0-rev1_arm64.deb` from the [latest release](https://github.com/hieuha/CardputerZero-Sondechase/releases/latest),
 copy it to the device, and install it:
 
 ```sh
-sudo apt install --no-install-recommends ./sondechase_0.7.0-rev1_arm64.deb
+sudo apt install --no-install-recommends ./sondechase_0.8.0-rev1_arm64.deb
 ```
 
 Open **SondeChase** from APPLaunch. The package includes the RS41 decoders (`fsk_demod` and `rs41mod`, from
@@ -219,7 +220,7 @@ end to end without a dongle. Details and the device measurements: [deployment gu
   mixing-ratio lines are not drawn.
 - Landing prediction during ascent depends on the assumed `burst_alt`.
 - Flight history is not restored after an app restart.
-- Not yet checked in the field: GPS, the beeper, burst detection and landing on a real flight. Full list in the
+- Not yet checked in the field: chasing with GPS, the beeper, burst detection and landing on a real flight. Full list in the
   [roadmap](docs/project-roadmap.md#known-gaps).
 
 ## License

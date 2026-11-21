@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Last updated: 2026-11-20 (version 0.7.0).
+Last updated: 2026-11-21 (version 0.8.0).
 
 Covers building the CardputerZero `.deb`, running the tests, installing and configuring the app on the device, and
 the release steps. Commands are taken from `CMakePresets.json`, `.github/workflows/` and the CMake files in `cmake/`.
@@ -31,7 +31,7 @@ the release steps. Commands are taken from `CMakePresets.json`, `.github/workflo
 | `render` | Headless screenshot tool (`SC_RENDER=ON`) | `render-rel` | none |
 
 Workflow presets: `cp0-native-package` (configure, build, package on the device) and `cp0-cross-package`.
-Package output goes to `dist/`, named `sondechase_<version>-rev1_arm64.deb` (for example `sondechase_0.7.0-rev1_arm64.deb`).
+Package output goes to `dist/`, named `sondechase_<version>-rev1_arm64.deb` (for example `sondechase_0.8.0-rev1_arm64.deb`).
 
 Options in `CMakeLists.txt`:
 
@@ -48,7 +48,7 @@ Requires Debian 13 arm64 on the CardputerZero (or any aarch64 Debian 13 host):
 ```sh
 sudo apt install cmake ninja-build build-essential git
 cmake --workflow --preset cp0-native-package
-sudo apt install --no-install-recommends ./dist/sondechase_0.7.0-rev1_arm64.deb
+sudo apt install --no-install-recommends ./dist/sondechase_0.8.0-rev1_arm64.deb
 ```
 
 The first build fetches LVGL v9.5.0 (git) and the `radiosonde_auto_rx` v1.9.0 release tarball (SHA-256 pinned in
@@ -94,7 +94,7 @@ Notes:
 ## Install and run
 
 ```sh
-sudo apt install --no-install-recommends ./sondechase_0.7.0-rev1_arm64.deb
+sudo apt install --no-install-recommends ./sondechase_0.8.0-rev1_arm64.deb
 ```
 
 Installed files:
@@ -260,7 +260,7 @@ cmake --build build/render -j
 
 ## Release procedure
 
-Steps used for 0.4.0 to 0.7.0. Keep the version identical in all places; the CMake configure step fails if
+Steps used for 0.4.0 to 0.8.0. Keep the version identical in all places; the CMake configure step fails if
 `CMakeLists.txt` and `app-builder.json` differ.
 
 1. Set the version in `CMakeLists.txt` (`project(sondechase VERSION x.y.z ...)`) and in `app-builder.json`
@@ -312,10 +312,10 @@ compass). The older RTL-SDR rows were not re-measured for this document.
 | Audio stream cost (pacat + PipeWire) | About 3.9 % of one core |
 | HackRF One (libhackrf 2024.02.1), 2026-11-20 | Scan and WFM audio clear. About 20 % of one core while decoding and playing WFM, before the DSP speed-ups (see [system architecture](./system-architecture.md#decoder-front-end-dspc)). **RS41 not received**: sonde Y0310371 on 403.000 MHz, which the RTL-SDR V4 decoded at about 25 dB over the floor, showed no peak at any of seven gains from `32,24,0` to `40,50,0` ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)) |
 | RTL-SDR V4, 2026-11-20, this build | Sonde Y0310371 decoded on 403.000 MHz at 15.5 km, about 35 km away; swapped in for the HackRF while the app ran, it was opened without a restart |
-| GPS on the LoRa-1262 cap, 2026-11-21 | Silent on `/dev/ttyS0` until the EXT 5 V was on; then NMEA at 115200 baud (GPS, GLONASS, Galileo, BeiDou). With gpsd left as installed (no devices) and the 5 V off, the app, run as `pi`, switched the 5 V on, held `/dev/ttyS0` and showed `GPS 0/0`. No fix: no antenna connected (`ANTENNA OPEN`), indoors |
+| GPS on the LoRa-1262 cap, 2026-11-21 | Silent on `/dev/ttyS0` until the EXT 5 V was on; then NMEA at 115200 baud (GPS, GLONASS, Galileo, BeiDou). With gpsd left as installed (no devices) and the 5 V off, the app, run as `pi`, switched the 5 V on, held `/dev/ttyS0` and showed `GPS 0/0` indoors. Outdoors it showed a 3D fix, `3D 15/19` (HDOP 1.2 from the raw NMEA). Quitting (SIGINT or SIGTERM) put the 5 V back off. The receiver reports `ANTENNA OPEN` even while it has a fix |
 | Compass calibration with the lean step, 2026-11-20 (about 20° inclination, 40 s recording while leaning) | Tilt-compensated heading 2.7° RMS up to 35° of lean (flat formula 12.3°), 7.0° at 35–50° (flat 27.8°) |
 
-Not yet checked on hardware: a GPS fix (the cap GPS was tried without an antenna), the proximity beeper in the field, burst
+Not yet checked on hardware: chasing with GPS in the field, the proximity beeper in the field, burst
 detection and landing prediction on a real flight, AM and SSB on real signals, the simple map style and panning on
 the device, drawing speed with many map tiles, RS41 reception with a HackRF (see [issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)). See
 [roadmap](./project-roadmap.md#known-gaps).

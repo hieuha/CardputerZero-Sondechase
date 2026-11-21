@@ -14,6 +14,7 @@ the release steps. Commands are taken from `CMakePresets.json`, `.github/workflo
 - [Configuration](#configuration)
 - [GPS](#gps)
 - [Map tiles](#map-tiles)
+- [SondeHub](#sondehub)
 - [Demo mode](#demo-mode)
 - [Screenshots](#screenshots)
 - [Release procedure](#release-procedure)
@@ -82,7 +83,7 @@ ctest --test-dir build --output-on-failure
 Notes:
 - `keys.c` and the tests include `<linux/input.h>`. The build fails on macOS; use a Debian or Ubuntu host or a
   Linux container.
-- Verified on 2026-11-21 in `debian:trixie` (GCC 14.2.0): `test_core` reports **4496 checks, 0 failed**.
+- Verified on 2026-11-21 in `debian:trixie` (GCC 14.2.0): `test_core` reports **4582 checks, 0 failed**.
 - The same build prints no warnings (`-Wall -Wextra`), nor does the UI (`sc_render`, `sondechase`).
 - Also on 2026-11-20: the whole suite under AddressSanitizer + UndefinedBehaviorSanitizer + LeakSanitizer
   (`-fsanitize=address,undefined`) and under ThreadSanitizer (`-fsanitize=thread`) reports nothing; 300 000
@@ -110,7 +111,7 @@ Installed files:
 | `/usr/lib/sondechase/fsk_demod`, `/usr/lib/sondechase/rs41mod` | Decoders from `radiosonde_auto_rx` v1.9.0 |
 | `/usr/share/doc/sondechase/` | README, font licences, `LICENSE-radiosonde_auto_rx` |
 
-Dependencies: `Depends: libc6, curl, librtlsdr0 (>= 2.0.2), libhackrf0`. librtlsdr and libhackrf are loaded at run
+Dependencies: `Depends: libc6, curl, gzip, librtlsdr0 (>= 2.0.2), libhackrf0`. librtlsdr and libhackrf are loaded at run
 time, not linked. `Recommends: gpsd, pulseaudio-utils, coreutils`. The package installs no systemd unit: the app is started from
 APPLaunch and runs as the launcher's user, which needs access to the LCD framebuffer (`/dev/fb_lcd`, `fb0` on the current image), `/dev/input/event*`, the RTL-SDR or HackRF and
 PipeWire (groups `video`, `input`, `plugdev`, `audio`).
@@ -179,6 +180,13 @@ Syntax rules, from `src/base.c`:
 | `fb_dev` | unset | Framebuffer. Unset: `$LV_LINUX_FBDEV_DEVICE`, else `/dev/fb_lcd` (the image's udev link for the st7789v node), else the `fb_st7789v` or `panel-mipi-dbi` entry of `/proc/fb`, else `/dev/fb0` |
 | `kbd_dev` | auto | evdev keyboard. Empty: first device with Q, Enter and 1 keys |
 | `data_dir` | `$HOME/sondechase` | App data: `sondechase.csv`, `log/`, `tiles/`. Files from before 0.5.1 are moved in on first start |
+| `callsign` | empty | SondeHub uploader callsign: `A-Z 0-9 -`, up to 16 characters, upper-cased on load. Empty: both uploads off. Normally set on Info 3/3 (`E`), which writes it to `<data_dir>/sondehub.conf` |
+| `sondehub_upload` | `0` | `1` uploads decoded RS41 position frames to SondeHub. Needs `callsign`. Info 3/3 `U`. See [SondeHub](#sondehub) |
+| `sondehub_chase` | `0` | `1` uploads this device's position as the chase car `<callsign>_chase`. The position is added to telemetry only while this is `1`. Info 3/3 `C` |
+| `sondehub_dev` | `0` | `1` marks each frame `dev: true`: the server checks the frames but does not store them. For tests; set it in `/etc/sondechase.conf` (the app does not write it) |
+| `sondehub_rate_s` | `30` | Seconds between uploads (telemetry batch and chase-car position), clamped to 10 to 300 |
+| `sondehub_url` | `https://api.v2.sondehub.org` | API base, no trailing slash. Requests go to `<url>/sondes/telemetry` and `<url>/listeners` |
+| `sondehub_cmd` | `curl -sS -o '{resp}' -w '%{http_code}' --max-time 20 -X PUT -H 'Content-Type: application/json' {enc} -H 'Date: {date}' -A '{ua}' --data-binary @- '{url}' 2>/dev/null` | Command run with `sh -c`. It reads the body on stdin and prints the HTTP status code. `{enc}` becomes the gzip header for telemetry (the body is piped through `gzip -c` first, and the chase car is not compressed); `{date}`, `{ua}` (`SondeChase-<version>`), `{url}` and `{resp}` (file for the server's reply) are filled in. Expert hook: leave it alone unless the test needs another client |
 | `demo` | `0` | `1` simulated flight, see [Demo mode](#demo-mode) |
 | `demo_speed` | `30` | Simulated seconds per real second in demo mode |
 
@@ -231,6 +239,45 @@ tools/prep_tiles.py --mbtiles vietnam.mbtiles --bbox 105.3,20.5,106.6,21.5 --zoo
 - `--recolor dark` uses a colour-distance heuristic. Tune it if the source style is far from standard OSM.
 
 Failure messages and tile styles are described in [system architecture](./system-architecture.md#map-and-tiles).
+
+## SondeHub
+
+Upload to [SondeHub](https://sondehub.org) works like `radiosonde_auto_rx` (frames) and chasemapper (chase car). Off by
+default. Set it on Info 3/3 (`8`, then `→` twice: `E` callsign, `U` upload, `C` chase car). The app writes those to
+`<data_dir>/sondehub.conf`, which is read after `/etc/sondechase.conf`. What is sent, the request shapes and the
+result reasons are in [system architecture](./system-architecture.md#sondehub-upload).
+
+```ini
+# /etc/sondechase.conf (or set on Info 3/3; the app writes sondehub.conf)
+callsign = N0CALL
+sondehub_upload = 1
+sondehub_chase = 0
+```
+
+Requirements on the device:
+- `curl` and `gzip` (telemetry is piped through `gzip -c`), both package dependencies.
+- Network access to the host in `sondehub_url`.
+- A correct clock. The CardputerZero has no RTC, so `time_received` is right only after NTP sync.
+
+### SondeHub checks
+
+Run these on the device, in order:
+
+| # | Check | Expected |
+|---|---|---|
+| 1 | `command -v curl gzip` | Two paths |
+| 2 | `timedatectl` | `System clock synchronized: yes` |
+| 3 | Set `sondehub_dev = 1` in `/etc/sondechase.conf`, then on Info 3/3 set a callsign (`E`) and turn upload on (`U`). Decode an RS41 with a GPS fix | The Server line shows `DEV (not stored)` (`DEV, chase live` once chase is on: `/listeners` has no dev flag). Within about `sondehub_rate_s` s the Frames box shows `OK n s ago` and `n sent`. Until `SondeChase` is registered the server answers `HTTP 202 This software is unknown to us` instead |
+| 4 | Turn chase on (`C`) with a GPS fix outdoors | Chase car shows `OK n s ago`. From another machine: `curl 'https://api.v2.sondehub.org/listeners/telemetry?uploader_callsign=<CS>_chase&duration=1h'` lists the device's positions |
+| 5 | Only after the software name `SondeChase` is registered with the Project Horus team (see [roadmap](./project-roadmap.md#known-gaps)): remove `sondehub_dev`, and check the sonde at `https://sondehub.org/<serial>` | The frames are stored and shown on the map |
+
+Check 3 proves the request and the server reply. Check 5 is the first live (stored) upload.
+
+Result 2026-11-21 (checks 1–3, with 10 frames of sonde Y0332062 replayed from its auto_rx log through `sh_add` /
+`sh_poll` on the device, `sondehub_dev = 1`): curl and gzip present, clock synchronized; the gzipped batch reached
+`api.v2.sondehub.org`, which answered **HTTP 202** with one error per frame, *"This software is unknown to us!"* (no
+other validation error); the slowest `sh_poll` call took 2.2 ms. An unresolvable server name gave `No network`. Check 4
+not run: it publishes the device position and waits on the registration.
 
 ## Demo mode
 
@@ -315,7 +362,7 @@ compass). The older RTL-SDR rows were not re-measured for this document.
 | GPS on the LoRa-1262 cap, 2026-11-21 | Silent on `/dev/ttyS0` until the EXT 5 V was on; then NMEA at 115200 baud (GPS, GLONASS, Galileo, BeiDou). With gpsd left as installed (no devices) and the 5 V off, the app, run as `pi`, switched the 5 V on, held `/dev/ttyS0` and showed `GPS 0/0` indoors. Outdoors it showed a 3D fix, `3D 15/19` (HDOP 1.2 from the raw NMEA). Quitting (SIGINT or SIGTERM) put the 5 V back off. The receiver reports `ANTENNA OPEN` even while it has a fix |
 | Compass calibration with the lean step, 2026-11-20 (about 20° inclination, 40 s recording while leaning) | Tilt-compensated heading 2.7° RMS up to 35° of lean (flat formula 12.3°), 7.0° at 35–50° (flat 27.8°) |
 
-Not yet checked on hardware: chasing with GPS in the field, the proximity beeper in the field, burst
+Not yet checked on hardware: SondeHub upload and the chase car on the server (checks 3 to 5 above), chasing with GPS in the field, the proximity beeper in the field, burst
 detection and landing prediction on a real flight, AM and SSB on real signals, the simple map style and panning on
 the device, drawing speed with many map tiles, RS41 reception with a HackRF (see [issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)). See
 [roadmap](./project-roadmap.md#known-gaps).
@@ -337,3 +384,10 @@ the device, drawing speed with many map tiles, RS41 reception with a HackRF (see
 | No beeper or radio audio | `pacat` (`pulseaudio-utils`) missing, PipeWire not running, or `audio_enable = 0`. `M` mutes the beeper, frame tick and radio audio |
 | LED does not blink | `led_path` not writable by the app's user (the `input` group), or the path does not exist on this image |
 | `test_core` does not build on macOS | Needs Linux headers (`linux/input.h`). Build on Linux or in a container |
+| SondeHub: Info 3/3 shows `No network` | `curl` exit 6 or 7: the name did not resolve or the connection failed. Check the network and `sondehub_url`. The batch is dropped, not retried |
+| SondeHub: `Timeout` | No answer within 20 s (`--max-time 20`). Check the link |
+| SondeHub: `HTTP <code> <text>` | The server refused the request; `<text>` is its reply. The request and reply are in `<data_dir>/sondehub-tel.json` and `sondehub-tel.resp` (the chase car uses `sondehub-lis.*`) |
+| SondeHub: `curl not found` | The shell could not run the command (exit 127): install `curl`, and `gzip` for telemetry |
+| SondeHub: `Could not start` | The request file could not be written under `<data_dir>`, or the command did not fit its buffer. Make `<data_dir>` writable |
+| SondeHub: `Waiting for a frame` never changes | Only frames with a sonde GPS fix (and the sonde's own time) are queued. Telemetry without a fix is shown on Info but not uploaded |
+| SondeHub: `Set a callsign first: E` | `U` or `C` pressed with no callsign. Press `E` first |

@@ -48,6 +48,7 @@ src/
   geo.c         geodesy, sonde JSON, wind, landing prediction
   track.c       history, burst, beeper, audio stream, LED
   tiles.c       tile lookup, download, recolour
+  sondehub.c    SondeHub upload: frame queue, telemetry and chase-car JSON, gzip and curl children
   demo.c        simulated flight
   keys.c        evdev keyboard
   ui.c          UI state, overlays, LVGL draw callback, key dispatch
@@ -56,7 +57,7 @@ src/
   ui_map.c      Map screen and tile cache
   ui_graph.c    Graph screens (Skew-T, flight)
   ui_radio.c    Radio screen
-  ui_info.c     Info screens, compass calibration
+  ui_info.c     Info screens 1/3 to 3/3 (SondeHub on 3/3), compass calibration
 tests/          test_core.c, fake_rtlsdr.c, fake_hackrf.c, fake_decoder.sh
 tools/          render.c, prep_tiles.py, make_icon.py, validate_app_builder.py
 cmake/          package layout, decoders, toolchain (from the CardputerZero Template, MIT)
@@ -142,7 +143,7 @@ Adding a key takes four edits, all in the same change:
    `rtlsdr_lib`, `hackrf_lib`, `hackrf_gain`, `data_dir`).
 3. Add an entry to the `E(key, type)` table in `src/base.c` (`l` long, `i` int, `d` double, `s` string).
 4. Document it in `docs/deployment-guide.md` and, unless it is a test or expert hook (`rtlsdr_lib`, `hackrf_lib`,
-   `decoder_feed_cmd`, `tile_fetch_cmd`), in the sample `conf/sondechase.conf`.
+   `decoder_feed_cmd`, `tile_fetch_cmd`, `sondehub_cmd`), in the sample `conf/sondechase.conf`.
 
 Unknown keys are reported on stderr and ignored. `#` starts a comment at the start of a line or after a space.
 

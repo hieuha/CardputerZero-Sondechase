@@ -776,7 +776,11 @@ static void t_keys(void)
     CHECK(keys_read(p[0]) == 's');
     CHECK(KEV(KEY_TAB, 1));
     CHECK(keys_read(p[0]) == K_TAB);
-    CHECK(KEV(KEY_Z, 1)); /* Z has no action of its own */
+    CHECK(KEV(KEY_Z, 1)); /* every letter arrives, for the callsign; ui_key ignores those with no action */
+    CHECK(keys_read(p[0]) == 'z');
+    CHECK(KEV(KEY_U, 1) && KEV(KEY_E, 1) && KEV(KEY_Q, 1));
+    CHECK(keys_read(p[0]) == 'u' && keys_read(p[0]) == 'e' && keys_read(p[0]) == 'q');
+    CHECK(KEV(KEY_F1, 1)); /* not a key the app uses */
     CHECK(keys_read(p[0]) == 0);
     CHECK(KEV(KEY_CD, 1) && KEV(KEY_KP7, 1)); /* Sym held + R (printed -), as the driver sends it: zoom out */
     CHECK(keys_read(p[0]) == '-');
@@ -1564,6 +1568,198 @@ static void t_tiles(void)
     }
 }
 
+/* Wait for an upload child to finish, polling like the main loop. */
+static void sh_wait(sondehub_t *h, const cfg_t *c, const gps_t *g, double now)
+{
+    int i;
+    for (i = 0; i < 300 && (h->tel_pid > 0 || h->lis_pid > 0); i++) {
+        usleep(10000);
+        sh_poll(h, c, g, now);
+    }
+}
+
+/* SondeHub: the telemetry and chase car JSON, what is kept out of it, the upload child through stand-ins for curl,
+ * and the settings kept in sondehub.conf. */
+static void t_sondehub(void)
+{
+    static sondehub_t h;
+    static app_t a;
+    static char j[65536];
+    static const char *keys[] = {"software_name", "software_version", "uploader_callsign", "time_received",
+                                 "manufacturer", "type", "serial", "frame", "datetime", "lat", "lon", "alt",
+                                 "frequency", "subtype", "temp", "humidity", "vel_h", "vel_v", "heading", "sats", "batt"};
+    const char *fix = "{\"id\":\"S4430329\",\"frame\":5391,\"datetime\":\"2026-11-18T00:31:05.5Z\",\"lat\":21.02345,"
+                      "\"lon\":105.80123,\"alt\":15234.5,\"vel_h\":12.3,\"heading\":95.2,\"vel_v\":5.1,\"sats\":9,"
+                      "\"bt\":65535,\"batt\":2.9,\"temp\":-55.2,\"humidity\":12.0,\"subtype\":\"RS41-SGP\"}";
+    const char *nofix = "{\"id\":\"S4430329\",\"frame\":10,\"lat\":7.8,\"lon\":112.8,\"alt\":398,\"sats\":0}";
+    cfg_t c;
+    gps_t g;
+    sonde_t s, s2;
+    double now = 100.0;
+    size_t i;
+    int n;
+    FILE *f;
+    char buf[256];
+
+    CHECK(system("rm -rf /tmp/sc_sh && mkdir -p /tmp/sc_sh") == 0);
+    cfg_defaults(&c);
+    snprintf(c.data_dir, sizeof c.data_dir, "/tmp/sc_sh");
+    sh_init(&h, &c);
+    gps_init(&g);
+    CHECK(c.sondehub_rate_s == 30 && !c.sondehub_upload && !c.sondehub_chase && !c.callsign[0]); /* all off */
+    CHECK(sonde_parse(fix, &s) == 1);
+    CHECK(sh_add(&h, &c, &s, 403000000L) == 0); /* upload off */
+    c.sondehub_upload = 1;
+    CHECK(sh_add(&h, &c, &s, 403000000L) == 0); /* no callsign */
+    snprintf(c.callsign, sizeof c.callsign, "N0CALL");
+    s2 = s;
+    s2.datetime[0] = 0;
+    CHECK(sh_add(&h, &c, &s2, 403000000L) == 0); /* no time from the sonde */
+    CHECK(sh_add(&h, &c, &s, 403000000L) == 1 && h.qn == 1);
+
+    n = sh_json_tel(&h, &c, &g, now, j, sizeof j);
+    CHECK(n > 0 && j[0] == '[' && j[n - 1] == ']' && (size_t)n == strlen(j));
+    for (i = 0; i < sizeof keys / sizeof keys[0]; i++) {
+        snprintf(buf, sizeof buf, "\"%s\":", keys[i]);
+        CHECK(strstr(j, buf) != NULL);
+    }
+    CHECK(strstr(j, "\"software_name\":\"SondeChase\"") && strstr(j, "\"uploader_callsign\":\"N0CALL\""));
+    CHECK(strstr(j, "\"manufacturer\":\"Vaisala\",\"type\":\"RS41\",\"serial\":\"S4430329\",\"frame\":5391"));
+    CHECK(strstr(j, "\"datetime\":\"2026-11-18T00:31:05.500Z\"") && strstr(j, "\"frequency\":403.000"));
+    CHECK(strstr(j, "\"subtype\":\"RS41-SGP\"") && strstr(j, "\"temp\":-55.2") && strstr(j, "\"humidity\":12.0"));
+    CHECK(!strstr(j, "\"pressure\"") && !strstr(j, "\"burst_timer\"")); /* ISA estimate, timer not running */
+    CHECK(!strstr(j, "\"uploader_position\"") && !strstr(j, "\"dev\""));
+    {   /* time_received: this device's UTC clock, auto_rx's format */
+        const char *t = strstr(j, "\"time_received\":\"") + 17;
+        CHECK(strlen(t) > 25 && t[4] == '-' && t[10] == 'T' && t[19] == '.' && t[23] == 'Z' && t[24] == '"');
+    }
+    /* the device position goes out only while the chase car is on, and only with a fix */
+    g.mode = 3;
+    g.t_fix = now;
+    g.lat = 21.1;
+    g.lon = 105.9;
+    g.alt = 12.0;
+    CHECK(sh_json_tel(&h, &c, &g, now, j, sizeof j) > 0 && !strstr(j, "\"uploader_position\""));
+    c.sondehub_chase = 1;
+    CHECK(sh_json_tel(&h, &c, &g, now, j, sizeof j) > 0 && strstr(j, "\"uploader_position\":[21.10000,105.90000,12.0]"));
+    CHECK(sh_json_tel(&h, &c, &g, now + 10, j, sizeof j) > 0 && !strstr(j, "\"uploader_position\"")); /* fix lost */
+    c.sondehub_dev = 1;
+    CHECK(sh_json_tel(&h, &c, &g, now, j, sizeof j) > 0 && strstr(j, ",\"dev\":true}]"));
+    CHECK(sh_json_tel(&h, &c, &g, now, j, 100) == -1); /* never a cut document */
+    /* a measured pressure is sent; humidity not reported and a running burst timer */
+    h.qn = 0;
+    CHECK(sonde_parse("{\"id\":\"T1\",\"frame\":7,\"datetime\":\"2026-11-18T00:31:06Z\",\"lat\":21.0,\"lon\":105.0,"
+                      "\"alt\":900,\"sats\":8,\"bt\":1200,\"pressure\":905.2,\"batt\":-1}", &s2) == 1);
+    CHECK(sh_add(&h, &c, &s2, 404500000L) == 1);
+    CHECK(sh_json_tel(&h, &c, &g, now, j, sizeof j) > 0 && strstr(j, "\"pressure\":905.2") && !strstr(j, "\"humidity\"") &&
+          strstr(j, "\"burst_timer\":1200") && !strstr(j, "\"batt\"") && !strstr(j, "\"temp\"") &&
+          strstr(j, "\"datetime\":\"2026-11-18T00:31:06.000Z\"") && strstr(j, "\"frequency\":404.500"));
+    CHECK(sh_json_lis(&c, &g, j, sizeof j) > 0 && strstr(j, "\"uploader_callsign\":\"N0CALL_chase\"") &&
+          strstr(j, "\"mobile\":true") && strstr(j, "\"uploader_antenna\":\"Chase Car\"") &&
+          strstr(j, "\"uploader_position\":[21.10000,105.90000,12.0]"));
+    CHECK(sh_json_lis(&c, &g, j, 40) == -1);
+    for (n = 0; n < SH_QMAX + 5; n++) { /* realtime: the oldest frames go */
+        s2 = s;
+        s2.frame = n;
+        sh_add(&h, &c, &s2, 403000000L);
+    }
+    CHECK(h.qn == SH_QMAX && h.q[0].s.frame == 5 && h.q[SH_QMAX - 1].s.frame == SH_QMAX + 4); /* T1 + frames 0..4 gone */
+    s2 = s;
+    strcpy(s2.id, "?");
+    CHECK(sh_add(&h, &c, &s2, 403000000L) == 0); /* no serial decoded: the server would reject it */
+
+    /* upload: the stand-in for curl gets the gzipped batch on stdin and the headers, and answers 200 */
+    c.sondehub_chase = 0;
+    snprintf(c.sondehub_cmd, sizeof c.sondehub_cmd,
+             "cat > /tmp/sc_sh/body.gz; echo {enc} '{url}' '{ua}' '{date}' > /tmp/sc_sh/args; printf 200");
+    h.qn = 0;
+    sh_add(&h, &c, &s, 403000000L);
+    sh_poll(&h, &c, &g, now);
+    CHECK(h.tel_pid > 0 && h.qn == 0 && h.lis_pid == 0); /* chase car off: no listener upload */
+    sh_add(&h, &c, &s, 403000000L);
+    sh_wait(&h, &c, &g, now);
+    CHECK(h.last_tel.ok && h.last_tel.http == 200 && h.last_tel.n == 1 && h.last_tel.t == now && h.qn == 1);
+    CHECK(system("gzip -dc /tmp/sc_sh/body.gz | grep -q '^\\[{\"software_name\":\"SondeChase\".*S4430329.*}\\]$'") == 0);
+    CHECK((f = fopen("/tmp/sc_sh/args", "r")) && fgets(buf, sizeof buf, f) && !fclose(f));
+    CHECK(strstr(buf, "-H Content-Encoding: gzip https://api.v2.sondehub.org/sondes/telemetry SondeChase-" SC_VERSION " ") &&
+          strstr(buf, " GMT"));
+    sh_poll(&h, &c, &g, now + 1);
+    CHECK(h.tel_pid == 0 && h.qn == 1); /* next batch only after sondehub_rate_s */
+    sh_poll(&h, &c, &g, now + 30);
+    CHECK(h.tel_pid > 0 && h.qn == 0);
+    sh_wait(&h, &c, &g, now + 30);
+    /* failures: the batch is dropped (realtime), the reason kept */
+    {
+        static const struct { const char *cmd, *why; } cases[] = {
+            {"cat > /dev/null; exit 6", "No network"},
+            {"cat > /dev/null; exit 7", "No network"},
+            {"cat > /dev/null; exit 28", "Timeout"},
+            {"cat > /dev/null; printf 'Bad\\nserial' > '{resp}'; printf 400", "HTTP 400 Bad serial"},
+            {"cat > /dev/null; printf 'clock off' > '{resp}'; printf 202", "HTTP 202 clock off"},
+            /* SondeHub's own answer to frames it refuses: the first reason is shown */
+            {"cat > /dev/null; printf '{\"message\": \"some or all payloads could not be processed\", \"errors\": "
+             "[{\"error_message\": \"This software is unknown to us! Please ask\"}]}' > '{resp}'; printf 202",
+             "HTTP 202 This software is unknown to us"},
+        };
+        for (i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+            snprintf(c.sondehub_cmd, sizeof c.sondehub_cmd, "%s", cases[i].cmd);
+            sh_add(&h, &c, &s, 403000000L);
+            sh_add(&h, &c, &s, 403000000L);
+            now += 60;
+            sh_poll(&h, &c, &g, now);
+            CHECK(h.tel_pid > 0 && h.qn == 0);
+            sh_wait(&h, &c, &g, now);
+            CHECK(!h.last_tel.ok && h.last_tel.n == 2 && !strcmp(h.last_tel.why, cases[i].why));
+        }
+        CHECK(h.last_tel.http == 202); /* frames rejected by the server: not shown as OK */
+    }
+    /* chase car: plain JSON to /listeners, as <callsign>_chase; switching upload off drops what was waiting */
+    c.sondehub_chase = 1;
+    c.sondehub_upload = 0;
+    sh_add(&h, &c, &s, 403000000L);
+    snprintf(c.sondehub_cmd, sizeof c.sondehub_cmd, "cat > /tmp/sc_sh/lis.json; echo '{url}' > /tmp/sc_sh/args; printf 200");
+    g.t_fix = now += 60;
+    sh_poll(&h, &c, &g, now);
+    CHECK(h.lis_pid > 0 && h.tel_pid == 0 && h.qn == 0);
+    sh_wait(&h, &c, &g, now);
+    CHECK(h.last_lis.ok && h.last_lis.http == 200);
+    CHECK(system("grep -q '^{\"software_name\":\"SondeChase\".*\"uploader_callsign\":\"N0CALL_chase\".*\"mobile\":true}$' "
+                 "/tmp/sc_sh/lis.json && grep -qx 'https://api.v2.sondehub.org/listeners' /tmp/sc_sh/args") == 0);
+    g.t_fix = -1e9;
+    now += 60;
+    sh_poll(&h, &c, &g, now);
+    CHECK(h.lis_pid == 0); /* no fix: no position to send */
+    sh_close(&h);
+
+    /* through the app: only position frames, never the demo; settings kept in sondehub.conf across a restart */
+    CHECK((f = fopen("/tmp/sc_sh/main.conf", "w")) && fputs("data_dir = /tmp/sc_sh\nsondehub_upload = 1\n", f) >= 0 && !fclose(f));
+    app_init(&a, "/tmp/sc_sh/main.conf");
+    CHECK(!a.cfg.sondehub_upload); /* no callsign: upload stays off */
+    snprintf(a.cfg.callsign, sizeof a.cfg.callsign, "n0-call!x");
+    a.cfg.sondehub_upload = 1;
+    a.freq_hz = 403000000L;
+    app_on_frame(&a, nofix, 1.0);
+    CHECK(a.sh.qn == 0);
+    app_on_frame(&a, fix, 2.0);
+    CHECK(a.sh.qn == 1 && a.sh.q[0].freq_hz == 403000000L);
+    a.cfg.demo = 1;
+    app_on_frame(&a, fix, 3.0);
+    CHECK(a.sh.qn == 1);
+    a.cfg.demo = 0;
+    a.cfg.sondehub_chase = 1;
+    CHECK(app_sondehub_save(&a) == 0 && !strcmp(a.cfg.callsign, "N0-CALLX"));
+    app_free(&a);
+    app_init(&a, "/tmp/sc_sh/main.conf");
+    CHECK(!strcmp(a.cfg.callsign, "N0-CALLX") && a.cfg.sondehub_upload == 1 && a.cfg.sondehub_chase == 1);
+    a.cfg.callsign[0] = 0;
+    CHECK(app_sondehub_save(&a) == 0 && !a.cfg.sondehub_upload && !a.cfg.sondehub_chase);
+    app_free(&a);
+    app_init(&a, "/tmp/sc_sh/main.conf");
+    CHECK(!a.cfg.callsign[0] && !a.cfg.sondehub_upload && !a.cfg.sondehub_chase);
+    app_free(&a);
+    CHECK(system("rm -rf /tmp/sc_sh") == 0);
+}
+
 /* The HackRF back end through the libhackrf stand-in: the decoder's 1.536 MS/s runs at 3.072 MS/s and is halved,
  * the sweep at its own 2.048 MS/s; the carrier is heard, found by Scan at the right frequency, and decoded. */
 static void t_hackrf(const char *fake, const char *fakelib)
@@ -1683,6 +1879,7 @@ int main(int argc, char **argv)
     t_feed();
     t_track();
     t_tiles();
+    t_sondehub();
     t_app(argc > 1 ? argv[1] : "tests/fake_decoder.sh", argc > 2 ? argv[2] : "./libfake_rtlsdr.so");
     t_hackrf(argc > 1 ? argv[1] : "tests/fake_decoder.sh", argc > 3 ? argv[3] : "./libfake_hackrf.so");
     printf("%d checks, %d failed\n", checks, fails);

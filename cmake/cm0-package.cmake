@@ -79,7 +79,7 @@ set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 # (cmake/radiosonde-decoders.cmake); gpsd and pacat (pulseaudio-utils) are optional. libhackrf0 is loaded the
 # same way for a HackRF; a hard dependency (about 100 KB, libusb is already there for librtlsdr0) so plugging
 # one in just works.
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, curl, librtlsdr0 (>= 2.0.2), libhackrf0")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, curl, gzip, librtlsdr0 (>= 2.0.2), libhackrf0")
 set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "gpsd, pulseaudio-utils, coreutils")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION TRUE)

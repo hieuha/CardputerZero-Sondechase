@@ -47,6 +47,8 @@ In scope (current):
   LED blink.
 - Map from OpenStreetMap tiles (on-demand download, cache, optional preloaded pack), Skew-T and flight graphs.
 - Local CSV log and a radiosonde_auto_rx-format log per sonde.
+- SondeHub upload, off by default: decoded RS41 position frames, and the device as a chase car (its position is sent
+  only while chase is on).
 - Demo mode for testing without hardware.
 
 Out of scope (decided or not planned):
@@ -84,6 +86,7 @@ Out of scope (decided or not planned):
 | FR-18 | Read configuration from `/etc/sondechase.conf`; every key optional | `base.c` |
 | FR-19 | Simulated flight with `demo = 1`, through the same frame path | `demo.c` |
 | FR-20 | Quit by holding `Esc` for 3 s (no single-key quit) | `keys.c`, `ui.c`, `main.c` |
+| FR-21 | Upload decoded RS41 position frames to SondeHub in batches every `sondehub_rate_s` (a failed batch is dropped, not retried), and the device as the chase car `<callsign>_chase` while chase is on. Both off by default, both need a callsign, and neither runs in demo mode | `sondehub.c`, `app.c`, `ui_info.c` |
 
 ### Non-functional
 
@@ -91,8 +94,8 @@ Out of scope (decided or not planned):
 |---|---|---|
 | NFR-01 | Runs on the CardputerZero (4 cores, arm64) within its CPU budget while decoding | 15.6 % of one core for the whole app while decoding (device measurement, [deployment guide](./deployment-guide.md#device-checks)) |
 | NFR-02 | No dropped samples between the dongle and the decoder under normal load | 0 dropped in the IQ ring and the decoder pipe (device measurement) |
-| NFR-03 | Core logic is testable without hardware | `test_core`: 4496 checks, 0 failed |
-| NFR-04 | Package installs with no build tools, only `libc6`, `curl`, `librtlsdr0 (>= 2.0.2)`, `libhackrf0` | `cmake/cm0-package.cmake` |
+| NFR-03 | Core logic is testable without hardware | `test_core`: 4582 checks, 0 failed |
+| NFR-04 | Package installs with no build tools, only `libc6`, `curl`, `gzip`, `librtlsdr0 (>= 2.0.2)`, `libhackrf0` | `cmake/cm0-package.cmake` |
 | NFR-05 | Works offline for everything except new map tiles | Cache and preloaded pack are used first |
 | NFR-06 | Does not stop on a missing optional peripheral (GPS, LED, audio) | Each has a disabled or retry state; see [system architecture](./system-architecture.md#failure-handling) |
 | NFR-07 | Stays within the screen: 320×170, text fits its box | Screenshots from `sc_render`, see [deployment guide](./deployment-guide.md#screenshots) |
@@ -103,7 +106,7 @@ Out of scope (decided or not planned):
 
 A release is accepted when all of these hold:
 
-1. `ctest` passes on a Linux core build (`-DSC_BUILD_UI=OFF`). Current: 4496 checks, 0 failed.
+1. `ctest` passes on a Linux core build (`-DSC_BUILD_UI=OFF`). Current: 4582 checks, 0 failed.
 2. The `package` workflow builds `sondechase_<version>-rev1_arm64.deb` on Debian 13 arm64 and its `ctest` passes.
 3. `tools/validate_app_builder.py` passes; `CMakeLists.txt` and `app-builder.json` have the same version.
 4. Both READMEs state the same version, keys, screens and facts.
@@ -116,7 +119,7 @@ A release is accepted when all of these hold:
 |---|---|
 | Hardware | CardputerZero: 320×170 LCD, 46 keys, ES8389 audio codec under PipeWire, no RTC. RTL-SDR tested: Blog V4 (R828D). HackRF One experimental: scan and WFM audio work, no RS41 reception yet ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)) |
 | Software | Debian 13 arm64; LVGL 9.5.0 (fetched at build time); `radiosonde_auto_rx` v1.9.0 decoders (fetched and SHA-256 checked) |
-| Runtime | `librtlsdr0` and `libhackrf0` (loaded with `dlopen`), `curl` for tiles, optional `gpsd` and `pulseaudio-utils` (`pacat`) |
+| Runtime | `librtlsdr0` and `libhackrf0` (loaded with `dlopen`), `curl` for tiles and SondeHub, `gzip` for SondeHub, optional `gpsd` and `pulseaudio-utils` (`pacat`) |
 | Licence | GPL-3.0-or-later; bundled decoders are GPL-3.0 and LGPL-2.1; run-time `librtlsdr` and `libhackrf` GPL-2.0-or-later; LVGL MIT; fonts SIL OFL 1.1; map data ODbL attribution |
 | Store | CardputerZero store manifest (`app-builder.json`): seven permission flags, 320×170 screenshots, share code `SNDE` |
 | Time | No RTC: log timestamps come from the sonde's GPS time when it has one |

@@ -1,4 +1,4 @@
-/* Info screens: sonde and device details (1/2), exact numbers (2/2), compass calibration. */
+/* Info screens: sonde and device details (1/3), exact numbers (2/3), SondeHub upload (3/3), compass calibration. */
 #define _GNU_SOURCE
 #include "ui_priv.h"
 
@@ -81,13 +81,13 @@ void p_cal(void)
     nav_bar(PG_INFO);
 }
 
-/* Info page 2/2: the exact numbers behind the plain-language Track screen */
+/* Info page 2/3: the exact numbers behind the plain-language Track screen */
 void p_info_pos(void)
 {
     const sonde_t *s = &A->sonde;
     const gps_t *g = &A->gps;
     char c[48];
-    top_bar("Info 2/2", C_CY, NULL);
+    top_bar("Info 2/3", C_CY, NULL);
     box(4, 19, 154, 114, C_PK, C_P);
     txt(11, 22, 100, F_S, C_PK, AL_L, "Sonde");
     if (A->have_sonde) {
@@ -132,7 +132,7 @@ void p_info(void)
     const sonde_t *s = &A->sonde;
     /* until the sonde's GPS locks, its telemetry comes from the frames without a position */
     const sonde_t *t = A->have_sonde ? s : (A->nofix.t_rx > 0 ? &A->nofix : NULL);
-    top_bar("Info 1/2", C_CY, NULL);
+    top_bar("Info 1/3", C_CY, NULL);
     box(4, 19, 154, 114, C_PK, C_P);
     txt(11, 22, 100, F_S, C_PK, AL_L, "Sonde");
     if (t) {
@@ -173,5 +173,69 @@ void p_info(void)
         txt(120, 138, 190, F_S, C_TX, AL_R, "%.5f %c     %.5f %c", fabs(la), la < 0 ? 'S' : 'N', fabs(lo), lo < 0 ? 'W' : 'E');
     }
     cal_toast();
+    nav_bar(PG_INFO);
+}
+
+/* result of U, C or E on Info 3/3, over the bottom line for 4 s */
+static void sh_toast(void)
+{
+    int bad = sh_note != SH_NOTE_SAVED;
+    if (!sh_note || sc_now() - sh_note_t > 4.0) return;
+    box(4, 135, 312, 17, bad ? C_RD : C_GN, C_G);
+    txt(10, 137, 300, F_S, bad ? C_RD : C_GN, AL_C, "%s",
+        sh_note == SH_NOTE_NOCALL      ? "Set a callsign first: E"
+        : sh_note == SH_NOTE_SAVE_FAIL ? "sondehub.conf could not be written"
+        : A->cfg.callsign[0]           ? "Callsign saved"
+                                       : "Callsign cleared, uploads off");
+}
+
+/* Two lines about one kind of upload: how the last one went, then the detail. */
+static void sh_status(int y, const sh_result_t *r, int on, int busy, const char *idle, const char *detail)
+{
+    double ago = sc_now() - r->t;
+    if (!on) txt(169, y, 140, F_S, C_DIM, AL_L, "Off");
+    else if (busy) txt(169, y, 140, F_S, C_TX, AL_L, "Sending");
+    else if (r->t <= 0) txt(169, y, 140, F_S, C_DIM, AL_L, "%s", idle);
+    else if (r->ok) txt(169, y, 140, F_S, C_GN, AL_L, "OK %.0f s ago", ago);
+    else txt(169, y, 140, F_S, C_RD, AL_L, "%s", r->why);
+    if (on && detail[0]) txt(169, y + 13, 140, F_S, C_DIM, AL_L, "%s", detail);
+}
+
+/* Info page 3/3: SondeHub, the uploads to sondehub.org (decoded frames, and this device as a chase car) */
+void p_info_sondehub(void)
+{
+    const cfg_t *c = &A->cfg;
+    const sondehub_t *h = &A->sh;
+    int fix = gps_ok(&A->gps, sc_now()), y = 78;
+    char d[48] = "";
+    top_bar("Info 3/3", C_CY, NULL);
+    box(4, 19, 154, 114, C_CY, C_P);
+    txt(11, 22, 140, F_S, C_CY, AL_L, "SondeHub");
+    kv(11, 36, 140, "Upload", c->sondehub_upload ? C_GN : C_DIM, "%s", c->sondehub_upload ? "ON" : "OFF");
+    kv(11, 50, 140, "Chase car", c->sondehub_chase ? C_GN : C_DIM, "%s", c->sondehub_chase ? "ON" : "OFF");
+    if (!c->callsign[0]) kv(11, 64, 140, "Callsign", C_RD, "Set callsign: E");
+    else if (text_w(F_S, c->callsign) <= 85) kv(11, 64, 140, "Callsign", C_TX, "%s", c->callsign);
+    else { /* a long one gets its own line, the rows below move down */
+        txt(11, 64, 140, F_S, C_DIM, AL_L, "Callsign");
+        txt(11, 77, 140, F_S, C_TX, AL_R, "%s", c->callsign);
+        y = 91;
+    }
+    if (c->sondehub_upload) kv(11, y, 140, "Waiting to send", C_TX, "%d frames", h->qn);
+    if (c->sondehub_dev) /* /listeners has no dev flag: the chase car stays public */
+        kv(11, y + 14, 140, "Server", C_YL, c->sondehub_chase ? "DEV, chase live" : "DEV (not stored)");
+    if (A->have_sonde) txt(11, 118, 140, F_S, C_PK, AL_L, "sondehub.org/%s", A->sonde.id);
+    box(162, 19, 154, 114, C_L, C_P);
+    txt(169, 22, 140, F_S, C_TX, AL_L, "Frames");
+    if (h->last_tel.t > 0)
+        snprintf(d, sizeof d, h->last_tel.ok ? "%d sent" : "%d dropped", h->last_tel.n);
+    sh_status(36, &h->last_tel, c->sondehub_upload, h->tel_pid > 0, "Waiting for a frame", d);
+    txt(169, 70, 140, F_S, C_TX, AL_L, "Chase car");
+    snprintf(d, sizeof d, "%s_chase", c->callsign); /* the name it shows on the map */
+    if (c->sondehub_chase && !fix && h->lis_pid <= 0) {
+        txt(169, 84, 140, F_S, C_RD, AL_L, "No GPS fix");
+        txt(169, 97, 140, F_S, C_DIM, AL_L, "%s", d);
+    } else sh_status(84, &h->last_lis, c->sondehub_chase, h->lis_pid > 0, "Waiting", d);
+    txt(11, 138, 300, F_S, C_DIM, AL_L, "U  upload       C  chase car       E  callsign");
+    sh_toast();
     nav_bar(PG_INFO);
 }

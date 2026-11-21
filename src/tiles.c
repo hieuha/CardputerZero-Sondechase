@@ -50,15 +50,6 @@ int tf_busy(const tilefetch_t *t, int z, int x, int y)
     return 0;
 }
 
-/* Replace the first key in tpl with val. 0 = the result did not fit in out (it is then cut). */
-static int subst1(char *out, size_t n, const char *tpl, const char *key, const char *val)
-{
-    const char *p = strstr(tpl, key);
-    int len = p ? snprintf(out, n, "%.*s%s%s", (int)(p - tpl), tpl, val, p + strlen(key))
-                : snprintf(out, n, "%s", tpl);
-    return len >= 0 && (size_t)len < n;
-}
-
 int tf_request(tilefetch_t *t, const cfg_t *c, int z, int x, int y, double now)
 {
     char url[300], a[300], b[1024], cmd[1024], num[16];
@@ -73,16 +64,16 @@ int tf_request(tilefetch_t *t, const cfg_t *c, int z, int x, int y, double now)
 
     /* A cut URL or command would fetch the wrong tile or run a broken shell line: skip the fetch instead. */
     snprintf(num, sizeof num, "%d", z);
-    if (!subst1(a, sizeof a, c->tile_url, "{z}", num)) return 0;
+    if (!str_subst(a, sizeof a, c->tile_url, "{z}", num)) return 0;
     snprintf(num, sizeof num, "%d", x);
-    if (!subst1(url, sizeof url, a, "{x}", num)) return 0;
+    if (!str_subst(url, sizeof url, a, "{x}", num)) return 0;
     snprintf(num, sizeof num, "%d", y);
-    if (!subst1(a, sizeof a, url, "{y}", num)) return 0;
+    if (!str_subst(a, sizeof a, url, "{y}", num)) return 0;
     snprintf(url, sizeof url, "%s", a);
     snprintf(t->job[slot].dst, sizeof t->job[slot].dst, "%s/%d/%d/%d.png", t->cache_dir, z, x, y);
     snprintf(t->job[slot].part, sizeof t->job[slot].part, "%s/%d/%d/%d.part", t->cache_dir, z, x, y);
-    if (!subst1(b, sizeof b, c->tile_fetch_cmd, "{ua}", c->tile_user_agent) ||
-        !subst1(cmd, sizeof cmd, b, "{url}", url) || !subst1(b, sizeof b, cmd, "{out}", t->job[slot].part))
+    if (!str_subst(b, sizeof b, c->tile_fetch_cmd, "{ua}", c->tile_user_agent) ||
+        !str_subst(cmd, sizeof cmd, b, "{url}", url) || !str_subst(b, sizeof b, cmd, "{out}", t->job[slot].part))
         return 0;
     mkdirs(t->job[slot].dst);
 

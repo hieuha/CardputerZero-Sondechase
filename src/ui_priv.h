@@ -28,6 +28,9 @@ extern lv_layer_t *LY;                                    /* the layer of the fr
 extern const lv_font_t *F_S, *F_M, *F_NUM, *F_BIG, *F_TTL; /* 11, 12, Orbitron 17 / 30 / 25 */
 extern int cal_saved;                                     /* 1 saved, -1 could not write compass.conf */
 extern double cal_t;                                      /* when; the result is shown for a few seconds */
+enum { SH_NOTE_SAVED = 1, SH_NOTE_NOCALL, SH_NOTE_SAVE_FAIL };
+extern int sh_note;                                       /* Info 3/3: SH_NOTE_* after U, C or E, 0 = none */
+extern double sh_note_t;
 extern int map_follow, map_zoom;                          /* 0 both, 1 device, 2 sonde, 3 panned; -1 = auto */
 
 /* ui_draw.c: primitives, helpers and the chrome */
@@ -73,5 +76,6 @@ void p_scan(void);
 /* ui_info.c */
 void p_cal(void);
 void p_info_pos(void);
+void p_info_sondehub(void);
 void p_info(void);
 #endif

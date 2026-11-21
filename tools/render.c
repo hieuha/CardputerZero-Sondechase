@@ -153,6 +153,22 @@ int main(int argc, char **argv)
     ui_key(K_RIGHT); shot("03_graph_flight");
     ui_key(K_LEFT);
     ui_key('8'); shot("05_info"); ui_key(K_RIGHT); shot("05_info_pos"); ui_key(K_RIGHT);
+    { /* SondeHub page as it looks mid-flight; the demo never uploads, so the results are set by hand */
+        snprintf(app.cfg.callsign, sizeof app.cfg.callsign, "N0CALL");
+        app.cfg.sondehub_upload = app.cfg.sondehub_chase = 1;
+        app.sh.qn = 3;
+        app.sh.last_tel = (sh_result_t){sc_now() - 12.0, 1, 200, 8, ""};
+        app.sh.last_lis = (sh_result_t){sc_now() - 5.0, 1, 200, 0, ""};
+        shot("05_info_sondehub");
+        ui_key('e');
+        { const char *k = getenv("SC_RENDER_CALL") ? getenv("SC_RENDER_CALL") : "-2"; while (*k) ui_key(*k++); }
+        shot("09_callsign");
+        ui_key(K_ESC);
+        memset(&app.sh, 0, sizeof app.sh);
+        app.cfg.sondehub_upload = app.cfg.sondehub_chase = 0;
+        app.cfg.callsign[0] = 0;
+    }
+    ui_key(K_RIGHT); /* back to Info 1/3 */
     { /* compass calibration: part of the turn, two of the four leans, then the north step (fed by hand: the render
        * has no sensor) */
         static const double flat[3] = {0, 0, 4096};

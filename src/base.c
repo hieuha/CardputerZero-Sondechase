@@ -63,6 +63,11 @@ void cfg_defaults(cfg_t *c)
     snprintf(c->tile_fetch_cmd, sizeof c->tile_fetch_cmd, "curl -fsS --max-time 20 -A '{ua}' -o '{out}' '{url}'");
     c->tile_cache_mb = 1000;
     c->demo_speed = 30.0;
+    c->sondehub_rate_s = 30; /* auto_rx and chasemapper both upload every 30 s */
+    snprintf(c->sondehub_url, sizeof c->sondehub_url, "https://api.v2.sondehub.org");
+    snprintf(c->sondehub_cmd, sizeof c->sondehub_cmd,
+             "curl -sS -o '{resp}' -w '%%{http_code}' --max-time 20 -X PUT -H 'Content-Type: application/json' {enc}"
+             " -H 'Date: {date}' -A '{ua}' --data-binary @- '{url}' 2>/dev/null");
 }
 
 typedef struct {
@@ -88,6 +93,8 @@ static const cfg_ent ents[] = {
     E(decoder_feed_cmd, 's'),
     E(tile_online, 'i'),  E(tile_url, 's'),     E(tile_user_agent, 's'), E(tile_fetch_cmd, 's'),
     E(tile_cache_dir, 's'), E(tile_cache_mb, 'i'),
+    E(callsign, 's'),     E(sondehub_upload, 'i'), E(sondehub_chase, 'i'), E(sondehub_dev, 'i'),
+    E(sondehub_rate_s, 'i'), E(sondehub_url, 's'), E(sondehub_cmd, 's'),
 };
 
 static char *trim(char *s)
@@ -119,6 +126,19 @@ static void cfg_check(cfg_t *c)
     if (c->zoom_max > 19) c->zoom_max = 19;
     if (c->zoom_min > c->zoom_max) c->zoom_min = c->zoom_max;
     if (c->tile_cache_mb < 1) c->tile_cache_mb = 1;
+    if (c->sondehub_rate_s < 10) c->sondehub_rate_s = 10;
+    if (c->sondehub_rate_s > 300) c->sondehub_rate_s = 300;
+    callsign_clean(c->callsign);
+}
+
+void callsign_clean(char *s)
+{
+    size_t i, o = 0;
+    for (i = 0; s[i] && o < 16; i++) {
+        char ch = (char)toupper((unsigned char)s[i]);
+        if ((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-') s[o++] = ch;
+    }
+    s[o] = 0;
 }
 
 int cfg_load(cfg_t *c, const char *path)
@@ -185,6 +205,14 @@ void fb_pick(char *out, size_t n, const char *cfg_dev, const char *env, const ch
             break;
         }
     fclose(f);
+}
+
+int str_subst(char *out, size_t n, const char *tpl, const char *key, const char *val)
+{
+    const char *p = strstr(tpl, key);
+    int len = p ? snprintf(out, n, "%.*s%s%s", (int)(p - tpl), tpl, val, p + strlen(key))
+                : snprintf(out, n, "%s", tpl);
+    return len >= 0 && (size_t)len < n;
 }
 
 int sc_subst(char *out, size_t n, const char *tpl, long f_hz)

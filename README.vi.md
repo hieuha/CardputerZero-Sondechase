@@ -34,7 +34,9 @@ bên phải là Skew-T, vẽ nhiệt độ và điểm sương khi bóng lên ca
 | ![Biểu đồ Skew-T log-P của chuyến bay](screenshots/mockup/skew-t.png) | ![Độ cao và tốc độ đứng theo thời gian](screenshots/mockup/flight.png) |
 | **Graph**: Skew-T log-P của chuyến thám không | **Graph**: độ cao và tốc độ đứng, có đánh dấu điểm nổ |
 | ![Màn hình Info: sonde, thu sóng, thiết bị](screenshots/mockup/info.png) | ![Info trang 2: toạ độ, góc và thời tiết chi tiết](screenshots/mockup/info-details.png) |
-| **Info 1/2**: sonde, thu sóng, thiết bị, toạ độ điểm rơi | **Info 2/2** (`→`): toạ độ, hướng, góc ngẩng, tốc độ, thời tiết; `K` để hiệu chỉnh la bàn |
+| **Info 1/3**: sonde, thu sóng, thiết bị, toạ độ điểm rơi | **Info 2/3** (`→`): toạ độ, hướng, góc ngẩng, tốc độ, thời tiết; `K` để hiệu chỉnh la bàn |
+| ![Info trang 3: SondeHub, upload và chase car](screenshots/mockup/info-sondehub.png) | |
+| **Info 3/3** (`→` hai lần): SondeHub, upload và chase car, cùng kết quả lần upload gần nhất | |
 | ![Màn hình Track khi máy mất GPS: khoảng cách tính từ vị trí cuối](screenshots/mockup/track-gps-lost.png) | ![Hiệu chỉnh la bàn, bước 1: xoay một vòng](screenshots/mockup/compass-calibration.png) |
 | **Track, mất GPS**: khoảng cách và hướng tính từ vị trí GPS cuối của máy, màu vàng | **Hiệu chỉnh la bàn** (Info, `K`): xoay một vòng, nghiêng về bốn phía rồi hướng máy về phía Bắc |
 | ![Cảnh báo bóng nổ](screenshots/mockup/burst.png) | ![Màn hình Track khi đi đúng hướng: vòng xanh, Straight ahead](screenshots/mockup/track-near.png) |
@@ -88,7 +90,7 @@ sudo apt install --no-install-recommends ./sondechase_0.8.0-rev1_arm64.deb
 ```
 
 Mở **SondeChase** từ APPLaunch. Gói cài đã kèm sẵn bộ giải mã RS41 (`fsk_demod` và `rs41mod`, lấy từ
-`radiosonde_auto_rx`). Gói cần `librtlsdr0`, `libhackrf0` và `curl`; nên cài thêm `gpsd` và `pulseaudio-utils`.
+`radiosonde_auto_rx`). Gói cần `librtlsdr0`, `libhackrf0`, `curl` và `gzip`; nên cài thêm `gpsd` và `pulseaudio-utils`.
 
 Muốn tự build gói (trên máy hoặc cross-compile), xem [hướng dẫn deploy](docs/deployment-guide.md).
 
@@ -100,7 +102,7 @@ Muốn tự build gói (trên máy hoặc cross-compile), xem [hướng dẫn de
 | `5` Map | Tile bản đồ, vị trí máy, sonde, đường bay, điểm rơi. Phím mũi tên để kéo bản đồ (giữ để kéo liên tục; bản đồ thôi bám theo, hiện `free`). `Sym` + `T` (`+`) để phóng to, `Sym` + `R` (`-`) để thu nhỏ. `C` chuyển vòng giữa cả hai / theo máy / theo sonde, hoặc bám theo lại sau khi kéo. `V` đổi kiểu đơn giản / chi tiết. Khi chưa có vị trí nào: lấy tâm ở `map_lat` / `map_lon` |
 | `6` Graph | `Left` / `Right` để đổi trang: Skew-T log-P, độ cao và tốc độ đứng theo thời gian |
 | `7` Radio | Phổ kèm âm thanh của tần số đang chỉnh. `Left` / `Right` ±10 kHz, `Up` / `Down` ±100 kHz (giữ để chỉnh liên tục). `Enter` để giải mã tại đó. `S` để Scan, `Esc` để quay lại. `D` đổi chế độ (NFM / AM / USB / LSB / WFM), `B` đổi độ rộng kênh |
-| `8` Info | `K` để hiệu chỉnh la bàn (xoay máy một vòng sang phải, nghiêng máy về trước, sau, trái, phải, rồi hướng máy về phía Bắc và bấm `Enter`; lưu vào `<data_dir>/compass.conf`). `Left` / `Right` để chuyển trang: 1/2 sonde, thu sóng, thiết bị, điểm rơi; 2/2 số liệu chi tiết (toạ độ, hướng, góc cần rẽ, góc ngẩng, tốc độ, nhiệt độ, độ ẩm, áp suất, vị trí máy) |
+| `8` Info | `K` để hiệu chỉnh la bàn (xoay máy một vòng sang phải, nghiêng máy về trước, sau, trái, phải, rồi hướng máy về phía Bắc và bấm `Enter`; lưu vào `<data_dir>/compass.conf`). `Left` / `Right` để chuyển trang: 1/3 sonde, thu sóng, thiết bị, điểm rơi; 2/3 số liệu chi tiết (toạ độ, hướng, góc cần rẽ, góc ngẩng, tốc độ, nhiệt độ, độ ẩm, áp suất, vị trí máy); 3/3 SondeHub: `U` bật / tắt upload, `C` bật / tắt chase car, `E` nhập callsign (xem [SondeHub](#sondehub)) |
 | `Tab` | Sang màn tiếp theo (Track → Map → Graph → Radio → Info → Track) |
 | `F` | Nhập tần số theo kHz; `Enter` để chỉnh tới tần số đó (trong dải của tuner) và giải mã |
 | `S` | Scan dải 400–406 MHz và thử giải mã các đỉnh tín hiệu (xem [Màn hình Radio](#màn-hình-radio)) |
@@ -119,7 +121,7 @@ Cảnh báo bóng nổ hiện đè lên mọi màn hình: `Enter` để mở Map
 | Map | Tile OpenStreetMap (tải khi cần), vị trí máy, sonde, đường bay, điểm rơi |
 | Graph | Skew-T log-P (`Graph 1/2`) và độ cao / tốc độ đứng, có đánh dấu điểm nổ (`Graph 2/2`) |
 | Radio | Phổ trực tiếp quanh tần số đang chỉnh, vùng tô màu thể hiện độ rộng kênh, trạng thái giải mã |
-| Info | Trang 1: ID sonde, số frame, pin, chi tiết GPS và thu sóng. Trang 2: toạ độ, hướng, góc ngẩng, tốc độ, nhiệt độ, độ ẩm, áp suất. Số trang nằm ở nhãn góc trái trên (`Info 1/2`) |
+| Info | Trang 1: ID sonde, số frame, pin, chi tiết GPS và thu sóng. Trang 2: toạ độ, hướng, góc ngẩng, tốc độ, nhiệt độ, độ ẩm, áp suất. Trang 3: SondeHub, upload và chase car. Số trang nằm ở nhãn góc trái trên (`Info 1/3`) |
 
 ### Màn hình Radio
 
@@ -187,6 +189,35 @@ Mọi dữ liệu app lưu nằm trong một thư mục, `data_dir` (mặc đị
 - File từ các bản trước 0.5.1 (`~/sondechase.csv`, `~/.cache/sondechase/tiles`) được tự chuyển vào đây ở lần mở app
   đầu tiên.
 
+## SondeHub
+
+[SondeHub](https://sondehub.org) là bản đồ công khai các vị trí sonde và xe đi săn. SondeChase có thể tải lên đó theo
+cách `radiosonde_auto_rx` và chasemapper làm. Upload **tắt mặc định**.
+
+| Gửi | Yêu cầu | Tần suất |
+|---|---|---|
+| Frame RS41 đã giải mã | `PUT /sondes/telemetry`, JSON nén gzip | Gom thành từng đợt, mỗi `sondehub_rate_s` (mặc định 30 giây, từ 10 đến 300) |
+| Máy này, như xe đi săn `<callsign>_chase` | `PUT /listeners`, JSON | Mỗi `sondehub_rate_s`, khi chase đang bật và máy có GPS fix |
+
+Những gì được gửi:
+- Một frame gồm: số hiệu sonde, số frame, thời gian của chính sonde, vị trí, độ cao, tốc độ, hướng, tần số đang chỉnh,
+  số vệ tinh, pin, và nhiệt độ, độ ẩm, áp suất khi sonde có đo. Mỗi frame mang callsign của bạn, tên và phiên bản app.
+- Vị trí của máy **chỉ khi chase đang bật**. Khi chase tắt, vị trí máy không bao giờ được gửi đi.
+- Chỉ gửi theo thời gian thực: lô nào lỗi (mất mạng, timeout, máy chủ báo lỗi) thì bị bỏ, không thử lại.
+- Chế độ demo không upload gì cả.
+
+Thiết lập trên Info 3/3 (`8`, rồi `→` hai lần):
+
+| Phím | Chức năng |
+|---|---|
+| `E` | Nhập callsign: `A`–`Z`, `0`–`9` và `-`, tối đa 16 ký tự. `Enter` để lưu; để trống thì upload tắt |
+| `U` | Bật / tắt upload (cần có callsign) |
+| `C` | Bật / tắt chase car (cần có callsign) |
+
+Info 3/3 hiện trạng thái bật / tắt của từng mục, số frame đang chờ, và kết quả của lần gửi gần nhất (`OK 12 s ago`,
+`8 sent`, hoặc lý do lỗi). Thiết lập được lưu trong `<data_dir>/sondehub.conf`, đọc sau `/etc/sondechase.conf`. Các key
+cấu hình và bước kiểm tra trên máy: [hướng dẫn deploy](docs/deployment-guide.md#sondehub) (tiếng Anh).
+
 ## Tài liệu
 
 Tài liệu kỹ thuật viết bằng tiếng Anh:
@@ -204,7 +235,7 @@ Tài liệu kỹ thuật viết bằng tiếng Anh:
 
 ## Tình trạng test
 
-`tests/test_core.c`: 4496 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
+`tests/test_core.c`: 4582 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
 native trên Debian 13. Một `librtlsdr` giả, một `libhackrf` giả và một bộ giải mã giả chạy trọn quy trình quét và giải mã mà không cần
 dongle. Chi tiết và số đo trên máy thật: [hướng dẫn deploy](docs/deployment-guide.md#tests).
 
@@ -223,6 +254,8 @@ dongle. Chi tiết và số đo trên máy thật: [hướng dẫn deploy](docs/
   ẩm và đường tỉ lệ hỗn hợp.
 - Dự đoán điểm rơi khi bóng đang lên phụ thuộc vào `burst_alt` giả định.
 - Lịch sử chuyến bay không được khôi phục sau khi mở lại app.
+- SondeHub từ chối mọi frame (`HTTP 202 This software is unknown to us`, thấy từ máy ngày 21/11/2026) cho tới khi tên
+  phần mềm `SondeChase` được đăng ký với nhóm Project Horus. Xem [roadmap](docs/project-roadmap.md#known-gaps).
 - Chưa kiểm ngoài thực địa: đi săn bằng GPS, beeper, phát hiện nổ và điểm rơi trên một chuyến bay thật. Danh sách đầy đủ trong
   [roadmap](docs/project-roadmap.md#known-gaps).
 

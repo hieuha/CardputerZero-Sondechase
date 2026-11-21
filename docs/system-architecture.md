@@ -22,10 +22,10 @@ The core (`sc_core`) has no LVGL dependency and is unit-tested on any Linux host
 
 | File | Lines | Responsibility |
 |---|---|---|
-| `src/sc.h` | 574 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
+| `src/sc.h` | 620 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
 | `src/main.c` | 92 | Entry point, signal handling, main loop, LVGL setup, hold-Esc quit |
-| `src/app.c` | 630 | State machine (`ST_IDLE`, `ST_SCAN`, `ST_LISTEN`, `ST_DECODE`), receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
-| `src/base.c` | 426 | `sc_now`, config parser and defaults, line reader, child process groups, flat-JSON field extraction |
+| `src/app.c` | 654 | State machine (`ST_IDLE`, `ST_SCAN`, `ST_LISTEN`, `ST_DECODE`), receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
+| `src/base.c` | 454 | `sc_now`, config parser and defaults (including the SondeHub keys), callsign cleaning, line reader, child process groups, flat-JSON field extraction |
 | `src/sdr.c` | 332 | Receiver front: IQ ring, `sdr_*` calls dispatched to a back end; RTL-SDR back end (`librtlsdr` loaded with `dlopen`, reader thread, tuner range table) |
 | `src/sdr_hackrf.c` | 318 | HackRF back end: `libhackrf` loaded with `dlopen`, int8 to u8 IQ, halving to reach rates under 2 MS/s, retune-safe transfers |
 | `src/sdr_priv.h` | 32 | Back-end interface (`sdr_ops_t`) shared by the two |
@@ -36,17 +36,18 @@ The core (`sc_core`) has no LVGL dependency and is unit-tested on any Linux host
 | `src/compass.c` | 399 | Heading sources, magnetometer and accelerometer, tilt compensation, compass calibration |
 | `src/geo.c` | 223 | Geodesy, ISA, dew point, wind profile, sonde JSON parse, landing prediction |
 | `src/track.c` | 333 | Flight history, burst detection, proximity beeper, PCM audio stream to `pacat`, frame LED, EXT 5 V switch, slippy-map maths |
-| `src/tiles.c` | 326 | Tile lookup, `curl` downloads with cache cap and failure reasons, recolouring |
+| `src/tiles.c` | 317 | Tile lookup, `curl` downloads with cache cap and failure reasons, recolouring |
+| `src/sondehub.c` | 273 | SondeHub upload: frame queue, telemetry and chase-car JSON, `gzip` and `curl` children, result reasons |
 | `src/demo.c` | 139 | Simulated flight (`demo = 1`) through the same frame path |
-| `src/keys.c` | 97 | Keyboard from evdev (`/dev/input/event*`), Sym symbol keys, held-arrow repeat |
-| `src/ui.c` | 258 | UI state, overlays (frequency entry, burst alert, no SDR), LVGL draw callback, key dispatch (`ui_key`) |
+| `src/keys.c` | 102 | Keyboard from evdev (`/dev/input/event*`), Sym symbol keys, every letter (for typing), held-arrow repeat |
+| `src/ui.c` | 319 | UI state, overlays (frequency entry, callsign entry, burst alert, no SDR), LVGL draw callback, key dispatch (`ui_key`) |
 | `src/ui_draw.c` | 254 | Drawing primitives (line, rectangle, label), top and nav bars, battery |
 | `src/ui_track.c` | 223 | Track screen and compass |
 | `src/ui_map.c` | 290 | Map screen, decoded tile cache, pan, zoom, follow, style |
 | `src/ui_graph.c` | 168 | Skew-T and flight profile |
 | `src/ui_radio.c` | 159 | Band overview, tuned spectrum, listening, decoding |
-| `src/ui_info.c` | 177 | Info screens and compass calibration |
-| `src/ui_priv.h` | 77 | Colours, shared UI state and prototypes for the UI files |
+| `src/ui_info.c` | 240 | Info screens 1/3 to 3/3 (3/3 is SondeHub) and compass calibration |
+| `src/ui_priv.h` | 81 | Colours, shared UI state and prototypes for the UI files |
 | `src/ui.h` | 16 | UI entry points used by `main.c` |
 | `tools/render.c` | 226 | Headless build of the real UI for screenshots (`SC_RENDER`) |
 
@@ -69,6 +70,9 @@ flowchart LR
     HDG --> APP
     IO --> APP["app.c app_poll"]
     FRAME --> APP
+    FRAME -->|"sh_add"| SH["sondehub.c queue, 64 frames"]
+    APP -->|"sh_poll"| SH
+    SH -->|"gzip / curl child, PUT"| SHNET["sondehub.org API"]
     APP --> UI["ui*.c LVGL screens"]
     APP --> LOGS["CSV + auto_rx logs"]
     AUDIO --> PACAT["pacat (PipeWire)"]
@@ -89,6 +93,7 @@ flowchart LR
 | Decoder pipeline | `sh -c` child in its own process group | `fsk_demod --cs16 ... \| rs41mod --json ...`. Stdin is fed by the app; stdout is read line by line |
 | Audio | `sh -c` child (`audio_cmd`, default `pacat`) | Receives 16 kHz S16_LE mono PCM: beeper tones and, on the Radio screen, the demodulated audio |
 | Tile fetch | `sh -c` children (`tile_fetch_cmd`, `curl`) | At most `TF_JOBS` = 2 at a time |
+| SondeHub upload | `sh -c` children (`sondehub_cmd`): `gzip -c \| curl` for telemetry, `curl` for the chase car | One of each kind at a time, in its own process group; `sh_close` ends them on quit. The HTTP code comes back in `sondehub-<kind>.code` |
 | Tile cache sweep, blocked-name lookup | Forked children of the app | Run off the main loop: the sweep stats every cached file, and a DNS lookup can block for seconds without a network |
 | gpsd | Non-blocking TCP socket | The connect itself is non-blocking (given up after 5 s); sends `?WATCH` JSON; reconnect every 5 s, a name that does not resolve every 30 s |
 
@@ -172,6 +177,29 @@ steps through the band. `spec_peaks` returns the peaks for the Radio screen and 
   arrow. Landing point distance and bearing when a prediction exists.
 - The proximity beeper (`prox_update`) and the telemetry tones use the ground distance.
 
+### SondeHub upload
+
+`sondehub.c` runs two independent uploads, both off until set (see [deployment guide](./deployment-guide.md#sondehub)).
+Neither runs in demo mode (`app_on_frame` and `app_poll` skip them).
+
+1. `app_on_frame` calls `sh_add` for each valid position frame. The frame is queued only with `sondehub_upload = 1`, a
+   callsign and the sonde's own datetime. The time received is the device's UTC clock. The queue holds `SH_QMAX` (64)
+   frames; when it is full the oldest goes.
+2. `app_poll` calls `sh_poll` each loop, which:
+   - reaps finished children and stores each result (`sh_result_t`: OK, or the reason, and the batch size);
+   - empties the queue while upload is off or there is no callsign;
+   - once `sondehub_rate_s` has passed and frames are queued, builds the batch with `sh_json_tel` and starts the
+     telemetry child with `{enc}` set to the gzip header. The queue is emptied whether or not the child starts, since
+     a failed batch is not retried. The device position is added to the batch only while chase is on;
+   - while chase is on, a callsign is set and the GPS has a fix, starts the chase-car child with `sh_json_lis`
+     (`PUT /listeners`, not compressed) every `sondehub_rate_s`.
+3. `start()` writes the body to `<data_dir>/sondehub-<kind>.json` and forks. The child runs `sondehub_cmd` under
+   `sh -c` with the body on stdin (telemetry is piped through `gzip -c` first).
+4. When the child exits, `finish()` sets the result: only 200 is OK. SondeHub answers 201/202 when it refused some
+   or all frames; that and any other HTTP code give `HTTP <code> <reason>`, the reason being the first
+   `error_message` in `sondehub-<kind>.resp` (else the start of the body). Without an HTTP code, curl exit 6 or 7 gives `No network`, 28 gives `Timeout`,
+   127 gives `curl not found`, and anything else `Error <n>` or `No answer`. Info 3/3 shows the result.
+
 ### Radio audio
 
 `radio.c` shifts the 48 kHz stream by −12 kHz so the tuned frequency sits at 0 Hz, filters the channel, demodulates,
@@ -201,6 +229,7 @@ and decimates to 16 kHz. Output goes to `audio_radio_push`, which mixes it with 
 | Display | `/dev/fb_lcd` (found by `fb_pick`), `fb_dev` | LVGL `lv_linux_fbdev` | 320×170 |
 | Keyboard | evdev, `/dev/input/event*` | Non-blocking read, device grabbed | `kbd_dev` sets the device; empty auto-detects the first device with Q, Enter and 1 keys |
 | Network (tiles) | HTTPS via `curl` | Child process | Only when `tile_online = 1` |
+| Network (SondeHub) | HTTPS via `curl`; `gzip` for telemetry | Child process | Only with `sondehub_upload` or `sondehub_chase` on and a callsign. Never in demo |
 
 Battery: read from sysfs every 10 s for the top bar.
 
@@ -439,6 +468,8 @@ Map centre when neither this device nor a sonde has a position: `map_lat` / `map
 | `<data_dir>/sondechase.csv` (default `$HOME/sondechase`) | Every valid sonde frame | One header per file, then `unix,id,frame,lat,lon,alt,vel_v,vel_h,heading,freq_hz,own_lat,own_lon,pred_lat,pred_lon` |
 | `<data_dir>/log/YYYYMMDD-HHMMSS_<serial>_RS41_<MHz>_sonde.log` | Every valid sonde frame | radiosonde_auto_rx sonde-log columns (`timestamp,serial,frame,lat,lon,alt,...,aux_data`). Time is the sonde's own GPS time in UTC; the system clock is used only when the sonde sends none. SNR, frequency error and burst timer are written as `-1` where not measured |
 | `<data_dir>/tiles/` | Map downloads, kept for offline use | `z/x/y.png` |
+| `<data_dir>/sondehub.conf` | When `U`, `C` or `E` changes a SondeHub setting on Info 3/3 | `callsign`, `sondehub_upload`, `sondehub_chase`; read after the main config |
+| `<data_dir>/sondehub-{tel,lis}.{json,code,resp}` | Each SondeHub request | Request body, HTTP code and server reply of the last request of that kind; overwritten by the next one |
 
 The app has no RTC; the auto_rx-format file name and timestamps therefore come from the sonde's GPS, not from the clock.
 
@@ -455,6 +486,9 @@ The app has no RTC; the auto_rx-format file name and timestamps therefore come f
 | gpsd unavailable | Reconnect every 5 s; the serial GPS is still read; the top bar shows `No GPS` or `GPS lost` when neither talks |
 | Serial GPS port missing, busy or closed | Reopened every 5 s |
 | Map tile download fails | Status text on the Map; retry after 30 s |
+| SondeHub: no network, timeout or server error | Result on Info 3/3 (`No network`, `Timeout`, `HTTP <code> …`). The telemetry batch is dropped, not retried; the chase car is sent at its next interval |
+| SondeHub: child or request file cannot be started | `Could not start` on Info 3/3; that batch is skipped |
+| SondeHub: `sondehub.conf` cannot be written | `sondehub.conf could not be written` on Info 3/3; the change holds for this session only |
 | Config value unusable (scan band reversed, step too fine, `ppm` beyond ±1000, zoom outside 0–19, string too long) | Warning on stderr; the default or the nearest usable value is used |
 | Burst alert | Overlay on every screen; `Enter` opens Map, `Esc` dismisses |
 | Hold `Esc` for 3 s | Quit back to the launcher |

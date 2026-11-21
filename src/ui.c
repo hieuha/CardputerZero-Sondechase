@@ -7,8 +7,11 @@
 #include <unistd.h>
 
 static lv_obj_t *root;
-static int page, gpage, ipage, entry, entry_len;
+static int page, gpage, ipage, entry, entry_len; /* entry: ENTRY_FREQ or ENTRY_CALL overlay open, 0 = none */
 static char entry_buf[8];
+static char call_buf[sizeof ((cfg_t *)0)->callsign]; /* the callsign being typed (Info 3/3, E) */
+static int call_len;
+enum { ENTRY_FREQ = 1, ENTRY_CALL };
 static int scan_from = ST_IDLE; /* what the receiver did before S: Esc on Scan goes back to it */
 static long scan_from_hz;
 
@@ -17,6 +20,8 @@ lv_layer_t *LY;
 const lv_font_t *F_S, *F_M, *F_NUM, *F_BIG, *F_TTL;
 int cal_saved;
 double cal_t;
+int sh_note;
+double sh_note_t;
 
 /* ---------------- overlays ---------------- */
 static void p_freq(void)
@@ -33,6 +38,24 @@ static void p_freq(void)
     txt(156, 130, 56, F_S, C_DIM, AL_L, "Enter  tune");
     txt(222, 130, 54, F_S, C_DIM, AL_R, "Esc  cancel");
     nav_bar(PG_RADIO);
+}
+
+static void p_callsign(void)
+{
+    char shown[sizeof call_buf + 1];
+    top_bar("SondeHub", C_CY, NULL);
+    box(44, 30, 232, 92, C_CY, C_P);
+    txt(58, 40, 200, F_M, C_DIM, AL_L, "Callsign");
+    snprintf(shown, sizeof shown, "%s_", call_buf);
+    /* the big digits fit about ten letters; a longer callsign drops to the text font */
+    txt(58, 58, 210, text_w(F_NUM, shown) <= 210 ? F_NUM : F_M, C_TX, AL_L, "%s", shown);
+    txt(58, 84, 210, F_S, C_DIM, AL_L, "Letters, digits and -, up to %d", (int)sizeof call_buf - 1);
+    txt(58, 100, 210, F_S, C_DIM, AL_L, "Empty: uploads off");
+    txt(44, 130, 50, F_S, C_DIM, AL_L, "A-Z 0-9 -");
+    txt(100, 130, 54, F_S, C_DIM, AL_L, "Bksp  del");
+    txt(156, 130, 56, F_S, C_DIM, AL_L, "Enter  save");
+    txt(222, 130, 54, F_S, C_DIM, AL_R, "Esc  cancel");
+    nav_bar(PG_INFO);
 }
 
 static void stripes_col(int y, uint32_t col)
@@ -110,12 +133,14 @@ static void draw_cb(lv_event_t *e)
     fill(0, 0, 320, 170, C_G);
     if (!A->sdr_ok) p_nosdr();
     else if (A->burst_alert) p_burst();
+    else if (entry == ENTRY_CALL) p_callsign();
     else if (entry) p_freq();
     else if (page == PG_TRACK) p_track();
     else if (page == PG_MAP) p_map();
     else if (page == PG_GRAPH) { if (gpage == 0) p_skewt(); else p_flight(); }
     else if (page == PG_INFO && A->cal.step != MAGCAL_OFF) p_cal();
-    else if (page == PG_INFO && ipage) p_info_pos();
+    else if (page == PG_INFO && ipage == 1) p_info_pos();
+    else if (page == PG_INFO && ipage == 2) p_info_sondehub();
     else if (page == PG_RADIO) p_scan();
     else p_info();
     { /* hold-Esc-to-quit countdown over every screen; a short Esc press never shows it */
@@ -169,6 +194,34 @@ void ui_init(app_t *a)
     a->frame_cue = page == PG_TRACK || page == PG_MAP;
 }
 
+/* Info 3/3: U and C switch the uploads on and off, kept in sondehub.conf; they need a callsign first. */
+static void sh_toggle(int *v)
+{
+    sh_note_t = sc_now();
+    if (!*v && !A->cfg.callsign[0]) {
+        sh_note = SH_NOTE_NOCALL;
+        return;
+    }
+    *v = !*v;
+    sh_note = app_sondehub_save(A) == 0 ? 0 : SH_NOTE_SAVE_FAIL;
+}
+
+static void call_key(int k)
+{
+    if (k >= 'a' && k <= 'z') k -= 'a' - 'A'; /* callsigns are upper case */
+    if (((k >= 'A' && k <= 'Z') || (k >= '0' && k <= '9') || k == '-') && call_len < (int)sizeof call_buf - 1) {
+        call_buf[call_len++] = (char)k;
+        call_buf[call_len] = 0;
+    } else if (k == K_BKSP && call_len > 0) call_buf[--call_len] = 0;
+    else if (k == K_ESC) entry = 0;
+    else if (k == K_ENTER) {
+        snprintf(A->cfg.callsign, sizeof A->cfg.callsign, "%s", call_buf);
+        sh_note = app_sondehub_save(A) == 0 ? SH_NOTE_SAVED : SH_NOTE_SAVE_FAIL;
+        sh_note_t = sc_now();
+        entry = 0;
+    }
+}
+
 /* Left/Right: one RS41 channel (10 kHz); Up/Down: 100 kHz. */
 static long tune_step(int k)
 {
@@ -201,7 +254,8 @@ void ui_key(int k)
             cal_saved = app_compass_save(A) == 0 ? 1 : -1;
             cal_t = sc_now();
         }
-    } else if (entry) {
+    } else if (entry == ENTRY_CALL) call_key(k); /* every key types: no hotkey fires while editing */
+    else if (entry) {
         if (k >= '0' && k <= '9' && entry_len < 7) { entry_buf[entry_len++] = (char)k; entry_buf[entry_len] = 0; }
         else if (k == K_BKSP && entry_len > 0) entry_buf[--entry_len] = 0;
         else if (k == K_ESC) entry = 0;
@@ -226,7 +280,7 @@ void ui_key(int k)
         if (scan_from == ST_DECODE || A->cfg.demo) app_tune(A, f); /* the demo has no receiver to listen with */
         else app_listen(A, f);
     }
-    else if (k == 'f') { entry = 1; entry_len = 0; entry_buf[0] = 0; }
+    else if (k == 'f') { entry = ENTRY_FREQ; entry_len = 0; entry_buf[0] = 0; }
     else if (k == 'r' && A->freq_hz > 0) app_tune(A, A->freq_hz);
     else if (k == 'x') app_stop(A);
     else if (page == PG_RADIO && k == 'b') radio_init(&A->radio, A->radio.mode, radio_next_bw(A->radio.mode, A->radio.bw_hz));
@@ -245,8 +299,15 @@ void ui_key(int k)
         A->cursor_hz = f < A->cfg.scan_lo_hz ? A->cfg.scan_lo_hz : (f > A->cfg.scan_hi_hz ? A->cfg.scan_hi_hz : f);
     } else if (page == PG_RADIO && A->state == ST_SCAN && k == K_ENTER) app_tune(A, A->cursor_hz); /* -> tuned view, heard and decoded */
     else if (page == PG_GRAPH && (k == K_LEFT || k == K_RIGHT)) gpage ^= 1;
-    else if (page == PG_INFO && (k == K_LEFT || k == K_RIGHT)) ipage ^= 1;
+    else if (page == PG_INFO && (k == K_LEFT || k == K_RIGHT)) ipage = (ipage + (k == K_RIGHT ? 1 : 2)) % 3;
     else if (page == PG_INFO && k == 'k') magcal_start(&A->cal, mag_min_span(&A->hdg), A->hdg.acc_found);
+    else if (page == PG_INFO && ipage == 2 && k == 'u') sh_toggle(&A->cfg.sondehub_upload);
+    else if (page == PG_INFO && ipage == 2 && k == 'c') sh_toggle(&A->cfg.sondehub_chase);
+    else if (page == PG_INFO && ipage == 2 && k == 'e') {
+        entry = ENTRY_CALL;
+        snprintf(call_buf, sizeof call_buf, "%s", A->cfg.callsign);
+        call_len = (int)strlen(call_buf);
+    }
     else if (page == PG_MAP && (k == K_LEFT || k == K_RIGHT || k == K_UP || k == K_DOWN)) map_pan(k);
     else if (page == PG_MAP && (k == '+' || k == '=')) map_zoom_step(1);
     else if (page == PG_MAP && k == '-') map_zoom_step(-1);

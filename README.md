@@ -34,7 +34,9 @@ Skew-T (right) draws temperature and dew point as the balloon climbs. Made from 
 | ![Skew-T log-P diagram of the sounding](screenshots/mockup/skew-t.png) | ![Altitude and vertical speed over time](screenshots/mockup/flight.png) |
 | **Graph**: Skew-T log-P of the sounding | **Graph**: altitude and vertical speed, burst marked |
 | ![Info screen: sonde, reception, this device](screenshots/mockup/info.png) | ![Info page 2: exact coordinates, angles and weather](screenshots/mockup/info-details.png) |
-| **Info 1/2**: sonde, reception, this device, landing coordinates | **Info 2/2** (`→`): exact coordinates, bearing, elevation, speeds, weather; `K` calibrates the compass |
+| **Info 1/3**: sonde, reception, this device, landing coordinates | **Info 2/3** (`→`): exact coordinates, bearing, elevation, speeds, weather; `K` calibrates the compass |
+| ![Info page 3: SondeHub upload and chase car](screenshots/mockup/info-sondehub.png) | |
+| **Info 3/3** (`→` twice): SondeHub upload and chase car, and the result of the last upload | |
 | ![Track screen after the device lost GPS: distance from its last fix](screenshots/mockup/track-gps-lost.png) | ![Compass calibration, step 1: turn a full circle](screenshots/mockup/compass-calibration.png) |
 | **Track, GPS lost**: distance and direction from the device's last fix, in yellow | **Compass calibration** (Info, `K`): turn a full circle, lean four ways, then point north |
 | ![Balloon burst alert](screenshots/mockup/burst.png) | ![Track screen on course: green ring, Straight ahead](screenshots/mockup/track-near.png) |
@@ -88,7 +90,7 @@ sudo apt install --no-install-recommends ./sondechase_0.8.0-rev1_arm64.deb
 ```
 
 Open **SondeChase** from APPLaunch. The package includes the RS41 decoders (`fsk_demod` and `rs41mod`, from
-`radiosonde_auto_rx`). It needs `librtlsdr0`, `libhackrf0` and `curl`; `gpsd` and `pulseaudio-utils` are recommended.
+`radiosonde_auto_rx`). It needs `librtlsdr0`, `libhackrf0`, `curl` and `gzip`; `gpsd` and `pulseaudio-utils` are recommended.
 
 To build the package yourself (on the device or cross-compiled), see [deployment guide](docs/deployment-guide.md).
 
@@ -100,7 +102,7 @@ To build the package yourself (on the device or cross-compiled), see [deployment
 | `5` Map | Tiles, device position, sonde, flight track, landing point. Arrow keys pan (hold to keep moving; the map stops following, `free`). `Sym` + `T` (`+`) zooms in, `Sym` + `R` (`-`) zooms out. `C` cycles both / device / sonde, or follows again after panning. `V` switches simple / detailed style. With no position yet: centred on `map_lat` / `map_lon` |
 | `6` Graph | `Left` / `Right` switch page: Skew-T log-P, altitude and vertical speed over time |
 | `7` Radio | Spectrum with the tuned frequency's audio. `Left` / `Right` ±10 kHz, `Up` / `Down` ±100 kHz (hold to keep tuning). `Enter` decodes here. `S` Scan, `Esc` goes back. `D` mode (NFM / AM / USB / LSB / WFM), `B` channel width |
-| `8` Info | `K` calibrates the compass (turn a full circle to the right, lean the device forward, back, left and right, then point north and press `Enter`; saved to `<data_dir>/compass.conf`). `Left` / `Right` switch page: 1/2 sonde, reception, device, landing point; 2/2 exact numbers (coordinates, bearing, turn and elevation angles, speeds, temperature, humidity, pressure, device position) |
+| `8` Info | `K` calibrates the compass (turn a full circle to the right, lean the device forward, back, left and right, then point north and press `Enter`; saved to `<data_dir>/compass.conf`). `Left` / `Right` switch page: 1/3 sonde, reception, device, landing point; 2/3 exact numbers (coordinates, bearing, turn and elevation angles, speeds, temperature, humidity, pressure, device position); 3/3 SondeHub: `U` upload on / off, `C` chase car on / off, `E` callsign (see [SondeHub](#sondehub)) |
 | `Tab` | Next screen (Track → Map → Graph → Radio → Info → Track) |
 | `F` | Enter a frequency in kHz; `Enter` tunes it (within the tuner's range) and decodes |
 | `S` | Scan 400–406 MHz and try the peaks on the decoder (see [Radio screen](#radio-screen)) |
@@ -119,7 +121,7 @@ The burst alert overlays every screen: `Enter` opens Map, a short `Esc` dismisse
 | Map | OpenStreetMap tiles (downloaded on demand), device, sonde, track, landing point |
 | Graph | Skew-T log-P (`Graph 1/2`) and altitude / vertical speed with the burst marked (`Graph 2/2`) |
 | Radio | Live spectrum of the receiver's band around the tuned frequency, shaded channel width, decode status |
-| Info | Page 1: sonde ID, frame count, battery, GPS and reception details. Page 2: coordinates, bearing, elevation, speeds, temperature, humidity, pressure. The page number is in the top-left label (`Info 1/2`) |
+| Info | Page 1: sonde ID, frame count, battery, GPS and reception details. Page 2: coordinates, bearing, elevation, speeds, temperature, humidity, pressure. Page 3: SondeHub upload and chase car. The page number is in the top-left label (`Info 1/3`) |
 
 ### Radio screen
 
@@ -187,6 +189,36 @@ Everything the app keeps is in one folder, `data_dir` (default `~/sondechase`):
   `tile_cache_mb` (1000 MB) and then drops the oldest tiles.
 - Files from before 0.5.1 (`~/sondechase.csv`, `~/.cache/sondechase/tiles`) are moved in on the first start.
 
+## SondeHub
+
+[SondeHub](https://sondehub.org) is the public map of radiosonde and chase car positions. SondeChase can upload to it
+the way `radiosonde_auto_rx` and chasemapper do. Uploads are **off by default**.
+
+| Upload | Request | When |
+|---|---|---|
+| Decoded RS41 frames | `PUT /sondes/telemetry`, gzip JSON | In batches, every `sondehub_rate_s` (default 30 s, 10 to 300) |
+| This device, as the chase car `<callsign>_chase` | `PUT /listeners`, JSON | Every `sondehub_rate_s`, while chase is on and the device has a GPS fix |
+
+What is sent:
+- A frame: serial, frame number, the sonde's own time, position, altitude, speeds, heading, tuned frequency, satellites
+  and battery, plus temperature, humidity and pressure when the sonde reports them. Each frame carries your callsign
+  and the app's name and version.
+- Your position **only while chase car is on**. With chase off, the device position is never sent.
+- Realtime only: a batch that fails (no network, timeout, server error) is dropped, not retried.
+- Demo mode uploads nothing.
+
+Setup on Info 3/3 (`8`, then `→` twice):
+
+| Key | Action |
+|---|---|
+| `E` | Type the callsign: `A`–`Z`, `0`–`9` and `-`, up to 16 characters. `Enter` saves; an empty callsign turns uploads off |
+| `U` | Upload on / off (needs a callsign) |
+| `C` | Chase car on / off (needs a callsign) |
+
+Info 3/3 shows whether each is on, the frames waiting, and the result of the last batch (`OK 12 s ago`, `8 sent`, or the
+reason it failed). The settings are kept in `<data_dir>/sondehub.conf`, which is read after `/etc/sondechase.conf`.
+Config keys and device checks: [deployment guide](docs/deployment-guide.md#sondehub).
+
 ## Documentation
 
 | Document | Contents |
@@ -202,7 +234,7 @@ Everything the app keeps is in one folder, `data_dir` (default `~/sondechase`):
 
 ## Test status
 
-`tests/test_core.c`: 4496 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
+`tests/test_core.c`: 4582 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
 arm64 package build on Debian 13. A fake `librtlsdr`, a fake `libhackrf` and a fake decoder run scanning and decoding
 end to end without a dongle. Details and the device measurements: [deployment guide](docs/deployment-guide.md#tests).
 
@@ -220,6 +252,8 @@ end to end without a dongle. Details and the device measurements: [deployment gu
   mixing-ratio lines are not drawn.
 - Landing prediction during ascent depends on the assumed `burst_alt`.
 - Flight history is not restored after an app restart.
+- SondeHub refuses every frame (`HTTP 202 This software is unknown to us`, seen from the device on 2026-11-21) until
+  the `SondeChase` software name is registered with the Project Horus team. See the [roadmap](docs/project-roadmap.md#known-gaps).
 - Not yet checked in the field: chasing with GPS, the beeper, burst detection and landing on a real flight. Full list in the
   [roadmap](docs/project-roadmap.md#known-gaps).
 

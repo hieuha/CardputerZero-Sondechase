@@ -46,16 +46,36 @@ int app_compass_save(app_t *a)
     return magcal_save(&a->cfg, p);
 }
 
+int app_sondehub_save(app_t *a)
+{
+    char p[200];
+    FILE *f;
+    callsign_clean(a->cfg.callsign);
+    if (!a->cfg.callsign[0]) a->cfg.sondehub_upload = a->cfg.sondehub_chase = 0; /* nothing to upload as */
+    snprintf(p, sizeof p, "%s/sondehub.conf", a->cfg.data_dir);
+    mkdirs(p);
+    if (!(f = fopen(p, "w"))) return -1;
+    fprintf(f, "# Written by SondeChase (Info 3/3: U, C, E). Read after the main config.\n");
+    fprintf(f, "callsign = %s\nsondehub_upload = %d\nsondehub_chase = %d\n", a->cfg.callsign, a->cfg.sondehub_upload,
+            a->cfg.sondehub_chase);
+    return fclose(f) == 0 ? 0 : -1;
+}
+
 void app_init(app_t *a, const char *cfg_path)
 {
     memset(a, 0, sizeof *a);
     cfg_defaults(&a->cfg);
     if (cfg_path) cfg_load(&a->cfg, cfg_path);
     data_paths(&a->cfg);
-    { /* compass calibration saved by the app (Info, K) overrides the main config */
+    { /* compass calibration (Info, K) and SondeHub settings (Info 3/3) saved by the app override the main config */
+        static const char *const saved[] = {"compass.conf", "sondehub.conf"};
         char p[200];
-        snprintf(p, sizeof p, "%s/compass.conf", a->cfg.data_dir);
-        if (access(p, R_OK) == 0) cfg_load(&a->cfg, p);
+        size_t i;
+        for (i = 0; i < sizeof saved / sizeof saved[0]; i++) {
+            snprintf(p, sizeof p, "%s/%s", a->cfg.data_dir, saved[i]);
+            if (access(p, R_OK) == 0) cfg_load(&a->cfg, p);
+        }
+        if (!a->cfg.callsign[0]) a->cfg.sondehub_upload = a->cfg.sondehub_chase = 0;
     }
     proc_init(&a->proc);
     gps_init(&a->gps);
@@ -69,6 +89,7 @@ void app_init(app_t *a, const char *cfg_path)
     a->ext_power_was = power_set(a->cfg.ext_power_path, 1);
     radio_init(&a->radio, DEMOD_NFM, radio_default_bw(DEMOD_NFM));
     tf_init(&a->tf, &a->cfg);
+    sh_init(&a->sh, &a->cfg);
     a->freq_hz = a->cfg.freq_hz;
     a->sdr_ok = (a->cfg.sdr_check && !a->cfg.demo) ? sdr_present("/sys/bus/usb/devices") : 1;
     set_status(a, "idle");
@@ -491,6 +512,7 @@ void app_on_frame(app_t *a, const char *line, double now)
     ground = a->cfg.ground_alt > -900.0 ? a->cfg.ground_alt : (gps_ok(&a->gps, now) ? a->gps.alt : 0.0);
     a->pred = predict_landing(&s, a->vv_s, &a->wind, ground, a->cfg.burst_alt, a->cfg.descent_v0);
     log_frame(a);
+    if (!a->cfg.demo) sh_add(&a->sh, &a->cfg, &s, a->freq_hz); /* a simulated flight never reaches SondeHub */
 }
 
 static void sweep_poll(app_t *a)
@@ -608,6 +630,7 @@ derived:
     audio_poll(&a->audio, &a->cfg, now);
     led_poll(&a->led, now);
     tf_poll(&a->tf, &a->cfg, now);
+    if (!a->cfg.demo) sh_poll(&a->sh, &a->cfg, &a->gps, now); /* nor does the demo's made-up position */
 }
 
 void app_free(app_t *a)
@@ -623,6 +646,7 @@ void app_free(app_t *a)
     if (a->ext_power_was == 0) power_set(a->cfg.ext_power_path, 0);
     a->ext_power_was = -1;
     tf_close(&a->tf);
+    sh_close(&a->sh);
     if (a->log) fclose(a->log);
     a->log = NULL;
     if (a->rlog) fclose(a->rlog);

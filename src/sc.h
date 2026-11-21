@@ -60,10 +60,21 @@ typedef struct {
     int tile_cache_mb;       /* downloaded tiles above this total are removed, oldest first */
     int demo;                /* 1 = simulated flight: no SDR, GPS or decoder needed */
     double demo_speed;       /* simulated seconds per real second */
+    char callsign[17];       /* SondeHub uploader callsign, A-Z 0-9 - only (upper-cased on load); "" = upload off */
+    int sondehub_upload;     /* 1 = upload decoded frames to SondeHub (Info 3/3, U) */
+    int sondehub_chase;      /* 1 = upload this device's position as the chase car <callsign>_chase (Info 3/3, C) */
+    int sondehub_dev;        /* 1 = frames marked dev: the server checks them but does not store them */
+    int sondehub_rate_s;     /* seconds between uploads, 10..300 */
+    char sondehub_url[120];  /* API base, no trailing slash */
+    char sondehub_cmd[400];  /* {enc} {date} {ua} {url} {resp}; reads the body on stdin, prints the HTTP code */
 } cfg_t;
 
 void cfg_defaults(cfg_t *c);
 int cfg_load(cfg_t *c, const char *path); /* 0 ok, -1 file not readable */
+/* Upper-case, keep A-Z 0-9 and -, at most 16 characters: the SondeHub callsign also ends up in a shell command. */
+void callsign_clean(char *s);
+/* Replace the first key in tpl with val. 0 = the result did not fit in out (it is then cut). */
+int str_subst(char *out, size_t n, const char *tpl, const char *key, const char *val);
 /* Expand {f_hz} (the tuned sonde frequency) in a command template; -1 if out is too small. */
 int sc_subst(char *out, size_t n, const char *tpl, long f_hz);
 /* The LCD framebuffer: fb_dev from the config, else $LV_LINUX_FBDEV_DEVICE, else lcd_link (/dev/fb_lcd, made by the
@@ -453,6 +464,37 @@ void tf_close(tilefetch_t *t);
 /* Light street-map colours -> UI palette, in place on an RGB888 buffer. */
 void tile_recolor(unsigned char *rgb, int npix, int simple); /* simple: only water and roads */
 
+/* ---------------- SondeHub upload ---------------- */
+/* Like radiosonde_auto_rx: decoded frames are batched and PUT (gzip JSON) to <sondehub_url>/sondes/telemetry every
+ * sondehub_rate_s; like chasemapper, the device position goes to <sondehub_url>/listeners as a mobile station. Each
+ * upload is a sondehub_cmd child polled without blocking. Realtime only: a failed batch is dropped, not retried. */
+#define SH_QMAX 64 /* frames held for the next batch; the oldest go first when full */
+typedef struct {
+    double t;      /* sc_now() of the result, 0 = none yet */
+    int ok, http;  /* http: status code, 0 = no answer */
+    int n;         /* frames in the batch (telemetry) */
+    char why[40];  /* failure in a few words: "No network", "Timeout", "HTTP 400 ..." */
+} sh_result_t;
+typedef struct {
+    struct { sonde_t s; long freq_hz; double t_unix; } q[SH_QMAX];
+    int qn;
+    double t_next_tel, t_next_lis;
+    pid_t tel_pid, lis_pid;
+    int tel_n;     /* frames in the batch being sent */
+    sh_result_t last_tel, last_lis;
+    char dir[200]; /* where the request bodies and answers are written (data_dir) */
+} sondehub_t;
+void sh_init(sondehub_t *h, const cfg_t *c);
+/* Queue a position frame (sonde_parse 1: the sonde has a GPS fix) for the next batch: only with upload on, a
+ * callsign and the sonde's own time. 1 = queued. */
+int sh_add(sondehub_t *h, const cfg_t *c, const sonde_t *s, long freq_hz);
+/* The batch as SondeHub telemetry JSON. The device position is added only while the chase car is on and the device
+ * has a fix (now: sc_now()). -1 when out is too small: never a cut document. */
+int sh_json_tel(const sondehub_t *h, const cfg_t *c, const gps_t *g, double now, char *out, size_t n);
+int sh_json_lis(const cfg_t *c, const gps_t *g, char *out, size_t n); /* chase car listener JSON, -1 too small */
+void sh_poll(sondehub_t *h, const cfg_t *c, const gps_t *g, double now); /* reap finished uploads, start due ones */
+void sh_close(sondehub_t *h);
+
 /* ---------------- application state ---------------- */
 enum { ST_IDLE, ST_DECODE, ST_SCAN, ST_LISTEN }; /* LISTEN: tuned, spectrum and audio, no decoder */
 
@@ -549,6 +591,7 @@ typedef struct {
     int sdr_ok;      /* receiver present on USB; decoding and scanning wait while 0 */
     double t_sdr;
     tilefetch_t tf;
+    sondehub_t sh;
     struct {
         int init, phase, frame; /* phase: 0 ascent, 1 descent, 2 landed */
         double tv, t_last, t_land, lat, lon, alt, own_lat, own_lon;
@@ -562,6 +605,9 @@ void app_hunt(app_t *a);  /* Scan: band overview that tries each peak until an R
 int app_skipped(const app_t *a, long f_hz, double now); /* tried lately without a frame */
 void app_stop(app_t *a);
 int app_compass_save(app_t *a); /* 0 = saved to <data_dir>/compass.conf */
+/* Callsign and the SondeHub toggles to <data_dir>/sondehub.conf (read after the main config); an empty callsign
+ * turns both uploads off. 0 = saved. */
+int app_sondehub_save(app_t *a);
 void app_listen(app_t *a, long f_hz); /* tune without decoding: spectrum and radio audio; app_tune sets the decode */
 const known_t *app_known(const app_t *a, long f_hz); /* NULL: nothing known about this frequency */
 void app_free(app_t *a);

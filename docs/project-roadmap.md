@@ -5,9 +5,18 @@ Last updated: 2026-11-21 (version 0.8.0). Versions come from `chore: version` co
 commitment to a future feature.
 
 ## Contents
+- [Unreleased](#unreleased)
 - [Released versions](#released-versions)
 - [Known gaps](#known-gaps)
 - [Dropped or declined](#dropped-or-declined)
+
+## Unreleased
+
+Not in a tagged version yet. This change makes no version bump.
+
+| Change | Main changes |
+|---|---|
+| SondeHub upload | Decoded RS41 position frames to `/sondes/telemetry` (gzip JSON, batched every `sondehub_rate_s`, realtime only: a failed batch is dropped); the device as the chase car `<callsign>_chase` on `/listeners`, sent only while chase is on, with the device position; settings on Info 3/3 (`U`, `C`, `E`) kept in `<data_dir>/sondehub.conf`; Info now has three pages (`←` / `→` wraps); callsign entry; letter keys reach the app for typing (a letter with no action does nothing) |
 
 ## Released versions
 
@@ -43,6 +52,14 @@ Grouped by kind. Each item is something the code or the test status says is miss
 | Simple map style and map panning on the device | Deployment guide, device checks |
 | HackRF: no RS41 reception yet. In the one live test (2026-11-20) a HackRF One showed no sonde peak at any gain while an RTL-SDR V4 decoded the same sonde at about 25 dB over the floor; antenna port, a damaged front end or the app's HackRF path are open ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)). Scan and WFM audio work | Device check, 2026-11-20 |
 | Scan → decode switch time after the dongle stays open (the 621 ms figure predates that change) | Deployment guide, device checks |
+| SondeHub upload accepted by the server: on 2026-11-21 the device's dev batch reached the server, which refused every frame with HTTP 202 "This software is unknown to us!" until `SondeChase` is registered | [Deployment guide, SondeHub checks](deployment-guide.md#sondehub-checks) (checks 3 and 5) |
+| SondeHub chase car on the server (`<callsign>_chase`) | [Deployment guide, SondeHub checks](deployment-guide.md#sondehub-checks) (check 4) |
+
+### Waiting on others
+
+| Gap | Source |
+|---|---|
+| `SondeChase` as a SondeHub software name: registration with the Project Horus team (support@sondehub.org, per [Sonde Telemetry Validation](https://github.com/projecthorus/sondehub-infra/wiki/Sonde-Telemetry-Validation)) is pending; the server refuses every frame until then, dev or not | Maintainer, outside this repository |
 
 ### Functional limitations
 

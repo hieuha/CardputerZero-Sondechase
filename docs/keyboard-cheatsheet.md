@@ -1,6 +1,7 @@
 # SondeChase keyboard cheatsheet
 
-Every key the app reacts to, screen by screen (version 0.8.0). Keys are not case sensitive.
+Every key the app reacts to, screen by screen (version 0.8.0). Keys are not case sensitive. A letter with no action on
+the screen shown does nothing.
 
 `Sym` works like `Shift`: hold it and press the key with the symbol (`-` on `R`, `+` on `T`). The same key without
 `Sym` keeps its letter action, so plain `R` restarts the decoder.
@@ -71,8 +72,13 @@ and end Scan, as on the tuned view.
 
 | Key | Action |
 |---|---|
-| `←` / `→` | `Info 1/2`: sonde, reception, device ↔ `Info 2/2`: exact numbers (bearing, elevation, coordinates, weather) |
-| `K` | Calibrate the compass (see below) |
+| `←` / `→` | Page, and wraps: `Info 1/3` sonde, reception, device → `Info 2/3` exact numbers (bearing, elevation, coordinates, weather) → `Info 3/3` SondeHub → `Info 1/3` |
+| `K` | Calibrate the compass (see below). Works on every Info page |
+| `U` | `Info 3/3` only: SondeHub upload on / off. Needs a callsign (`Set a callsign first: E` otherwise) |
+| `C` | `Info 3/3` only: chase car on / off, sent as `<callsign>_chase`. Needs a callsign |
+| `E` | `Info 3/3` only: enter the callsign (see [Callsign entry](#callsign-entry)) |
+
+On `Info 3/3` the saved settings go to `<data_dir>/sondehub.conf`. Uploads are off until you turn them on.
 
 ### Compass calibration (`K` on Info)
 
@@ -88,6 +94,17 @@ CardputerZero has one); without it there are two steps and the device must be he
 | Any time | `Esc` cancels; nothing is changed |
 
 On screens with pages, the page number is in the top-left label.
+
+## Callsign entry
+
+Opened by `E` on Info 3/3. While it is open, every key types into the callsign; no other hotkey fires.
+
+| Key | Action |
+|---|---|
+| `A`–`Z`, `0`–`9`, `-` | Type (lower case is shown in upper case). Up to 16 characters |
+| `Backspace` | Delete the last character |
+| `Enter` | Save. An empty callsign saves and turns uploads off |
+| `Esc` | Cancel; nothing is changed |
 
 ## Frequency entry
 

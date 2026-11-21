@@ -55,6 +55,8 @@ void cfg_defaults(cfg_t *c)
     c->sdr_check = 1;
     snprintf(c->sdr, sizeof c->sdr, "auto");
     snprintf(c->led_path, sizeof c->led_path, "/sys/class/leds/ACT/brightness");
+    snprintf(c->ext_power_path, sizeof c->ext_power_path, "/sys/class/leds/ext_5v_out/brightness");
+    snprintf(c->gps_serial, sizeof c->gps_serial, "/dev/ttyS0");
     c->tile_online = 1;
     snprintf(c->tile_url, sizeof c->tile_url, "https://tile.openstreetmap.org/{z}/{x}/{y}.png");
     snprintf(c->tile_user_agent, sizeof c->tile_user_agent, "SondeChase/" SC_VERSION " (CardputerZero app; github.com/hieuha)");
@@ -79,7 +81,7 @@ static const cfg_ent ents[] = {
     E(mag_off_z, 'd'),    E(mag_tilt, 'i'),     E(accel_axes, 's'),
     E(declination, 'd'),  E(stale_s, 'd'),      E(data_dir, 's'),     E(kbd_dev, 's'),
     E(fb_dev, 's'),       E(prox_radius_m, 'd'), E(prox_hyst_m, 'd'), E(audio_enable, 'i'),
-    E(led_path, 's'),
+    E(led_path, 's'),     E(ext_power_path, 's'), E(gps_serial, 's'),
     E(audio_cmd, 's'),    E(tile_dir, 's'),     E(zoom_min, 'i'),     E(zoom_max, 'i'),
     E(map_lat, 'd'),      E(map_lon, 'd'),      E(map_simple, 'i'),
     E(font_dir, 's'),     E(sdr_check, 'i'),    E(demo, 'i'),         E(demo_speed, 'd'),

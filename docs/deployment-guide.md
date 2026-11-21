@@ -12,6 +12,7 @@ the release steps. Commands are taken from `CMakePresets.json`, `.github/workflo
 - [Tests](#tests)
 - [Install and run](#install-and-run)
 - [Configuration](#configuration)
+- [GPS](#gps)
 - [Map tiles](#map-tiles)
 - [Demo mode](#demo-mode)
 - [Screenshots](#screenshots)
@@ -81,7 +82,7 @@ ctest --test-dir build --output-on-failure
 Notes:
 - `keys.c` and the tests include `<linux/input.h>`. The build fails on macOS; use a Debian or Ubuntu host or a
   Linux container.
-- Verified on 2026-11-20 in `debian:trixie` (GCC 14.2.0): `test_core` reports **4462 checks, 0 failed**.
+- Verified on 2026-11-21 in `debian:trixie` (GCC 14.2.0): `test_core` reports **4496 checks, 0 failed**.
 - The same build prints no warnings (`-Wall -Wextra`), nor does the UI (`sc_render`, `sondechase`).
 - Also on 2026-11-20: the whole suite under AddressSanitizer + UndefinedBehaviorSanitizer + LeakSanitizer
   (`-fsanitize=address,undefined`) and under ThreadSanitizer (`-fsanitize=thread`) reports nothing; 300 000
@@ -148,7 +149,8 @@ Syntax rules, from `src/base.c`:
 | `scan_lo_hz`, `scan_hi_hz` | `400000000`, `406000000` | Scan band |
 | `scan_step_hz` | `5000` | Step of the scan spectrum cells, at least 1000; raised so the band fits 2048 cells. A reversed band falls back to the defaults |
 | `decoder_feed_cmd` | `fsk_demod … \| rs41mod …` | Decoder pipeline; `{f_hz}` is replaced with the tuned frequency |
-| `gpsd_host`, `gpsd_port` | `127.0.0.1`, `2947` | gpsd address. `gpsd_port = 0` disables GPS |
+| `gpsd_host`, `gpsd_port` | `127.0.0.1`, `2947` | gpsd address. `gpsd_port = 0` turns gpsd off |
+| `gps_serial` | `/dev/ttyS0` | Serial GPS the app reads itself while gpsd has no receiver (a GPS cap). Empty: off. See [GPS](#gps) |
 | `cog_min_speed` | `1.5` | m/s above which the GPS course is used as heading |
 | `mag_enable` | `1` | Use the IIO magnetometer when the GPS course is not valid |
 | `mag_off_x`, `mag_off_y`, `mag_rot_deg`, `mag_flip_y` | `0`, `0`, `0`, `0` | Magnetometer calibration (hard-iron offsets, rotation, axis flip). Normally set in the app (Info, `K`), which writes them to `<data_dir>/compass.conf`; that file is read after the main config and wins |
@@ -162,6 +164,7 @@ Syntax rules, from `src/base.c`:
 | `audio_enable` | `1` | Beeper, frame tick and radio audio |
 | `audio_cmd` | `pacat --raw … --client-name=SondeChase` | Command that reads 16 kHz S16_LE mono PCM on stdin |
 | `led_path` | `/sys/class/leds/ACT/brightness` | LED blinked on each frame on Track and Map. Empty: none |
+| `ext_power_path` | `/sys/class/leds/ext_5v_out/brightness` | Written to `1` when the app opens: the EXT header 5 V that powers a GPS cap. Put back to the state it had when the app quits. Empty: left as it is |
 | `tile_online` | `1` | `1` downloads the tiles the Map shows |
 | `tile_url` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | Tile template |
 | `tile_user_agent` | `SondeChase/<version> (CardputerZero app; github.com/hieuha)` | User-Agent sent with each tile request |
@@ -181,6 +184,32 @@ Syntax rules, from `src/base.c`:
 
 The shipped `conf/sondechase.conf` leaves `freq_hz` and `ground_alt` commented out, so the app opens on the Radio
 screen and uses the GPS altitude as ground level.
+
+## GPS
+
+Nothing to set up. The app takes the device position from gpsd (`gpsd_host`, `gpsd_port`) and, when gpsd has no
+receiver, from a serial GPS it reads itself (`gps_serial`).
+
+- **USB GPS**: gpsd's udev rules (`/lib/udev/rules.d/60-gpsd.rules`, `USBAUTO="true"` in `/etc/default/gpsd`) add a
+  known USB GPS when it is plugged in, also while the app runs.
+- **GPS on a cap** (tried with the LoRa-1262 cap, whose GPS talks NMEA on `/dev/ttyS0`, GPIO 14/15, at 115200 baud):
+  - Power: the EXT header 5 V (`ext_5v_out`, IO13 of the m5ioe1 expander) is off at boot, so the cap is silent.
+    The app writes `1` to `ext_power_path` when it opens. The file is writable by the `gpio` group, so no root is
+    needed. The app remembers the state it found and puts it back on exit (hold `Esc`, SIGINT or SIGTERM), after
+    closing the port: off again on a fresh boot, left on if something had already switched it on. A crash or
+    SIGKILL leaves it on; `echo 0 | sudo tee /sys/class/leds/ext_5v_out/brightness` switches it off.
+  - Reading: the app opens `gps_serial` (`/dev/ttyS0`, in the `dialout` group) and parses GGA, RMC, GSA and GSV
+    sentences with a good checksum. It tries 115200 baud, then 9600 every 3 s until sentences arrive. A port it
+    cannot open (missing, or held by gpsd) is tried again every 5 s.
+  - gpsd and the app never share the port: gpsd sets `TIOCEXCL` and refuses a port another process has open, and so
+    does the app. If gpsd was set up for the port (`DEVICES="/dev/ttyS0"`), whichever opens it first keeps it, and
+    the GPS works either way.
+  - Antenna: without one the receiver reports `$GPTXT,01,01,01,ANTENNA OPEN` and sees no satellites.
+- **Both**: while gpsd delivers reports (a TPV within 3 s), the sentences from `gps_serial` are dropped and gpsd's
+  receiver is used.
+- Check: the top bar shows `GPS 0/0` in red when a receiver talks without a fix, `No GPS` when none talks. On the
+  device, `ls -l /proc/$(pgrep -x sondechase)/fd | grep tty` shows the app holding the port; `gpspipe -w -n 10` shows
+  what gpsd has.
 
 ## Map tiles
 
@@ -283,9 +312,10 @@ compass). The older RTL-SDR rows were not re-measured for this document.
 | Audio stream cost (pacat + PipeWire) | About 3.9 % of one core |
 | HackRF One (libhackrf 2024.02.1), 2026-11-20 | Scan and WFM audio clear. About 20 % of one core while decoding and playing WFM, before the DSP speed-ups (see [system architecture](./system-architecture.md#decoder-front-end-dspc)). **RS41 not received**: sonde Y0310371 on 403.000 MHz, which the RTL-SDR V4 decoded at about 25 dB over the floor, showed no peak at any of seven gains from `32,24,0` to `40,50,0` ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)) |
 | RTL-SDR V4, 2026-11-20, this build | Sonde Y0310371 decoded on 403.000 MHz at 15.5 km, about 35 km away; swapped in for the HackRF while the app ran, it was opened without a restart |
+| GPS on the LoRa-1262 cap, 2026-11-21 | Silent on `/dev/ttyS0` until the EXT 5 V was on; then NMEA at 115200 baud (GPS, GLONASS, Galileo, BeiDou). With gpsd left as installed (no devices) and the 5 V off, the app, run as `pi`, switched the 5 V on, held `/dev/ttyS0` and showed `GPS 0/0`. No fix: no antenna connected (`ANTENNA OPEN`), indoors |
 | Compass calibration with the lean step, 2026-11-20 (about 20° inclination, 40 s recording while leaning) | Tilt-compensated heading 2.7° RMS up to 35° of lean (flat formula 12.3°), 7.0° at 35–50° (flat 27.8°) |
 
-Not yet checked on hardware: GPS fix (no module fitted at the time), the proximity beeper in the field, burst
+Not yet checked on hardware: a GPS fix (the cap GPS was tried without an antenna), the proximity beeper in the field, burst
 detection and landing prediction on a real flight, AM and SSB on real signals, the simple map style and panning on
 the device, drawing speed with many map tiles, RS41 reception with a HackRF (see [issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)). See
 [roadmap](./project-roadmap.md#known-gaps).
@@ -300,6 +330,8 @@ the device, drawing speed with many map tiles, RS41 reception with a HackRF (see
 | HackRF: weak or no signal | First check the antenna is on the `ANTENNA` port. It has no AGC: try `hackrf_gain = 32,20,1` (amplifier on) or set `bias_tee = 1` for a powered LNA. In the one live test a HackRF One did not receive a sonde an RTL-SDR V4 decoded ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)). Its 8-bit ADC and unfiltered front end make it less sensitive at 400 MHz than an RTL-SDR |
 | `GPS 0/3` in red on the top bar | The receiver is plugged in and talking, but has no fix yet. Decoding is unaffected |
 | `No GPS` | gpsd is not running on `gpsd_host:gpsd_port`, or no receiver is attached. Install `gpsd` and start it with the receiver |
+| `No GPS` with a GPS cap | The cap is silent. If `cat /sys/class/leds/ext_5v_out/brightness` is still `0` with the app open, it has no power: `ext_power_path` is empty, or the app's user is not in the `gpio` group. Otherwise check `gps_serial` and that the user is in `dialout` |
+| `GPS 0/0` with a GPS cap | The cap is powered and talking but sees no satellites. Its NMEA carries `$GPTXT,...,ANTENNA OPEN` when no antenna is connected (`gpspipe -r`). Connect the antenna and go outside |
 | Map shows `Map server blocked by DNS` | A DNS filter answers `tile.openstreetmap.org` with a loopback address. Allow the domain in the filter |
 | Map shows `No map stored for this area` | `tile_online = 0` and no tile on disk. Set `tile_online = 1` or add a pack |
 | No beeper or radio audio | `pacat` (`pulseaudio-utils`) missing, PipeWire not running, or `audio_enable = 0`. `M` mutes the beeper, frame tick and radio audio |

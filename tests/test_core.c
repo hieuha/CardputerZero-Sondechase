@@ -11,6 +11,7 @@
 #include <netinet/in.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -149,6 +150,7 @@ static void t_parse(void)
         CHECK(ls >= 0 && bind(ls, (struct sockaddr *)&sa, sizeof sa) == 0 && listen(ls, 1) == 0 &&
               getsockname(ls, (struct sockaddr *)&sa, &sl) == 0);
         cfg_defaults(&c);
+        c.gps_serial[0] = 0; /* gpsd only */
         c.gpsd_port = ntohs(sa.sin_port);
         gps_init(&g);
         for (i = 0; i < 100 && !gps_ok(&g, sc_now()); i++) {
@@ -172,6 +174,63 @@ static void t_parse(void)
         gps_poll(&g, &c);
         CHECK(sc_now() - t0 < 0.5 && !gps_ok(&g, sc_now()));
         gps_close(&g);
+    }
+
+    /* NMEA from a serial GPS. The no-fix lines are as the LoRa-1262 cap sends them without an antenna. */
+    gps_init(&g);
+    CHECK(nmea_parse(&g, "$GPTXT,01,01,01,ANTENNA OPEN*25", 1.0) == 1);
+    CHECK(nmea_parse(&g, "$GNGGA,,,,,,0,00,25.5,,,,,,*64", 1.0) == 1 && g.mode == 1 && g.n_used == 0);
+    CHECK(nmea_parse(&g, "$GPGSV,1,1,00,1*64", 1.0) == 1 && g.n_sat == 0 && gps_sky(&g, 1.0) && !gps_ok(&g, 1.0));
+    CHECK(nmea_parse(&g, "$GNGGA,,,,,,0,00,25.5,,,,,,*65", 2.0) == 0); /* bad checksum */
+    CHECK(nmea_parse(&g, "$GNGGA,,,,,,0,00,25.5,,,,,,", 2.0) == 0);     /* none */
+    CHECK(nmea_parse(&g, "{\"class\":\"TPV\"}", 2.0) == 0);
+    CHECK(nmea_parse(&g, "$GNGSA,A,3,05,13,15,18,20,23,24,,,,,,1.6,0.9,1.3,1*32", 3.0) == 1 && g.nmea_mode == 3);
+    CHECK(nmea_parse(&g, "$GPGSV,3,1,11,05,40,045,38,13,22,120,31,15,61,300,42,18,10,200,25,1*65", 3.0) == 1);
+    CHECK(nmea_parse(&g, "$BDGSV,2,1,07,01,40,045,38,03,22,120,31,06,61,300,42,08,10,200,25,1*74", 3.0) == 1);
+    CHECK(g.n_sat == 18); /* in view, summed over constellations */
+    CHECK(nmea_parse(&g, "$GNRMC,112030.000,A,2101.7100,N,10551.2520,E,10.0,52.5,211126,,,A,V*0E", 3.0) == 1);
+    CHECK(g.has_track && g.track == 52.5);
+    NEAR(g.speed, 5.14444, 1e-6);
+    CHECK(nmea_parse(&g, "$GNGGA,112030.000,2101.7100,N,10551.2520,E,1,09,0.9,15.2,M,-21.0,M,,*5A", 3.0) == 1);
+    CHECK(g.mode == 3 && g.n_used == 9 && gps_ok(&g, 3.0) && !gps_ok(&g, 9.0));
+    NEAR(g.lat, 21.0285, 1e-9);
+    NEAR(g.lon, 105.8542, 1e-9);
+    NEAR(g.alt, 15.2, 1e-9);
+    CHECK(nmea_parse(&g, "$GNGGA,112031.000,3355.0000,S,01825.0000,W,1,05,1.2,20.0,M,,M,,*69", 4.0) == 1);
+    NEAR(g.lat, -33.916666667, 1e-6);
+    NEAR(g.lon, -18.416666667, 1e-6);
+
+    { /* the serial port is opened and read; sentences are dropped while gpsd reports a receiver */
+        const char *fifo = "/tmp/sondechase_test_nmea";
+        static const char fix[] = "$GNGGA,112030.000,2101.7100,N,10551.2520,E,1,09,0.9,15.2,M,-21.0,M,,*5A\r\n";
+        cfg_t c;
+        int rd, w;
+        unlink(fifo);
+        CHECK(mkfifo(fifo, 0600) == 0);
+        rd = open(fifo, O_RDONLY | O_NONBLOCK); /* a writer can open only with a reader there */
+        CHECK(rd >= 0 && (w = open(fifo, O_WRONLY | O_NONBLOCK)) >= 0);
+        cfg_defaults(&c);
+        snprintf(c.gps_serial, sizeof c.gps_serial, "%s", fifo);
+        gps_init(&g);
+        nmea_poll(&g, &c, 10.0);
+        CHECK(g.ser.fd >= 0);
+        close(rd);
+        g.t_tpv = 10.0; /* gpsd is delivering */
+        CHECK(write(w, fix, sizeof fix - 1) == (ssize_t)(sizeof fix - 1));
+        nmea_poll(&g, &c, 11.0);
+        CHECK(!gps_ok(&g, 11.0));
+        CHECK(write(w, fix, sizeof fix - 1) == (ssize_t)(sizeof fix - 1));
+        nmea_poll(&g, &c, 14.0); /* gpsd silent for 4 s */
+        CHECK(gps_ok(&g, 14.0) && g.n_used == 9);
+        close(w);
+        nmea_poll(&g, &c, 15.0); /* writer gone: closed, reopened after 5 s */
+        CHECK(g.ser.fd < 0);
+        gps_close(&g);
+        unlink(fifo);
+        c.gps_serial[0] = 0;
+        gps_init(&g);
+        nmea_poll(&g, &c, 20.0);
+        CHECK(g.ser.fd < 0);
     }
 }
 
@@ -950,7 +1009,25 @@ static void t_frames(void)
         led_blink(&a.led, 8.0, 0.08);
         CHECK(a.led.t_off == 0);
     }
+    { /* the EXT 5 V: on while the app runs, back off on exit; left on if it was on before */
+        const char *pw = "/tmp/sondechase_test_power";
+        FILE *f = fopen(pw, "w");
+        fputs("0\n", f);
+        fclose(f);
+        CHECK(power_set(pw, 1) == 0 && power_set(pw, 1) == 1); /* off before, then on before */
+        CHECK((f = fopen(pw, "r")) && fgetc(f) == '1');
+        fclose(f);
+        CHECK(power_set("", 1) == -1 && power_set("/nonexistent/brightness", 1) == -1);
+        snprintf(a.cfg.ext_power_path, sizeof a.cfg.ext_power_path, "%s", pw);
+        a.ext_power_was = 0; /* as if the app had found it off */
+    }
     app_free(&a);
+    { /* ...so closing switched it back off */
+        FILE *f = fopen("/tmp/sondechase_test_power", "r");
+        CHECK(f && fgetc(f) == '0' && a.ext_power_was == -1);
+        if (f) fclose(f);
+        unlink("/tmp/sondechase_test_power");
+    }
     { /* a second session appends to sondechase.csv without a second header; no datetime: system clock */
         char l[512], path[512];
         int heads = 0, rows = 0;

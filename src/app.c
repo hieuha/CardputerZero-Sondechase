@@ -66,6 +66,7 @@ void app_init(app_t *a, const char *cfg_path)
     flight_reset(&a->flight);
     audio_init(&a->audio);
     led_open(&a->led, a->cfg.led_path);
+    a->ext_power_was = power_set(a->cfg.ext_power_path, 1);
     radio_init(&a->radio, DEMOD_NFM, radio_default_bw(DEMOD_NFM));
     tf_init(&a->tf, &a->cfg);
     a->freq_hz = a->cfg.freq_hz;
@@ -616,9 +617,11 @@ void app_free(app_t *a)
     rx_lost(a); /* closes the dongle */
     fft_free(&a->sw.fft);
     proc_stop(&a->proc);
-    gps_close(&a->gps);
+    gps_close(&a->gps); /* the GPS cap's port, before its power goes off below */
     audio_close(&a->audio);
     led_close(&a->led);
+    if (a->ext_power_was == 0) power_set(a->cfg.ext_power_path, 0);
+    a->ext_power_was = -1;
     tf_close(&a->tf);
     if (a->log) fclose(a->log);
     a->log = NULL;

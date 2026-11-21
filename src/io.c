@@ -16,16 +16,24 @@ void gps_init(gps_t *g)
 {
     memset(g, 0, sizeof *g);
     g->lr.fd = -1;
+    g->ser.fd = -1;
     g->t_fix = -1e9;
+    g->t_tpv = -1e9;
 }
 
-void gps_close(gps_t *g)
+static void gpsd_close(gps_t *g)
 {
     if (g->lr.fd >= 0) close(g->lr.fd);
     g->lr.fd = -1;
     g->lr.len = 0;
     g->lr.skip = 0;
     g->connecting = 0;
+}
+
+void gps_close(gps_t *g)
+{
+    gpsd_close(g);
+    nmea_close(g);
 }
 
 /* Start a non-blocking connect: gpsd on another host (a phone over Wi-Fi) may not answer at all, and a blocking
@@ -66,12 +74,12 @@ static int gps_connected(gps_t *g, double now)
     if (!g->connecting) return 1;
     if (poll(&p, 1, 0) == 0) {
         if (now - g->t_conn < 5.0) return 0;
-        gps_close(g); /* no answer */
+        gpsd_close(g); /* no answer */
         return -1;
     }
     if (getsockopt(g->lr.fd, SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0 ||
         write(g->lr.fd, watch, sizeof watch - 1) != (ssize_t)(sizeof watch - 1)) {
-        gps_close(g);
+        gpsd_close(g);
         return -1;
     }
     g->connecting = 0;
@@ -92,6 +100,7 @@ int gps_parse(gps_t *g, const char *line, double now)
         return 0;
     }
     if (strcmp(cls, "TPV")) return 0;
+    g->t_tpv = now;
     g->mode = js_num(line, "mode", &v) && v >= 0 && v <= 3 ? (int)v : 0;
     if (g->mode >= 2) {
         double lat, lon, alt = g->alt, speed = 0, track = 0;
@@ -118,6 +127,7 @@ void gps_poll(gps_t *g, const cfg_t *c)
     char line[2048];
     double now = sc_now();
     int r;
+    nmea_poll(g, c, now);
     if (c->gpsd_port <= 0) return;
     if (g->lr.fd < 0) {
         if (now < g->t_retry) return;
@@ -127,7 +137,7 @@ void gps_poll(gps_t *g, const cfg_t *c)
     }
     if (gps_connected(g, now) <= 0) return;
     while ((r = lr_readline(&g->lr, line, sizeof line)) == 1) gps_parse(g, line, now);
-    if (r < 0) gps_close(g);
+    if (r < 0) gpsd_close(g);
 }
 
 int gps_ok(const gps_t *g, double now)

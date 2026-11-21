@@ -1,6 +1,6 @@
 # Project Roadmap
 
-Last updated: 2026-11-20 (version 0.7.0). Versions come from `chore: version` commits and GitHub releases. The
+Last updated: 2026-11-21 (version 0.7.0). Versions come from `chore: version` commits and GitHub releases. The
 "Known gaps" list comes from the test status and limitations in the README and from the code. Nothing here is a
 commitment to a future feature.
 
@@ -33,7 +33,7 @@ Grouped by kind. Each item is something the code or the test status says is miss
 
 | Gap | Source |
 |---|---|
-| GPS fix and chasing in the field (no GPS module was fitted when the device checks were run) | Deployment guide, device checks |
+| GPS fix and chasing in the field (the LoRa-1262 cap GPS was tried on 2026-11-21 without an antenna: the app read it with no setup, no fix) | Deployment guide, device checks |
 | Proximity beeper in the field | Deployment guide, device checks |
 | Burst detection and landing prediction on a real flight | Deployment guide, device checks |
 | `cp0-cross` cross build (the native build was checked) | Deployment guide, device checks |

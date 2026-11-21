@@ -284,6 +284,24 @@ void led_close(led_t *l)
     l->fd = -1;
 }
 
+/* The EXT header's 5 V is off at boot, so a GPS cap on it stays silent until something switches it on. The
+ * LED-class file is writable by the gpio group, which the launcher's user is in. The app switches it on at
+ * start and puts back the state it found on exit, so the cap stops drawing from the battery. */
+int power_set(const char *path, int on)
+{
+    char b[8] = {0};
+    int fd = path[0] ? open(path, O_RDWR | O_CLOEXEC) : -1, was;
+    if (fd < 0) return -1;
+    if (pread(fd, b, sizeof b - 1, 0) <= 0) {
+        close(fd);
+        return -1;
+    }
+    was = atoi(b) > 0;
+    if (pwrite(fd, on ? "1" : "0", 1, 0) != 1) was = -1;
+    close(fd);
+    return was;
+}
+
 /* ---------------- slippy-map tiles (Web Mercator) ---------------- */
 #define MERC_LAT 85.05112878 /* Web Mercator's edge: the map stops here, nearer the poles it is infinite */
 

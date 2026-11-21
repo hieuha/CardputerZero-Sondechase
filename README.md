@@ -58,11 +58,24 @@ On the device (framebuffer captures, 2×):
 | M5Stack CardputerZero | Raspberry Pi CM0, Debian 13 arm64, 320×170 LCD, 46-key keyboard, PipeWire audio |
 | RTL-SDR | Tested: RTL-SDR Blog V4 (R828D tuner). Other RTL2832U dongles are not tested |
 | HackRF (experimental) | HackRF One or rad1o, picked up from USB; the package installs `libhackrf0`. Scan and WFM audio work; in the one live test it did not receive the sonde an RTL-SDR V4 decoded ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)). Use an RTL-SDR to chase |
-| GPS (optional) | Any receiver that gpsd reads, for example a USB GPS. Needed for distance, bearing, landing and the beeper |
+| GPS (optional) | Any receiver that gpsd reads: a USB GPS, or the GPS on a cap such as the LoRa-1262 cap (see [GPS](#gps)). Needed for distance, bearing, landing and the beeper |
 | Magnetometer (optional) | IIO magnetometer on the board, used for heading when there is no GPS course |
 | ACT LED | The red LED blinks on each frame on the Track and Map screens |
 
 Without GPS the sonde is still decoded and its telemetry shown; the beeper stays silent.
+
+### GPS
+
+Plug it in; there is nothing to set up.
+
+- **USB GPS**: gpsd picks it up, also while the app runs.
+- **GPS on a cap** (tried with the LoRa-1262 cap; its GPS is on `/dev/ttyS0`): the EXT header's 5 V is off at boot,
+  so the app switches it on when it opens and reads the GPS itself (115200 or 9600 baud, found by itself). When the
+  app quits, the 5 V goes back off (it is left on if it was already on).
+- With both, the USB GPS (through gpsd) is used.
+- Connect the cap's GPS antenna. Without it the GPS sees no satellites and the top bar stays at `GPS 0/0`.
+
+Details and checks: [deployment guide](docs/deployment-guide.md#gps).
 
 ## Install
 
@@ -138,7 +151,8 @@ freq_hz = 403000000      # decode at start-up (unset: open on the Radio screen)
 gain = 38.6              # RTL-SDR tuner gain in dB (unset: tuner AGC)
 sdr = auto               # receiver: auto (from USB), rtlsdr or hackrf
 sdr_check = 1            # require a receiver on USB
-gpsd_port = 2947         # gpsd (0 disables GPS)
+gpsd_port = 2947         # gpsd (0 turns it off)
+gps_serial = /dev/ttyS0  # GPS cap read by the app (empty turns it off)
 burst_alt = 30000        # assumed burst altitude while ascending, m
 tile_online = 1          # download the map tiles that are on screen
 tile_cache_mb = 1000     # tile cache size limit, MB (viewed tiles stay for offline use)
@@ -187,7 +201,7 @@ Everything the app keeps is in one folder, `data_dir` (default `~/sondechase`):
 
 ## Test status
 
-`tests/test_core.c`: 4462 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
+`tests/test_core.c`: 4496 checks, 0 failed on Debian 13 (GCC 14.2). CI runs the core tests on Ubuntu and the native
 arm64 package build on Debian 13. A fake `librtlsdr`, a fake `libhackrf` and a fake decoder run scanning and decoding
 end to end without a dongle. Details and the device measurements: [deployment guide](docs/deployment-guide.md#tests).
 

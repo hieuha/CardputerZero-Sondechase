@@ -43,6 +43,7 @@ src/
   dsp.c         FFT and decoder front end
   radio.c       audio demodulators
   io.c          gpsd, USB presence, spectrum cells
+  nmea.c        serial GPS (a GPS cap) read without gpsd
   compass.c     heading: magnetometer, accelerometer, tilt compensation, calibration
   geo.c         geodesy, sonde JSON, wind, landing prediction
   track.c       history, burst, beeper, audio stream, LED

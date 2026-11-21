@@ -45,6 +45,8 @@ typedef struct {
     double prox_hyst_m;      /* ...and stops beyond radius + hysteresis */
     int audio_enable;
     char led_path[96];       /* LED brightness file blinked on each frame on the Track and Map screens; "" = none */
+    char ext_power_path[96]; /* power switch written to 1 at start: the EXT header 5 V that feeds a GPS cap; "" = none */
+    char gps_serial[64];     /* serial GPS read by the app when gpsd does not have it (the cap's /dev/ttyS0); "" = none */
     char audio_cmd[200];     /* reads raw S16_LE mono 16 kHz PCM on stdin */
     char tile_dir[160];      /* preloaded map tiles: <tile_dir>/<z>/<x>/<y>.png */
     int zoom_min, zoom_max;  /* zoom levels present in tile_dir */
@@ -157,10 +159,21 @@ typedef struct {
     double t_fix;
     int n_sat, n_used; /* gpsd SKY: satellites in view / used in the fix */
     double t_sky;      /* last SKY report: the receiver is plugged in and talking even without a fix */
+    double t_tpv;      /* last gpsd TPV: gpsd has a receiver, so it is the one used */
+    lr_t ser;          /* NMEA read straight from gps_serial (a GPS cap) when gpsd does not have it */
+    double t_ser_retry; /* next open attempt */
+    int ser_baud;      /* index of the baud rate in use */
+    double t_baud;     /* when it was set: with no good sentence 3 s later the next rate is tried */
+    double t_nmea;     /* last sentence with a good checksum */
+    int nmea_mode;     /* GSA fix mode (1 none, 2 2D, 3 3D), applied to the next GGA */
+    unsigned char gsv[6]; /* satellites in view per constellation (GSV), summed into n_sat */
 } gps_t;
 void gps_init(gps_t *g);
 void gps_poll(gps_t *g, const cfg_t *c);
 int gps_parse(gps_t *g, const char *line, double now); /* 1 = TPV consumed */
+int nmea_parse(gps_t *g, const char *line, double now); /* 1 = sentence with a good checksum */
+void nmea_poll(gps_t *g, const cfg_t *c, double now);   /* opens and reads gps_serial; called by gps_poll */
+void nmea_close(gps_t *g);
 int gps_ok(const gps_t *g, double now);
 int gps_sky(const gps_t *g, double now); /* 1 = satellite counts are current */
 void gps_close(gps_t *g);
@@ -401,6 +414,7 @@ void led_open(led_t *l, const char *path);
 void led_blink(led_t *l, double now, double dur_s);
 void led_poll(led_t *l, double now);
 void led_close(led_t *l);
+int power_set(const char *path, int on); /* sysfs switch; returns its state before (0/1), -1 = none or not writable */
 
 #define TILE_PX 256
 void tile_frac(double lat, double lon, int z, double *tx, double *ty); /* fractional slippy-map tile coords */
@@ -529,6 +543,7 @@ typedef struct {
     prox_t prox;
     audio_t audio;
     led_t led;
+    int ext_power_was; /* EXT 5 V before the app switched it on (0 off, 1 on, -1 none), put back on exit */
     int frame_cue;   /* set by the UI on the Track and Map screens: each frame ticks (unless muted) and blinks the LED */
     int burst_alert; /* set when a burst is detected; the UI clears it on dismiss */
     int sdr_ok;      /* receiver present on USB; decoding and scanning wait while 0 */

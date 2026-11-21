@@ -22,27 +22,28 @@ The core (`sc_core`) has no LVGL dependency and is unit-tested on any Linux host
 
 | File | Lines | Responsibility |
 |---|---|---|
-| `src/sc.h` | 559 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
+| `src/sc.h` | 574 | The only public header: config, parsers, DSP, SDR, scan, app state and every module API |
 | `src/main.c` | 92 | Entry point, signal handling, main loop, LVGL setup, hold-Esc quit |
-| `src/app.c` | 627 | State machine (`ST_IDLE`, `ST_SCAN`, `ST_LISTEN`, `ST_DECODE`), receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
-| `src/base.c` | 424 | `sc_now`, config parser and defaults, line reader, child process groups, flat-JSON field extraction |
+| `src/app.c` | 630 | State machine (`ST_IDLE`, `ST_SCAN`, `ST_LISTEN`, `ST_DECODE`), receiver ownership, decoder pipeline, sweep, Scan hunt, frame handling, CSV and auto_rx logs |
+| `src/base.c` | 426 | `sc_now`, config parser and defaults, line reader, child process groups, flat-JSON field extraction |
 | `src/sdr.c` | 332 | Receiver front: IQ ring, `sdr_*` calls dispatched to a back end; RTL-SDR back end (`librtlsdr` loaded with `dlopen`, reader thread, tuner range table) |
 | `src/sdr_hackrf.c` | 318 | HackRF back end: `libhackrf` loaded with `dlopen`, int8 to u8 IQ, halving to reach rates under 2 MS/s, retune-safe transfers |
 | `src/sdr_priv.h` | 32 | Back-end interface (`sdr_ops_t`) shared by the two |
 | `src/dsp.c` | 234 | FFT, decoder front end (DDC: rotation, half-band decimation, droop FIR), wide 192 kHz stream |
 | `src/radio.c` | 207 | Audio demodulators for NFM, AM, USB, LSB, WFM |
-| `src/io.c` | 282 | gpsd client (TPV and SKY), USB SDR presence, spectrum cells and peaks |
+| `src/io.c` | 292 | gpsd client (TPV and SKY), USB SDR presence, spectrum cells and peaks |
+| `src/nmea.c` | 167 | Serial GPS read by the app (a GPS cap): port, baud search, NMEA GGA, RMC, GSA, GSV |
 | `src/compass.c` | 399 | Heading sources, magnetometer and accelerometer, tilt compensation, compass calibration |
 | `src/geo.c` | 223 | Geodesy, ISA, dew point, wind profile, sonde JSON parse, landing prediction |
-| `src/track.c` | 315 | Flight history, burst detection, proximity beeper, PCM audio stream to `pacat`, frame LED, slippy-map maths |
+| `src/track.c` | 333 | Flight history, burst detection, proximity beeper, PCM audio stream to `pacat`, frame LED, EXT 5 V switch, slippy-map maths |
 | `src/tiles.c` | 326 | Tile lookup, `curl` downloads with cache cap and failure reasons, recolouring |
 | `src/demo.c` | 139 | Simulated flight (`demo = 1`) through the same frame path |
 | `src/keys.c` | 97 | Keyboard from evdev (`/dev/input/event*`), Sym symbol keys, held-arrow repeat |
 | `src/ui.c` | 258 | UI state, overlays (frequency entry, burst alert, no SDR), LVGL draw callback, key dispatch (`ui_key`) |
-| `src/ui_draw.c` | 243 | Drawing primitives (line, rectangle, label), top and nav bars, battery |
+| `src/ui_draw.c` | 254 | Drawing primitives (line, rectangle, label), top and nav bars, battery |
 | `src/ui_track.c` | 223 | Track screen and compass |
 | `src/ui_map.c` | 290 | Map screen, decoded tile cache, pan, zoom, follow, style |
-| `src/ui_graph.c` | 164 | Skew-T and flight profile |
+| `src/ui_graph.c` | 168 | Skew-T and flight profile |
 | `src/ui_radio.c` | 159 | Band overview, tuned spectrum, listening, decoding |
 | `src/ui_info.c` | 177 | Info screens and compass calibration |
 | `src/ui_priv.h` | 77 | Colours, shared UI state and prototypes for the UI files |
@@ -63,6 +64,7 @@ flowchart LR
     DDC --> RADIO["radio.c demod"]
     RADIO --> AUDIO["track.c audio queue"]
     GPS["gpsd TCP 2947"] --> IO["io.c gps_poll"]
+    SER["GPS cap /dev/ttyS0"] --> NMEA["nmea.c nmea_poll"] --> IO
     MAG["IIO magnetometer + accelerometer"] --> HDG["compass.c heading"]
     HDG --> APP
     IO --> APP["app.c app_poll"]
@@ -189,7 +191,9 @@ and decimates to 16 kHz. Output goes to `audio_radio_push`, which mixes it with 
 |---|---|---|---|
 | RTL-SDR (RTL2832U) | USB, `librtlsdr` | `dlopen` at run time; `rtl_dev` index | Matches VID:PID `0bda:2838` or `0bda:2832` for the presence check. Tested: RTL-SDR Blog V4 (R828D tuner) |
 | HackRF One / rad1o | USB, `libhackrf` | `dlopen` at run time; `rtl_dev` index | `1d50:6089` or `1d50:cc15`. 1 MHz to 6 GHz. Tried with a HackRF One on the device (libhackrf 2024.02.1): scan and WFM audio clear, about 20 % of one core while decoding and playing WFM; no RS41 received in the one live test ([issue #1](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)) |
-| GPS | gpsd, TCP `127.0.0.1:2947` (`gpsd_host`, `gpsd_port`) | Non-blocking socket and connect, JSON `TPV` and `SKY` (a fix with a non-finite or out-of-range position is ignored) | `gpsd_port = 0` disables it. A USB GPS can be plugged in while the app runs; gpsd picks it up |
+| GPS | gpsd, TCP `127.0.0.1:2947` (`gpsd_host`, `gpsd_port`) | Non-blocking socket and connect, JSON `TPV` and `SKY` (a fix with a non-finite or out-of-range position is ignored) | `gpsd_port = 0` turns it off. A USB GPS can be plugged in while the app runs; gpsd picks it up. Used first: while a TPV arrived within 3 s, the serial GPS is ignored |
+| GPS cap | Serial `gps_serial` (default `/dev/ttyS0`, the LoRa-1262 cap) | Non-blocking read, opened with `TIOCEXCL`; 115200 then 9600 baud, switched after 3 s without a good sentence; NMEA GGA, RMC, GSA, GSV, checksum required | Needs the EXT 5 V on (below). gpsd and the app exclude each other on the port. Not opened or lost: retried every 5 s |
+| EXT 5 V (GPS cap) | sysfs `ext_power_path` (default `/sys/class/leds/ext_5v_out/brightness`, IO13 of the m5ioe1 expander) | `power_set` in `app_init` reads the state and writes `1`; `app_free` writes `0` after closing the GPS port, only if it was off before | Off at boot (`cardputerzero-v5-overlay`), so a cap on the EXT header has no power until something switches it on. Writable by the `gpio` group, which `pi` is in. A crash or SIGKILL leaves it on. Missing or not writable: nothing happens |
 | Magnetometer | IIO sysfs `/sys/bus/iio/devices/iio:deviceN/in_magn_{x,y,z}_raw` (BMM150) | Read at 5 Hz | `mag_enable`, `mag_off_x/y/z`, `mag_rot_deg`, `mag_flip_y`, `declination` |
 | Accelerometer | IIO sysfs `in_accel_{x,y,z}_raw` (BMI270) | Read at 5 Hz with the magnetometer, low-passed (about 0.6 s) | Used only for tilt compensation (`mag_tilt`, `accel_axes`). Without it the compass assumes the device is flat |
 | ACT LED | sysfs `led_path` (default `/sys/class/leds/ACT/brightness`) | One-byte write per blink | Writable by the `input` group. The first blink drops the kernel's `actpwr` trigger until reboot |
@@ -384,8 +388,9 @@ leaning, and the two sensors being read a few milliseconds apart.
 
 Pressure axis `y ∝ ln(1050 / p)` from 1050 to 100 hPa, or to 10 hPa once the sonde or its history has been above
 100 hPa: a sonde is often first heard high up, and on a fixed 100 hPa axis its whole profile would lie above the
-diagram (seen with Y0310371, first heard at 15.5 km). The isotherms lean by a fixed temperature per unit of ln(p),
-45° on the 100 hPa axis, so the cold upper air stays on the diagram when it stretches. Dry adiabats follow
+diagram (seen with Y0310371, first heard at 15.5 km). The isotherms lean by a fixed 110 px per decade of
+pressure (`SK_SKEW`, about 42° on the 100 hPa axis), so the cold upper air stays on the diagram when the axis
+stretches. The plot runs from just under the top bar (y 20) to y 143. Dry adiabats follow
 `T = θ · (p / 1000)^0.2857`. Dew point uses the Magnus formula (`dewpoint`, a = 17.62, b = 243.12 °C).
 Moist adiabats and mixing-ratio lines are not drawn.
 
@@ -447,7 +452,8 @@ The app has no RTC; the auto_rx-format file name and timestamps therefore come f
 | Dongle unplugged while paused (idle) | The old handle is dropped on the next use or USB check, then reopened |
 | Decoder exits | Pipeline stopped and restarted after 3 s (`decoder exited, restarting`) |
 | Decoder pipe full | Chunks dropped and counted; no misalignment |
-| gpsd unavailable | Reconnect every 5 s; the top bar shows `No GPS` or `GPS lost` |
+| gpsd unavailable | Reconnect every 5 s; the serial GPS is still read; the top bar shows `No GPS` or `GPS lost` when neither talks |
+| Serial GPS port missing, busy or closed | Reopened every 5 s |
 | Map tile download fails | Status text on the Map; retry after 30 s |
 | Config value unusable (scan band reversed, step too fine, `ppm` beyond ±1000, zoom outside 0–19, string too long) | Warning on stderr; the default or the nearest usable value is used |
 | Burst alert | Overlay on every screen; `Enter` opens Map, `Esc` dismisses |

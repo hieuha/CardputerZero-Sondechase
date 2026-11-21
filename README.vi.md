@@ -58,11 +58,24 @@ Trên máy thật (chụp framebuffer, 2×):
 | M5Stack CardputerZero | Raspberry Pi CM0, Debian 13 arm64, màn hình 320×170, bàn phím 46 phím, âm thanh qua PipeWire |
 | RTL-SDR | Đã thử: RTL-SDR Blog V4 (tuner R828D). Các dongle RTL2832U khác chưa được thử |
 | HackRF (thử nghiệm) | HackRF One hoặc rad1o, app tự nhận qua USB; gói cài sẵn `libhackrf0`. Quét và nghe WFM chạy được; trong lần thử với sonde thật ngày 20/11/2026, HackRF không thu được sonde mà RTL-SDR V4 giải mã được ([issue 1 trên GitHub](https://github.com/hieuha/CardputerZero-Sondechase/issues/1)). Đi săn sonde nên dùng RTL-SDR |
-| GPS (không bắt buộc) | Bất kỳ GPS nào gpsd đọc được, ví dụ GPS USB. Cần cho khoảng cách, hướng, điểm rơi và beeper |
+| GPS (không bắt buộc) | Bất kỳ GPS nào gpsd đọc được: GPS USB, hoặc GPS trên cap như cap LoRa-1262 (xem [GPS](#gps)). Cần cho khoảng cách, hướng, điểm rơi và beeper |
 | Cảm biến từ trường (không bắt buộc) | Cảm biến IIO trên bo mạch, dùng làm hướng khi chưa có hướng di chuyển từ GPS |
 | Đèn ACT | Đèn đỏ nháy mỗi khi nhận được frame, ở màn Track và Map |
 
 Không có GPS thì sonde vẫn được giải mã và telemetry vẫn hiện; beeper không kêu.
+
+### GPS
+
+Cắm vào là dùng được, không phải cấu hình gì.
+
+- **GPS USB**: gpsd tự nhận, kể cả khi app đang chạy.
+- **GPS trên cap** (đã thử với cap LoRa-1262; GPS của cap nằm ở `/dev/ttyS0`): nguồn 5V của cổng EXT bị tắt khi máy
+  khởi động, nên app tự bật nguồn này khi mở và tự đọc GPS (tốc độ 115200 hoặc 9600 baud, app tự dò). Khi thoát
+  app, nguồn 5V được tắt lại (nếu trước khi mở app nguồn đã bật sẵn thì giữ nguyên).
+- Nếu cắm cả hai thì app dùng GPS USB (qua gpsd).
+- Gắn anten GPS cho cap. Không có anten thì GPS không thấy vệ tinh nào và thanh trên cùng đứng ở `GPS 0/0`.
+
+Chi tiết và cách kiểm tra: [hướng dẫn triển khai](docs/deployment-guide.md#gps).
 
 ## Cài đặt
 
@@ -137,7 +150,8 @@ freq_hz = 403000000      # giải mã ngay khi mở app (bỏ trống: mở màn
 gain = 38.6              # gain của tuner RTL-SDR, dB (bỏ trống: AGC của tuner)
 sdr = auto               # bộ thu: auto (tự nhận qua USB), rtlsdr hoặc hackrf
 sdr_check = 1            # bắt buộc có bộ thu trên USB
-gpsd_port = 2947         # gpsd (0 để tắt GPS)
+gpsd_port = 2947         # gpsd (0 để tắt)
+gps_serial = /dev/ttyS0  # GPS trên cap, app tự đọc (để trống để tắt)
 burst_alt = 30000        # độ cao nổ giả định khi bóng đang lên, m
 tile_online = 1          # tải các tile bản đồ đang hiện trên màn hình
 tile_cache_mb = 1000     # giới hạn cache tile, MB (tile đã xem được giữ để dùng khi không có mạng)
@@ -189,7 +203,7 @@ Tài liệu kỹ thuật viết bằng tiếng Anh:
 
 ## Tình trạng test
 
-`tests/test_core.c`: 4462 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
+`tests/test_core.c`: 4496 phép kiểm, 0 lỗi trên Debian 13 (GCC 14.2). CI chạy test lõi trên Ubuntu và build gói arm64
 native trên Debian 13. Một `librtlsdr` giả, một `libhackrf` giả và một bộ giải mã giả chạy trọn quy trình quét và giải mã mà không cần
 dongle. Chi tiết và số đo trên máy thật: [hướng dẫn deploy](docs/deployment-guide.md#tests).
 

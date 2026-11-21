@@ -59,7 +59,7 @@ Grouped by kind. Each item is something the code or the test status says is miss
 
 | Gap | Source |
 |---|---|
-| `SondeChase` as a SondeHub software name: registration with the Project Horus team (support@sondehub.org, per [Sonde Telemetry Validation](https://github.com/projecthorus/sondehub-infra/wiki/Sonde-Telemetry-Validation)) is pending; the server refuses every frame until then, dev or not | Maintainer, outside this repository |
+| `SondeChase` as a SondeHub software name: registration with the Project Horus team (support@sondehub.org, per [Sonde Telemetry Validation](https://github.com/projecthorus/sondehub-infra/wiki/Sonde-Telemetry-Validation)) requested by email on 2026-11-21 with JSON Lines samples of flights Y0310020, Y0310371 and Y0332062; waiting for the answer; the server refuses every frame until then, dev or not | Maintainer, outside this repository |
 
 ### Functional limitations
 

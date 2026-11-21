@@ -65,11 +65,12 @@ static void safe(char *out, size_t n, const char *in)
 
 static void iso_utc(char *out, size_t n, double t_unix)
 {
-    time_t s = (time_t)t_unix;
+    long long ms = (long long)(t_unix * 1000.0 + 0.5); /* rounded: 05.099 must not come out as 05.098 */
+    time_t s = (time_t)(ms / 1000);
     struct tm tm;
     gmtime_r(&s, &tm);
     strftime(out, n, "%Y-%m-%dT%H:%M:%S", &tm);
-    snprintf(out + strlen(out), n - strlen(out), ".%03dZ", (int)((t_unix - (double)s) * 1000.0) % 1000);
+    snprintf(out + strlen(out), n - strlen(out), ".%03dZ", (int)(ms % 1000));
 }
 
 int sh_json_tel(const sondehub_t *h, const cfg_t *c, const gps_t *g, double now, char *out, size_t n)
@@ -253,7 +254,7 @@ void sh_poll(sondehub_t *h, const cfg_t *c, const gps_t *g, double now)
         h->qn = 0; /* sent or dropped: realtime only */
     }
     if (c->sondehub_chase && c->callsign[0] && h->lis_pid <= 0 && now >= h->t_next_lis && gps_ok(g, now)) {
-        h->t_next_lis = now + c->sondehub_rate_s;
+        h->t_next_lis = now + SH_CHASE_S;
         if ((len = sh_json_lis(c, g, body, sizeof body)) < 0 ||
             (h->lis_pid = start(h, c, "lis", "/listeners", 0, body, (size_t)len)) < 0) {
             h->lis_pid = 0;

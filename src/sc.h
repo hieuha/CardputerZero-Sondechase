@@ -64,7 +64,7 @@ typedef struct {
     int sondehub_upload;     /* 1 = upload decoded frames to SondeHub (Info 3/3, U) */
     int sondehub_chase;      /* 1 = upload this device's position as the chase car <callsign>_chase (Info 3/3, C) */
     int sondehub_dev;        /* 1 = frames marked dev: the server checks them but does not store them */
-    int sondehub_rate_s;     /* seconds between uploads, 10..300 */
+    int sondehub_rate_s;     /* seconds between telemetry batches, 10..300 */
     char sondehub_url[120];  /* API base, no trailing slash */
     char sondehub_cmd[400];  /* {enc} {date} {ua} {url} {resp}; reads the body on stdin, prints the HTTP code */
 } cfg_t;
@@ -466,9 +466,11 @@ void tile_recolor(unsigned char *rgb, int npix, int simple); /* simple: only wat
 
 /* ---------------- SondeHub upload ---------------- */
 /* Like radiosonde_auto_rx: decoded frames are batched and PUT (gzip JSON) to <sondehub_url>/sondes/telemetry every
- * sondehub_rate_s; like chasemapper, the device position goes to <sondehub_url>/listeners as a mobile station. Each
+ * sondehub_rate_s; like chasemapper, the device position goes to <sondehub_url>/listeners as a mobile station every
+ * SH_CHASE_S. Each
  * upload is a sondehub_cmd child polled without blocking. Realtime only: a failed batch is dropped, not retried. */
 #define SH_QMAX 64 /* frames held for the next batch; the oldest go first when full */
+#define SH_CHASE_S 30 /* chase car position interval, as chasemapper */
 typedef struct {
     double t;      /* sc_now() of the result, 0 = none yet */
     int ok, http;  /* http: status code, 0 = no answer */

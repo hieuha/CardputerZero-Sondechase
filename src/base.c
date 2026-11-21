@@ -63,7 +63,7 @@ void cfg_defaults(cfg_t *c)
     snprintf(c->tile_fetch_cmd, sizeof c->tile_fetch_cmd, "curl -fsS --max-time 20 -A '{ua}' -o '{out}' '{url}'");
     c->tile_cache_mb = 1000;
     c->demo_speed = 30.0;
-    c->sondehub_rate_s = 30; /* auto_rx and chasemapper both upload every 30 s */
+    c->sondehub_rate_s = 15; /* SondeHub asks for telemetry batches at least every 15 s */
     snprintf(c->sondehub_url, sizeof c->sondehub_url, "https://api.v2.sondehub.org");
     snprintf(c->sondehub_cmd, sizeof c->sondehub_cmd,
              "curl -sS -o '{resp}' -w '%%{http_code}' --max-time 20 -X PUT -H 'Content-Type: application/json' {enc}"

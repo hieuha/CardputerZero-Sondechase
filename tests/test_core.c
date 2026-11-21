@@ -1606,7 +1606,7 @@ static void t_sondehub(void)
     snprintf(c.data_dir, sizeof c.data_dir, "/tmp/sc_sh");
     sh_init(&h, &c);
     gps_init(&g);
-    CHECK(c.sondehub_rate_s == 30 && !c.sondehub_upload && !c.sondehub_chase && !c.callsign[0]); /* all off */
+    CHECK(c.sondehub_rate_s == 15 && !c.sondehub_upload && !c.sondehub_chase && !c.callsign[0]); /* all off */
     CHECK(sonde_parse(fix, &s) == 1);
     CHECK(sh_add(&h, &c, &s, 403000000L) == 0); /* upload off */
     c.sondehub_upload = 1;
@@ -1725,6 +1725,9 @@ static void t_sondehub(void)
     CHECK(h.last_lis.ok && h.last_lis.http == 200);
     CHECK(system("grep -q '^{\"software_name\":\"SondeChase\".*\"uploader_callsign\":\"N0CALL_chase\".*\"mobile\":true}$' "
                  "/tmp/sc_sh/lis.json && grep -qx 'https://api.v2.sondehub.org/listeners' /tmp/sc_sh/args") == 0);
+    g.t_fix = now + 20;
+    sh_poll(&h, &c, &g, now + 20);
+    CHECK(h.lis_pid == 0); /* the chase car goes every SH_CHASE_S, slower than the telemetry */
     g.t_fix = -1e9;
     now += 60;
     sh_poll(&h, &c, &g, now);

@@ -192,7 +192,7 @@ Neither runs in demo mode (`app_on_frame` and `app_poll` skip them).
      telemetry child with `{enc}` set to the gzip header. The queue is emptied whether or not the child starts, since
      a failed batch is not retried. The device position is added to the batch only while chase is on;
    - while chase is on, a callsign is set and the GPS has a fix, starts the chase-car child with `sh_json_lis`
-     (`PUT /listeners`, not compressed) every `sondehub_rate_s`.
+     (`PUT /listeners`, not compressed) every `SH_CHASE_S` (30 s).
 3. `start()` writes the body to `<data_dir>/sondehub-<kind>.json` and forks. The child runs `sondehub_cmd` under
    `sh -c` with the body on stdin (telemetry is piped through `gzip -c` first).
 4. When the child exits, `finish()` sets the result: only 200 is OK. SondeHub answers 201/202 when it refused some

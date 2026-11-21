@@ -184,7 +184,7 @@ Syntax rules, from `src/base.c`:
 | `sondehub_upload` | `0` | `1` uploads decoded RS41 position frames to SondeHub. Needs `callsign`. Info 3/3 `U`. See [SondeHub](#sondehub) |
 | `sondehub_chase` | `0` | `1` uploads this device's position as the chase car `<callsign>_chase`. The position is added to telemetry only while this is `1`. Info 3/3 `C` |
 | `sondehub_dev` | `0` | `1` marks each frame `dev: true`: the server checks the frames but does not store them. For tests; set it in `/etc/sondechase.conf` (the app does not write it) |
-| `sondehub_rate_s` | `30` | Seconds between uploads (telemetry batch and chase-car position), clamped to 10 to 300 |
+| `sondehub_rate_s` | `15` | Seconds between telemetry batches (SondeHub asks for at least every 15 s), clamped to 10 to 300. The chase-car position goes every 30 s (`SH_CHASE_S`) |
 | `sondehub_url` | `https://api.v2.sondehub.org` | API base, no trailing slash. Requests go to `<url>/sondes/telemetry` and `<url>/listeners` |
 | `sondehub_cmd` | `curl -sS -o '{resp}' -w '%{http_code}' --max-time 20 -X PUT -H 'Content-Type: application/json' {enc} -H 'Date: {date}' -A '{ua}' --data-binary @- '{url}' 2>/dev/null` | Command run with `sh -c`. It reads the body on stdin and prints the HTTP status code. `{enc}` becomes the gzip header for telemetry (the body is piped through `gzip -c` first, and the chase car is not compressed); `{date}`, `{ua}` (`SondeChase-<version>`), `{url}` and `{resp}` (file for the server's reply) are filled in. Expert hook: leave it alone unless the test needs another client |
 | `demo` | `0` | `1` simulated flight, see [Demo mode](#demo-mode) |

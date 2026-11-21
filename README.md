@@ -196,8 +196,8 @@ the way `radiosonde_auto_rx` and chasemapper do. Uploads are **off by default**.
 
 | Upload | Request | When |
 |---|---|---|
-| Decoded RS41 frames | `PUT /sondes/telemetry`, gzip JSON | In batches, every `sondehub_rate_s` (default 30 s, 10 to 300) |
-| This device, as the chase car `<callsign>_chase` | `PUT /listeners`, JSON | Every `sondehub_rate_s`, while chase is on and the device has a GPS fix |
+| Decoded RS41 frames | `PUT /sondes/telemetry`, gzip JSON | In batches, every `sondehub_rate_s` (default 15 s, 10 to 300) |
+| This device, as the chase car `<callsign>_chase` | `PUT /listeners`, JSON | Every 30 s, while chase is on and the device has a GPS fix |
 
 What is sent:
 - A frame: serial, frame number, the sonde's own time, position, altitude, speeds, heading, tuned frequency, satellites

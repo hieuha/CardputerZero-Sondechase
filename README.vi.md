@@ -196,8 +196,8 @@ cách `radiosonde_auto_rx` và chasemapper làm. Upload **tắt mặc định**.
 
 | Gửi | Yêu cầu | Tần suất |
 |---|---|---|
-| Frame RS41 đã giải mã | `PUT /sondes/telemetry`, JSON nén gzip | Gom thành từng đợt, mỗi `sondehub_rate_s` (mặc định 30 giây, từ 10 đến 300) |
-| Máy này, như xe đi săn `<callsign>_chase` | `PUT /listeners`, JSON | Mỗi `sondehub_rate_s`, khi chase đang bật và máy có GPS fix |
+| Frame RS41 đã giải mã | `PUT /sondes/telemetry`, JSON nén gzip | Gom thành từng đợt, mỗi `sondehub_rate_s` (mặc định 15 giây, từ 10 đến 300) |
+| Máy này, như xe đi săn `<callsign>_chase` | `PUT /listeners`, JSON | Mỗi 30 giây, khi chase đang bật và máy có GPS fix |
 
 Những gì được gửi:
 - Một frame gồm: số hiệu sonde, số frame, thời gian của chính sonde, vị trí, độ cao, tốc độ, hướng, tần số đang chỉnh,

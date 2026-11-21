@@ -207,24 +207,35 @@ void top_bar(const char *name, uint32_t chip, const char *mid)
     if (mid) txt(cw + 4, 0, 194, F_S, C_TX, AL_L, "%s", mid);
     else if (A->freq_hz > 0)
         txt(cw + 4, 0, 150, F_S, C_TX, AL_L, "%.3f MHz  %s", A->freq_hz / 1e6, A->have_sonde ? A->sonde.id : "");
+    /* GPS: satellites used / in view with a fix, or why there is none on red. Two-digit counts ("3D 15/19") are
+     * wider than the usual box, so it grows to the left and the receiver state moves with it instead of the
+     * text wrapping onto a second line. */
+    char gps[24];
+    int fix = gps_ok(&A->gps, now), gw, gx, sx;
+    if (fix && gps_sky(&A->gps, now)) snprintf(gps, sizeof gps, "%dD %d/%d", A->gps.mode, A->gps.n_used, A->gps.n_sat);
+    else if (fix) snprintf(gps, sizeof gps, "%s", A->gps.mode == 3 ? "GPS 3D" : "GPS 2D");
+    else if (gps_sky(&A->gps, now)) /* receiver plugged in, no fix yet */
+        snprintf(gps, sizeof gps, "GPS %d/%d", A->gps.n_used, A->gps.n_sat);
+    else snprintf(gps, sizeof gps, "%s", A->gps.t_fix > 0 ? "GPS lost" : "No GPS");
+    gw = text_w(F_S, gps) + (fix ? 2 : 6);
+    if (gw < (fix ? 40 : 42)) gw = fix ? 40 : 42;
+    gx = (fix ? 284 : 285) - gw;
+    sx = gx - 4 < 240 ? gx - 4 - 44 : 196; /* right edge of the state text */
     if (A->state == ST_DECODE && A->have_sonde) {
-        if (fresh()) txt(196, 0, 44, F_S, C_CY, AL_R, "RX %.0f s", now - A->sonde.t_rx);
-        else txt(196, 0, 44, F_S, C_RD, AL_R, "RX lost");
+        if (fresh()) txt(sx, 0, 44, F_S, C_CY, AL_R, "RX %.0f s", now - A->sonde.t_rx);
+        else txt(sx, 0, 44, F_S, C_RD, AL_R, "RX lost");
     } else if (A->state == ST_SCAN) { /* what the receiver does, on every screen; the Radio screen does not repeat it */
-        txt(196, 0, 44, F_S, C_YL, AL_R, "scan");
+        txt(sx, 0, 44, F_S, C_YL, AL_R, "scan");
     } else if (A->state == ST_LISTEN) {
-        txt(196, 0, 44, F_S, C_YL, AL_R, "listen");
+        txt(sx, 0, 44, F_S, C_YL, AL_R, "listen");
     } else if (A->state == ST_DECODE) {
-        txt(196, 0, 44, F_S, C_YL, AL_R, A->hunt ? "try" : "decode");
+        txt(sx, 0, 44, F_S, C_YL, AL_R, A->hunt ? "try" : "decode");
     }
-    if (gps_ok(&A->gps, now)) {
-        if (gps_sky(&A->gps, now)) txt(244, 0, 40, F_S, C_TX, AL_R, "%dD %d/%d", A->gps.mode, A->gps.n_used, A->gps.n_sat);
-        else txt(244, 0, 40, F_S, C_TX, AL_R, A->gps.mode == 3 ? "GPS 3D" : "GPS 2D");
+    if (fix) {
+        txt(gx, 0, gw, F_S, C_TX, AL_R, "%s", gps);
     } else { /* decoding continues; only distance, bearing and the beeper need this fix */
-        fill(243, 1, 42, 13, C_RD);
-        if (gps_sky(&A->gps, now)) /* receiver plugged in, no fix yet: satellites used / in view */
-            txt(243, 0, 42, F_S, C_G, AL_C, "GPS %d/%d", A->gps.n_used, A->gps.n_sat);
-        else txt(243, 0, 42, F_S, C_G, AL_C, A->gps.t_fix > 0 ? "GPS lost" : "No GPS");
+        fill(gx, 1, gw, 13, C_RD);
+        txt(gx, 0, gw, F_S, C_G, AL_C, "%s", gps);
     }
     if (A->prox.muted) txt(286, 0, 30, F_S, C_RD, AL_R, "mute");
     else if (batt_pct >= 0) txt(286, 0, 30, F_S, C_DIM, AL_R, "%d%%", batt_pct);

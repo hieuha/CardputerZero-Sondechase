@@ -6,7 +6,10 @@
 #define SK_X0 30
 #define SK_X1 222
 #define SK_YB 143
-#define SK_YT 33
+#define SK_YT 20
+/* Isotherm lean per decade of pressure, in pixels. Fixed rather than the plot height, so a taller plot spreads
+ * the pressure axis without pushing the cold stratosphere (-50 °C at 10 hPa) off the right edge. */
+#define SK_SKEW 110.0
 /* Top of the pressure axis: 100 hPa, or 10 hPa (about 31 km) once the flight has been above 100 hPa. A sonde is
  * often first heard high up, and with a fixed 100 hPa top its whole profile would lie above the diagram. */
 static double sk_top = 100.0;
@@ -18,13 +21,13 @@ static double sk_y(double p)
     return SK_YB - log(1050.0 / p) / log(1050.0 / sk_top) * (SK_YB - SK_YT);
 }
 
-/* Isotherms lean by the same temperature per unit of ln(p) whatever the axis' top: 45° on the 1050-100 hPa
+/* Isotherms lean by the same temperature per unit of ln(p) whatever the axis' top: about 42° on the 1050-100 hPa
  * diagram. Tied to pixels instead, a stretched axis would lean less and the cold upper air slide off the left. */
 static double sk_x(double t, double p)
 {
     if (p < sk_top) p = sk_top;
     if (p > 1050) p = 1050;
-    return SK_X0 + (t + 35.0) * (SK_X1 - SK_X0) / 80.0 + log(1050.0 / p) / log(10.5) * (SK_YB - SK_YT);
+    return SK_X0 + (t + 35.0) * (SK_X1 - SK_X0) / 80.0 + log(1050.0 / p) / log(10.5) * SK_SKEW;
 }
 
 static void sk_ln(double t1, double p1, double t2, double p2, uint32_t col, int w)
@@ -96,7 +99,8 @@ void p_skewt(void)
     ln(SK_X1, SK_YB, SK_X0, SK_YB, C_DIM, 1);
     ln(SK_X0, SK_YB, SK_X0, SK_YT, C_DIM, 1);
     for (i = 0; i < nlab; i++) /* 850 hPa has a grid line but no label: it would collide with 700 and 1000 */
-        txt(0, (int)sk_y(lab[i]) - (i == 0 ? 10 : (lab[i] == 10 ? 0 : 6)), SK_X0 - 3, F_S, C_DIM, AL_R, "%d", lab[i]);
+        txt(0, (int)sk_y(lab[i]) - (i == 0 ? 10 : (lab[i] == (int)sk_top ? 0 : 6)), SK_X0 - 3, F_S, C_DIM, AL_R, "%d",
+            lab[i]); /* the top one hangs below its line, clear of the top bar */
     for (t = -20; t <= 40; t += 20) txt((int)sk_x(t, 1050) - 12, 144, 24, F_S, C_DIM, AL_C, t ? "%+d" : "%d", t);
     txt(226, 144, 29, F_S, C_GN, AL_R, "m/s");
 

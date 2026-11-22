@@ -279,6 +279,23 @@ Result 2026-11-21 (checks 1–3, with 10 frames of sonde Y0332062 replayed from 
 other validation error); the slowest `sh_poll` call took 2.2 ms. An unresolvable server name gave `No network`. Check 4
 not run: it publishes the device position and waits on the registration.
 
+Result 2026-11-22 (live, sonde Y0332116, no `sondehub_dev`): 934 frames of the descent from 13 067 m to 436 m
+(01:26:58–01:42:46Z) sent in 65 batches; the server still answered HTTP 202 (not registered). Against the same frames
+uploaded by radiosonde_auto_rx 1.8.2 at the same station (533 frame numbers in common): `datetime` identical on every
+frame, `time_received` within −0.22 to +0.03 s, altitude within 5 cm. `datetime` runs 15.8–16.0 s ahead of
+`time_received`, as in auto_rx: the sonde's GPS time is 18 s ahead of UTC and a frame arrives about 2 s late.
+
+To keep a copy of every request body for such a comparison, put the default `sondehub_cmd` behind `tee` in
+`/etc/sondechase.conf` (not in `sondehub.conf`, which the app rewrites):
+
+```
+sondehub_cmd = tee -a '{resp}.body' | curl -sS -o '{resp}' -w '%{http_code}' --max-time 20 -X PUT -H 'Content-Type: application/json' {enc} -H 'Date: {date}' -A '{ua}' --data-binary @- '{url}' 2>/dev/null
+```
+
+`<data_dir>/sondehub-tel.resp.body` then holds the telemetry batches as gzip members (`zcat` prints them one JSON array
+after another) and `sondehub-lis.resp.body` the chase car positions. The file grows without limit: about 35 kB per
+1000 frames.
+
 ## Demo mode
 
 `demo = 1` plays a simulated flight through the same frame path as real frames: ascent at 5 m/s to 31.2 km, burst,

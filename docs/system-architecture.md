@@ -183,7 +183,8 @@ steps through the band. `spec_peaks` returns the peaks for the Radio screen and 
 Neither runs in demo mode (`app_on_frame` and `app_poll` skip them).
 
 1. `app_on_frame` calls `sh_add` for each valid position frame. The frame is queued only with `sondehub_upload = 1`, a
-   callsign and the sonde's own datetime. The time received is the device's UTC clock. The queue holds `SH_QMAX` (64)
+   callsign and the sonde's own datetime, which goes out exactly as rs41mod wrote it (GPS time, all its decimals).
+   The time received is the device's UTC clock. The queue holds `SH_QMAX` (64)
    frames; when it is full the oldest goes.
 2. `app_poll` calls `sh_poll` each loop, which:
    - reaps finished children and stores each result (`sh_result_t`: OK, or the reason, and the batch size);

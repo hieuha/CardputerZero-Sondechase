@@ -80,13 +80,9 @@ int sh_json_tel(const sondehub_t *h, const cfg_t *c, const gps_t *g, double now,
     jb(&b, "[");
     for (i = 0; i < h->qn; i++) {
         const sonde_t *s = &h->q[i].s;
-        char rx[32], dt[32], id[20], sub[16], ms[4] = "000";
-        int k;
-        const char *f = s->datetime[19] == '.' ? s->datetime + 20 : "";
-        /* the sonde's time as YYYY-MM-DDTHH:MM:SS.fffZ, whatever number of decimals it came with */
-        for (k = 0; k < 3 && isdigit((unsigned char)f[k]); k++) ms[k] = f[k];
+        char rx[32], dt[32], id[20], sub[16];
+        /* the sonde's GPS time exactly as the decoder gave it: SondeHub asks for it unchanged */
         safe(dt, sizeof dt, s->datetime);
-        snprintf(dt + 19, sizeof dt - 19, ".%sZ", ms);
         iso_utc(rx, sizeof rx, h->q[i].t_unix);
         safe(id, sizeof id, s->id);
         jb(&b, "%s{\"software_name\":\"" SH_SOFTWARE "\",\"software_version\":\"" SC_VERSION "\","

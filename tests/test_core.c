@@ -1625,7 +1625,7 @@ static void t_sondehub(void)
     }
     CHECK(strstr(j, "\"software_name\":\"SondeChase\"") && strstr(j, "\"uploader_callsign\":\"N0CALL\""));
     CHECK(strstr(j, "\"manufacturer\":\"Vaisala\",\"type\":\"RS41\",\"serial\":\"S4430329\",\"frame\":5391"));
-    CHECK(strstr(j, "\"datetime\":\"2026-11-18T00:31:05.500Z\"") && strstr(j, "\"frequency\":403.000"));
+    CHECK(strstr(j, "\"datetime\":\"2026-11-18T00:31:05.5Z\"") && strstr(j, "\"frequency\":403.000"));
     CHECK(strstr(j, "\"subtype\":\"RS41-SGP\"") && strstr(j, "\"temp\":-55.2") && strstr(j, "\"humidity\":12.0"));
     CHECK(!strstr(j, "\"pressure\"") && !strstr(j, "\"burst_timer\"")); /* ISA estimate, timer not running */
     CHECK(!strstr(j, "\"uploader_position\"") && !strstr(j, "\"dev\""));
@@ -1653,7 +1653,7 @@ static void t_sondehub(void)
     CHECK(sh_add(&h, &c, &s2, 404500000L) == 1);
     CHECK(sh_json_tel(&h, &c, &g, now, j, sizeof j) > 0 && strstr(j, "\"pressure\":905.2") && !strstr(j, "\"humidity\"") &&
           strstr(j, "\"burst_timer\":1200") && !strstr(j, "\"batt\"") && !strstr(j, "\"temp\"") &&
-          strstr(j, "\"datetime\":\"2026-11-18T00:31:06.000Z\"") && strstr(j, "\"frequency\":404.500"));
+          strstr(j, "\"datetime\":\"2026-11-18T00:31:06Z\"") && strstr(j, "\"frequency\":404.500"));
     CHECK(sh_json_lis(&c, &g, j, sizeof j) > 0 && strstr(j, "\"uploader_callsign\":\"N0CALL_chase\"") &&
           strstr(j, "\"mobile\":true") && strstr(j, "\"uploader_antenna\":\"Chase Car\"") &&
           strstr(j, "\"uploader_position\":[21.10000,105.90000,12.0]"));
